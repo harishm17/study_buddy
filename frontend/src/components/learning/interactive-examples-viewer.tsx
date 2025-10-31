@@ -459,7 +459,7 @@ export function InteractiveExamplesViewer({
                 <li>Try to solve each step before using the hint</li>
                 <li>If you get stuck, use the hint to guide your thinking</li>
                 <li>Read the explanations carefully, even when you get it right</li>
-                <li>Don't worry about mistakes - they're part of learning!</li>
+                <li>Don&apos;t worry about mistakes - they&apos;re part of learning!</li>
               </ul>
             </div>
           </div>

@@ -83,7 +83,7 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            You haven't taken this exam yet. Start your first attempt!
+            You haven&apos;t taken this exam yet. Start your first attempt!
           </p>
         </CardContent>
       </Card>

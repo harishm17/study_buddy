@@ -194,7 +194,7 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
         <Alert>
           <Upload className="h-4 w-4" />
           <AlertDescription>
-            Get started by uploading your study materials (PDFs). We'll process them and extract
+            Get started by uploading your study materials (PDFs). We&apos;ll process them and extract
             key topics automatically.
           </AlertDescription>
         </Alert>
