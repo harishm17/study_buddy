@@ -50,9 +50,9 @@ RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 
-EXPOSE 3000
+EXPOSE 8080
 
-ENV PORT=3000
+# PORT will be set by Cloud Run, defaults to 3000 for local development
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
