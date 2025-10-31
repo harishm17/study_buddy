@@ -18,11 +18,11 @@ const updateProgressSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { topicId } = params
+    const { topicId } = await params
 
     // Verify topic ownership
     const topic = await prisma.topic.findFirst({
@@ -94,11 +94,11 @@ export async function POST(
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { topicId } = params
+    const { topicId } = await params
 
     // Verify topic ownership
     const topic = await prisma.topic.findFirst({

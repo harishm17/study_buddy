@@ -6,9 +6,9 @@ import prisma from '@/lib/prisma';
 import ProjectDashboard from '@/components/projects/project-dashboard';
 
 interface ProjectPageProps {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
+  }>;
 }
 
 export default async function ProjectPage({ params }: ProjectPageProps) {
@@ -18,7 +18,7 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
     redirect('/auth/signin');
   }
 
-  const { projectId } = params;
+  const { projectId } = await params;
 
   // Fetch project with all related data
   const project = await prisma.project.findFirst({

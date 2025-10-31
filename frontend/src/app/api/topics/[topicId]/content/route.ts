@@ -9,11 +9,11 @@ import { requireAuth } from '@/lib/auth/get-session'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { topicId } = params
+    const { topicId } = await params
     const { searchParams } = new URL(request.url)
     const contentType = searchParams.get('type')
 

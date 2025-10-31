@@ -16,11 +16,11 @@ const createTopicSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { projectId } = params
+    const { projectId } = await params
 
     // Verify project ownership
     const project = await prisma.project.findFirst({
@@ -72,11 +72,11 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { projectId } = params
+    const { projectId } = await params
 
     // Verify project ownership
     const project = await prisma.project.findFirst({

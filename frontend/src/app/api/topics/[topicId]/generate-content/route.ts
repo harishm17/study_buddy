@@ -22,11 +22,11 @@ const generateContentSchema = z.object({
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { topicId } = params
+    const { topicId } = await params
 
     // Verify topic ownership through project
     const topic = await prisma.topic.findFirst({

@@ -9,11 +9,11 @@ import { requireAuth } from '@/lib/auth/get-session'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { jobId: string } }
+  { params }: { params: Promise<{ jobId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { jobId } = params
+    const { jobId } = await params
 
     // Fetch job and verify ownership
     const job = await prisma.processingJob.findFirst({

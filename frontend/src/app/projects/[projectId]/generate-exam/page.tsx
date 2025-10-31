@@ -6,9 +6,9 @@ import prisma from '@/lib/prisma';
 import ExamGenerationPage from '@/components/exams/exam-generation-page';
 
 interface GenerateExamPageProps {
-  params: {
+  params: Promise<{
     projectId: string;
-  };
+  }>;
 }
 
 export default async function GenerateExamPage({ params }: GenerateExamPageProps) {
@@ -18,7 +18,7 @@ export default async function GenerateExamPage({ params }: GenerateExamPageProps
     redirect('/auth/signin');
   }
 
-  const { projectId } = params;
+  const { projectId } = await params;
 
   // Fetch project with topics
   const project = await prisma.project.findFirst({

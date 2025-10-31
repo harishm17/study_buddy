@@ -9,15 +9,15 @@ import { prisma } from '@/lib/db/prisma'
 import { TopicLearningInterface } from '@/components/learning/topic-learning-interface'
 
 interface TopicPageProps {
-  params: {
+  params: Promise<{
     projectId: string
     topicId: string
-  }
+  }>
 }
 
 export default async function TopicPage({ params }: TopicPageProps) {
   const session = await requireAuth()
-  const { projectId, topicId } = params
+  const { projectId, topicId } = await params
 
   // Fetch topic with content and progress
   const topic = await prisma.topic.findFirst({
