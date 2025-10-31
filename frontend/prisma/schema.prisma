@@ -1,0 +1,351 @@
+// Prisma schema for StudyBuddy
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ============================================
+// User Management
+// ============================================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String?   @map("password_hash")
+  oauthProvider String?   @map("oauth_provider")
+  oauthId       String?   @map("oauth_id")
+  name          String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  projects            Project[]
+  processingJobs      ProcessingJob[]
+  topicProgress       TopicProgress[]
+  quizAttempts        QuizAttempt[]
+  overallQuizAttempts OverallQuizAttempt[]
+  examSubmissions     ExamSubmission[]
+
+  @@index([email])
+  @@index([oauthProvider, oauthId])
+  @@map("users")
+}
+
+// ============================================
+// Projects (Study Sessions)
+// ============================================
+
+model Project {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  status      String   @default("setup") // setup|topics_pending|active|completed
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  materials      Material[]
+  topics         Topic[]
+  overallQuizzes OverallQuiz[]
+  sampleExams    SampleExam[]
+  processingJobs ProcessingJob[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("projects")
+}
+
+// ============================================
+// Materials (Uploaded PDFs)
+// ============================================
+
+model Material {
+  id               String    @id @default(uuid())
+  projectId        String    @map("project_id")
+  category         String // lecture_notes|sample_exams|book_chapters
+  filename         String
+  gcsPath          String    @map("gcs_path")
+  sizeBytes        BigInt    @map("size_bytes")
+  validationStatus String    @default("pending") @map("validation_status") // pending|valid|invalid
+  validationNotes  String?   @map("validation_notes")
+  metadata         Json?
+  uploadedAt       DateTime  @default(now()) @map("uploaded_at")
+  validatedAt      DateTime? @map("validated_at")
+
+  // Relations
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  materialChunks MaterialChunk[]
+
+  @@index([projectId])
+  @@index([category])
+  @@index([validationStatus])
+  @@map("materials")
+}
+
+// ============================================
+// Material Chunks (with Embeddings)
+// ============================================
+
+model MaterialChunk {
+  id                String                 @id @default(uuid())
+  materialId        String                 @map("material_id")
+  chunkText         String                 @map("chunk_text")
+  chunkEmbedding    Unsupported("vector")? @map("chunk_embedding") // vector(1536)
+  sectionHierarchy  String?                @map("section_hierarchy")
+  pageStart         Int?                   @map("page_start")
+  pageEnd           Int?                   @map("page_end")
+  chunkIndex        Int                    @map("chunk_index")
+  tokenCount        Int?                   @map("token_count")
+  createdAt         DateTime               @default(now()) @map("created_at")
+
+  // Relations
+  material             Material              @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  topicChunkMappings   TopicChunkMapping[]
+
+  @@index([materialId])
+  @@map("material_chunks")
+}
+
+// ============================================
+// Topics (Extracted Learning Topics)
+// ============================================
+
+model Topic {
+  id                 String   @id @default(uuid())
+  projectId          String   @map("project_id")
+  name               String
+  description        String?
+  keywords           String[]
+  orderIndex         Int      @map("order_index")
+  sourceMaterialIds  String[] @map("source_material_ids")
+  userConfirmed      Boolean  @default(false) @map("user_confirmed")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topicChunkMappings TopicChunkMapping[]
+  content            TopicContent[]
+  topicQuizzes       TopicQuiz[]
+  progress           TopicProgress[]
+  quizAttempts       QuizAttempt[]
+
+  @@index([projectId])
+  @@index([projectId, orderIndex])
+  @@map("topics")
+}
+
+// ============================================
+// Topic Chunk Mappings
+// ============================================
+
+model TopicChunkMapping {
+  id              String   @id @default(uuid())
+  topicId         String   @map("topic_id")
+  chunkId         String   @map("chunk_id")
+  relevanceScore  Float    @map("relevance_score")
+  relevanceSource String?  @map("relevance_source") // keyword_match|semantic_search|llm_validated
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  topic Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  chunk MaterialChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, chunkId])
+  @@index([topicId, relevanceScore])
+  @@index([chunkId])
+  @@map("topic_chunk_mappings")
+}
+
+// ============================================
+// Topic Content (Generated Study Material)
+// ============================================
+
+model TopicContent {
+  id          String   @id @default(uuid())
+  topicId     String   @map("topic_id")
+  contentType String   @map("content_type") // section_notes|solved_examples|interactive_examples|topic_quiz
+  contentData Json     @map("content_data") // The actual generated content
+  metadata    Json?    // Additional metadata (citations, difficulty, etc.)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId, contentType])
+  @@map("topic_content")
+}
+
+// ============================================
+// Topic Quizzes
+// ============================================
+
+model TopicQuiz {
+  id        String   @id @default(uuid())
+  topicId   String   @map("topic_id")
+  questions Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@map("topic_quizzes")
+}
+
+// ============================================
+// Topic Progress (User Learning Progress)
+// ============================================
+
+model TopicProgress {
+  id                String    @id @default(uuid())
+  userId            String    @map("user_id")
+  topicId           String    @map("topic_id")
+  notesCompleted    Boolean   @default(false) @map("notes_completed")
+  examplesCompleted Boolean   @default(false) @map("examples_completed")
+  quizCompleted     Boolean   @default(false) @map("quiz_completed")
+  quizScore         Float?    @map("quiz_score") // Best score percentage
+  lastAccessedAt    DateTime? @map("last_accessed_at")
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([topicId, userId])
+  @@index([userId, topicId])
+  @@map("topic_progress")
+}
+
+// ============================================
+// Quiz Attempts (Track multiple quiz attempts)
+// ============================================
+
+model QuizAttempt {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  topicId    String   @map("topic_id")
+  answers    Json     // User's answers
+  results    Json     // Grading results (correct/incorrect per question)
+  score      Float    // Percentage score
+  takenAt    DateTime @default(now()) @map("taken_at")
+
+  // Relations
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([userId, topicId])
+  @@index([topicId])
+  @@map("quiz_attempts")
+}
+
+// ============================================
+// Overall Quizzes (Project-wide MCQ)
+// ============================================
+
+model OverallQuiz {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  questions Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project  Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  attempts OverallQuizAttempt[]
+
+  @@index([projectId])
+  @@map("overall_quizzes")
+}
+
+model OverallQuizAttempt {
+  id             String   @id @default(uuid())
+  overallQuizId  String   @map("overall_quiz_id")
+  userId         String   @map("user_id")
+  answers        Json
+  score          Json
+  takenAt        DateTime @default(now()) @map("taken_at")
+
+  // Relations
+  overallQuiz OverallQuiz @relation(fields: [overallQuizId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("overall_quiz_attempts")
+}
+
+// ============================================
+// Sample Exams
+// ============================================
+
+model SampleExam {
+  id              String   @id @default(uuid())
+  projectId       String   @map("project_id")
+  name            String
+  questions       Json     // Array of questions
+  durationMinutes Int      @map("duration_minutes")
+  difficultyLevel String   @map("difficulty_level")
+  topicsCovered   String[] @map("topics_covered")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  submissions ExamSubmission[]
+
+  @@index([projectId])
+  @@map("sample_exams")
+}
+
+model ExamSubmission {
+  id           String    @id @default(uuid())
+  sampleExamId String    @map("sample_exam_id")
+  userId       String    @map("user_id")
+  answers      Json
+  aiGrading    Json?     @map("ai_grading")
+  aiFeedback   Json?     @map("ai_feedback")
+  submittedAt  DateTime  @default(now()) @map("submitted_at")
+  gradedAt     DateTime? @map("graded_at")
+
+  // Relations
+  sampleExam SampleExam @relation(fields: [sampleExamId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sampleExamId])
+  @@map("exam_submissions")
+}
+
+// ============================================
+// Processing Jobs (Async Job Queue)
+// ============================================
+
+model ProcessingJob {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  projectId       String?   @map("project_id")
+  jobType         String    @map("job_type")
+  status          String    @default("pending") // pending|processing|completed|failed
+  inputData       Json?     @map("input_data")
+  resultData      Json?     @map("result_data")
+  progressPercent Int       @default(0) @map("progress_percent")
+  errorMessage    String?   @map("error_message")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+
+  // Relations
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("processing_jobs")
+}

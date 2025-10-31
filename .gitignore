@@ -1,0 +1,50 @@
+# Environment variables
+.env
+.env.local
+.env*.local
+
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+.next/
+dist/
+build/
+
+# Database
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Development Documentation (not for version control)
+ARCHITECTURE.md
+CLAUDE.md
+DEPLOYMENT.md
+GITHUB_SECRETS.md
+
+# Keep only README.md in version control
+
+# Misc
+*.pem
+.vercel
