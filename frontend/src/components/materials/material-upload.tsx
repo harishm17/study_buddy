@@ -198,7 +198,7 @@ export function MaterialUpload({ projectId, onUploadComplete }: MaterialUploadPr
       <Card>
         <CardHeader>
           <CardTitle>Material Category</CardTitle>
-          <CardDescription>Select the type of material you're uploading</CardDescription>
+          <CardDescription>Select the type of material you&apos;re uploading</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

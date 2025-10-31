@@ -245,7 +245,7 @@ export function TopicLearningInterface({ topic, allTopics, userId }: TopicLearni
               <Circle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-lg font-semibold mb-2">Content Not Generated</h3>
               <p className="text-muted-foreground mb-4">
-                This content hasn't been generated yet. Go back to the content generation page to create it.
+                This content hasn&apos;t been generated yet. Go back to the content generation page to create it.
               </p>
               <Button
                 onClick={() => router.push(`/projects/${topic.project.id}`)}
