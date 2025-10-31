@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     ANTHROPIC_MODEL: str = "claude-4-5-sonnet"
     ANTHROPIC_MINI_MODEL: str = "claude-4-5-haiku"
 
-    # GCP
-    GCS_BUCKET: str
+    # GCP (optional, can use local storage)
+    GCS_BUCKET: str = ""
+    GCS_BUCKET_NAME: str = ""  # Alternative name used in some configs
     GCS_PROJECT_ID: str = ""
 
     # Service Configuration
