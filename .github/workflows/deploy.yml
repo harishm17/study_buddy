@@ -1,0 +1,141 @@
+name: Deploy to GCP Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual trigger
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  FRONTEND_SERVICE: studybuddy-frontend
+  AI_SERVICE: studybuddy-ai-service
+
+jobs:
+  deploy-frontend:
+    name: Deploy Frontend to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+
+      - name: Build Frontend Docker image
+        run: |
+          docker build -t gcr.io/$PROJECT_ID/$FRONTEND_SERVICE:${{ github.sha }} \
+            -t gcr.io/$PROJECT_ID/$FRONTEND_SERVICE:latest \
+            -f frontend/Dockerfile ./frontend
+
+      - name: Push Frontend image to GCR
+        run: |
+          docker push gcr.io/$PROJECT_ID/$FRONTEND_SERVICE:${{ github.sha }}
+          docker push gcr.io/$PROJECT_ID/$FRONTEND_SERVICE:latest
+
+      - name: Deploy Frontend to Cloud Run
+        run: |
+          gcloud run deploy $FRONTEND_SERVICE \
+            --image gcr.io/$PROJECT_ID/$FRONTEND_SERVICE:${{ github.sha }} \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --set-env-vars "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}" \
+            --set-env-vars "NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}" \
+            --set-env-vars "AI_SERVICE_URL=${{ secrets.AI_SERVICE_URL }}" \
+            --set-env-vars "GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" \
+            --set-env-vars "GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}" \
+            --memory 1Gi \
+            --cpu 1 \
+            --timeout 300 \
+            --max-instances 10 \
+            --min-instances 0
+
+  deploy-ai-service:
+    name: Deploy AI Service to Cloud Run
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+
+      - name: Build AI Service Docker image
+        run: |
+          docker build -t gcr.io/$PROJECT_ID/$AI_SERVICE:${{ github.sha }} \
+            -t gcr.io/$PROJECT_ID/$AI_SERVICE:latest \
+            -f ai-service/Dockerfile ./ai-service
+
+      - name: Push AI Service image to GCR
+        run: |
+          docker push gcr.io/$PROJECT_ID/$AI_SERVICE:${{ github.sha }}
+          docker push gcr.io/$PROJECT_ID/$AI_SERVICE:latest
+
+      - name: Deploy AI Service to Cloud Run
+        run: |
+          gcloud run deploy $AI_SERVICE \
+            --image gcr.io/$PROJECT_ID/$AI_SERVICE:${{ github.sha }} \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars "DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
+            --set-env-vars "ENVIRONMENT=production" \
+            --set-env-vars "GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}" \
+            --memory 2Gi \
+            --cpu 2 \
+            --timeout 600 \
+            --max-instances 10 \
+            --min-instances 0
+
+  run-migrations:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    needs: [deploy-frontend]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run Prisma migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          cd frontend
+          npx prisma migrate deploy
+
+      - name: Generate Prisma Client
+        run: |
+          cd frontend
+          npx prisma generate
