@@ -6,9 +6,9 @@ import prisma from '@/lib/prisma';
 import ExamPageClient from '@/components/exams/exam-page-client';
 
 interface ExamPageProps {
-  params: {
+  params: Promise<{
     examId: string;
-  };
+  }>;
 }
 
 export default async function ExamPage({ params }: ExamPageProps) {
@@ -18,7 +18,7 @@ export default async function ExamPage({ params }: ExamPageProps) {
     redirect('/auth/signin');
   }
 
-  const { examId } = params;
+  const { examId } = await params;
 
   // Fetch exam with project verification
   const exam = await prisma.sampleExam.findFirst({

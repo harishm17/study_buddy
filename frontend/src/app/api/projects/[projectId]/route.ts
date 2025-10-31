@@ -18,11 +18,11 @@ const updateProjectSchema = z.object({
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { projectId } = params
+    const { projectId } = await params
 
     const project = await prisma.project.findFirst({
       where: {
@@ -66,11 +66,11 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { projectId } = params
+    const { projectId } = await params
 
     // Verify ownership
     const project = await prisma.project.findFirst({
@@ -122,11 +122,11 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { projectId } = params
+    const { projectId } = await params
 
     // Verify ownership
     const project = await prisma.project.findFirst({

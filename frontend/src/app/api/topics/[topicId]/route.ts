@@ -17,11 +17,11 @@ const updateTopicSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { topicId } = params
+    const { topicId } = await params
 
     // Verify topic ownership through project
     const topic = await prisma.topic.findFirst({
@@ -76,11 +76,11 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { topicId: string } }
+  { params }: { params: Promise<{ topicId: string }> }
 ) {
   try {
     const session = await requireAuth()
-    const { topicId } = params
+    const { topicId } = await params
 
     // Verify topic ownership through project
     const topic = await prisma.topic.findFirst({
