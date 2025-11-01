@@ -67,6 +67,10 @@ async def enqueue_task(
     try:
         # Build the task
         project_id = settings.GCS_PROJECT_ID
+        if not project_id:
+            logger.error("GCS_PROJECT_ID not configured - cannot create Cloud Task")
+            return f"error-task-{payload['jobId']}"
+
         location = "us-central1"  # Same as deploy.yml
         queue = "studybuddy-jobs"  # Same as deploy.yml
 
