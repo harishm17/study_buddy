@@ -44,9 +44,11 @@ async def startup_event():
     """Initialize services on startup."""
     print(f"🚀 StudyBuddy AI Service starting in {settings.ENVIRONMENT} mode")
     print(f"📊 LLM Provider: {settings.LLM_PROVIDER}")
-    print(f"🗄️  Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
+    db_info = settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'
+    print(f"🗄️  Database: {db_info}")
     
-    # Validate database connection
+    # Validate database connection (non-blocking for Cloud Run health checks)
+    # Log warnings but don't crash if DB is temporarily unavailable
     try:
         from app.db.connection import get_db_pool
         pool = await get_db_pool()
@@ -62,8 +64,10 @@ async def startup_event():
         else:
             print("✅ pgvector extension confirmed")
     except Exception as e:
-        print(f"❌ Database connection failed: {e}")
-        raise
+        # Log error but don't raise - allow service to start for health checks
+        # Database connections can be retried on first request
+        print(f"⚠️  WARNING: Database connection failed: {e}")
+        print("⚠️  Service will start, but database operations may fail until connection is established.")
 
 
 @app.on_event("shutdown")
