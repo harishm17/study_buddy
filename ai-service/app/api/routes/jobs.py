@@ -113,8 +113,8 @@ async def validate_material_job(payload: JobPayload):
                 chunking_job = await execute_one(
                     """
                     INSERT INTO processing_jobs
-                    (user_id, project_id, job_type, status, input_data, progress_percent)
-                    VALUES ($1, $2, 'chunk_material', 'pending', $3, 0)
+                    (id, user_id, project_id, job_type, status, input_data, progress_percent, created_at)
+                    VALUES (gen_random_uuid(), $1, $2, 'chunk_material', 'pending', $3, 0, NOW())
                     RETURNING id
                     """,
                     current_job["user_id"],
