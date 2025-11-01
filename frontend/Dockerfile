@@ -8,7 +8,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install dependencies
-RUN npm ci --legacy-peer-deps
+# Note: Using npm install instead of npm ci because package-lock.json may be out of sync
+# After regenerating package-lock.json locally, this can be changed back to npm ci
+RUN npm install --legacy-peer-deps
 
 # Stage 2: Builder
 FROM node:20-slim AS builder
