@@ -12,7 +12,7 @@ from app.services.content_generator import NotesGenerator, ExamplesGenerator, Qu
 from app.services.content_generator.examples import ExampleType
 from app.services.exam_generator import ExamGenerator
 from app.services.exam_grader import ExamGrader
-from app.services.cloud_tasks import enqueue_chunking_job
+from app.services.cloud_tasks import enqueue_chunking_job, enqueue_topic_extraction_job
 from app.db.connection import execute_one, execute_update, execute_query, execute_in_transaction
 from app.config import settings
 
@@ -163,9 +163,10 @@ async def chunk_material_job(payload: JobPayload):
     Called after validation succeeds.
     """
     try:
-        logger.info(f"Starting chunking job: {payload.jobId}")
+        logger.info(f"Starting chunking job: {payload.jobId} with data: {payload.data}")
 
         input_data = MaterialValidationInput(**payload.data)
+        logger.info(f"Parsed input data for material: {input_data.materialId}")
 
         # Update job status
         await execute_update(
@@ -180,7 +181,7 @@ async def chunk_material_job(payload: JobPayload):
         # Fetch material
         material = await execute_one(
             """
-            SELECT id, gcs_path, filename
+            SELECT id, gcs_path, filename, project_id
             FROM materials
             WHERE id = $1
             """,
@@ -188,7 +189,19 @@ async def chunk_material_job(payload: JobPayload):
         )
 
         if not material:
-            raise HTTPException(status_code=404, detail="Material not found")
+            # Material was deleted - mark job as failed but return 200 to stop Cloud Tasks retries
+            logger.warning(f"Material {input_data.materialId} not found (likely deleted)")
+            await execute_update(
+                """
+                UPDATE processing_jobs
+                SET status = 'failed',
+                    error_message = 'Material not found (deleted)',
+                    completed_at = NOW()
+                WHERE id = $1
+                """,
+                payload.jobId,
+            )
+            return {"status": "skipped", "jobId": payload.jobId, "reason": "Material not found"}
 
         # For development, skip actual PDF processing
         if settings.is_development:
@@ -305,6 +318,67 @@ async def chunk_material_job(payload: JobPayload):
                 json.dumps({"chunks_created": chunks_created}),
                 payload.jobId,
             )
+
+            # Check if all materials in project are chunked, trigger topic extraction
+            project_id = material['project_id']
+            if project_id:
+                # Check if all materials in project are now chunked
+                pending_materials = await execute_one(
+                    """
+                    SELECT COUNT(*) as count
+                    FROM materials m
+                    LEFT JOIN material_chunks mc ON m.id = mc.material_id
+                    WHERE m.project_id = $1
+                      AND m.validation_status = 'valid'
+                      AND mc.id IS NULL
+                    """,
+                    project_id
+                )
+
+                if pending_materials and pending_materials['count'] == 0:
+                    # All materials chunked, check if topic extraction already exists/pending
+                    existing_topic_job = await execute_one(
+                        """
+                        SELECT id FROM processing_jobs
+                        WHERE project_id = $1
+                          AND job_type = 'extract_topics'
+                          AND status IN ('pending', 'processing', 'completed')
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """,
+                        project_id
+                    )
+
+                    if not existing_topic_job:
+                        # Create and enqueue topic extraction job
+                        logger.info(f"All materials chunked for project {project_id}, triggering topic extraction")
+
+                        # Get user_id from current job
+                        current_job = await execute_one(
+                            "SELECT user_id FROM processing_jobs WHERE id = $1",
+                            payload.jobId
+                        )
+                        user_id = current_job['user_id'] if current_job else None
+
+                        if user_id:
+                            topic_job = await execute_one(
+                                """
+                                INSERT INTO processing_jobs
+                                (id, user_id, project_id, job_type, status, input_data, progress_percent, created_at)
+                                VALUES (gen_random_uuid(), $1, $2, 'extract_topics', 'pending', $3, 0, NOW())
+                                RETURNING id
+                                """,
+                                user_id,
+                                project_id,
+                                json.dumps({"projectId": project_id})
+                            )
+
+                            # Enqueue topic extraction task
+                            await enqueue_topic_extraction_job(topic_job['id'], project_id)
+                            logger.info(f"Topic extraction job {topic_job['id']} enqueued for project {project_id}")
+                    else:
+                        logger.info(f"Topic extraction already exists for project {project_id}, skipping")
+
         finally:
             # Clean up temporary file
             if pdf_path and os.path.exists(pdf_path):
