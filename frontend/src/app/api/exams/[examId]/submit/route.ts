@@ -76,28 +76,16 @@ export async function POST(
       },
     });
 
-    // Enqueue grading task to AI service
-    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-
+    // Enqueue grading task via Cloud Tasks (or direct call in dev)
     try {
-      const response = await fetch(`${aiServiceUrl}/api/jobs/grade-exam`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobId: job.id,
-          jobType: 'grade_exam',
-          data: {
-            submissionId: submission.id,
-            examId,
-            answers,
-            questions: exam.questions,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to enqueue grading job');
-      }
+      const { enqueueExamGradingJob } = await import('@/lib/tasks/cloud-tasks');
+      await enqueueExamGradingJob(
+        job.id,
+        submission.id,
+        examId,
+        exam.questions as any[],
+        answers
+      );
     } catch (error) {
       console.error('Error enqueuing grading job:', error);
 

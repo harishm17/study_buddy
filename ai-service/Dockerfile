@@ -11,10 +11,10 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy requirements first (better caching)
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies (cached if requirements.txt unchanged)
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Stage 2: Runtime
@@ -25,7 +25,7 @@ WORKDIR /app
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local
 
-# Copy application code
+# Copy application code last (changes most frequently)
 COPY . .
 
 # Make sure scripts in .local are usable

@@ -3,16 +3,30 @@
  * Handles file uploads and downloads with signed URLs
  */
 
-import { Storage } from '@google-cloud/storage'
+// Lazy-load Storage to avoid credential errors in development
+let storageInstance: any = null
 
-// Initialize GCS client
-// In production, this uses Application Default Credentials
-// In development with docker-compose, we'll use local storage simulation
-const storage = process.env.NODE_ENV === 'production'
-  ? new Storage({
-      projectId: process.env.GCS_PROJECT_ID,
-    })
-  : null
+async function getStorage() {
+  // In development, always return null (use simulation)
+  if (process.env.NODE_ENV !== 'production' || !process.env.GCS_PROJECT_ID) {
+    return null
+  }
+
+  // In production, lazy-load Storage only when needed
+  if (!storageInstance) {
+    try {
+      const { Storage } = await import('@google-cloud/storage')
+      storageInstance = new Storage({
+        projectId: process.env.GCS_PROJECT_ID,
+      })
+    } catch (error) {
+      console.warn('[GCS] Failed to initialize Storage client:', error)
+      return null
+    }
+  }
+
+  return storageInstance
+}
 
 const BUCKET_NAME = process.env.GCS_BUCKET || 'studybuddy-materials'
 
@@ -26,6 +40,8 @@ export async function uploadFile(
   file: Buffer,
   path: string
 ): Promise<string> {
+  const storage = await getStorage()
+  
   if (!storage) {
     // Development mode - simulate upload
     console.log(`[DEV] Simulating file upload to: ${path}`)
@@ -54,6 +70,8 @@ export async function getSignedUrl(
   gcsPath: string,
   expiresInMinutes = 60
 ): Promise<string> {
+  const storage = await getStorage()
+  
   if (!storage) {
     // Development mode - return a mock URL
     return `http://localhost:4566/${gcsPath.replace('gs://', '')}`
@@ -79,6 +97,8 @@ export async function getSignedUrl(
  * @param gcsPath - Full GCS path (gs://bucket/path)
  */
 export async function deleteFile(gcsPath: string): Promise<void> {
+  const storage = await getStorage()
+  
   if (!storage) {
     console.log(`[DEV] Simulating file deletion: ${gcsPath}`)
     return

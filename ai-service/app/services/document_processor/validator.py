@@ -42,23 +42,23 @@ async def validate_material(
     Returns:
         ValidationResult with status and notes
     """
+    # For development, we'll skip actual GCS download
+    # In production, download from GCS first
+    if settings.is_development:
+        logger.info(f"[DEV] Simulating validation for {filename}")
+        return ValidationResult(
+            status="valid",
+            notes="Development mode: validation skipped",
+            page_count=10,
+            has_text=True,
+        )
+
+    # 1. Download PDF from GCS
+    pdf_path = None
+    doc = None
+    
     try:
-        # For development, we'll skip actual GCS download
-        # In production, download from GCS first
-        if settings.is_development:
-            logger.info(f"[DEV] Simulating validation for {filename}")
-            return ValidationResult(
-                status="valid",
-                notes="Development mode: validation skipped",
-                page_count=10,
-                has_text=True,
-            )
-
-        # TODO: Download PDF from GCS in production
-        # For now, this is a placeholder
-
-        # 1. Try to parse PDF
-        pdf_path = download_from_gcs(gcs_path)  # TODO: Implement
+        pdf_path = download_from_gcs(gcs_path)
         doc = pymupdf.open(pdf_path)
 
         page_count = doc.page_count
@@ -113,8 +113,6 @@ Return a JSON response with:
         is_valid = response.get("is_valid", False)
         notes = response.get("notes", "No validation notes provided")
 
-        doc.close()
-
         return ValidationResult(
             status="valid" if is_valid else "invalid",
             notes=notes,
@@ -127,18 +125,66 @@ Return a JSON response with:
         return ValidationResult(
             status="invalid", notes=f"Validation error: {str(e)}"
         )
+    finally:
+        # Clean up resources
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
+        
+        # Clean up temporary file
+        if pdf_path and not settings.is_development:
+            import os
+            try:
+                if os.path.exists(pdf_path):
+                    os.remove(pdf_path)
+                    logger.debug(f"Cleaned up temp file: {pdf_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temp file {pdf_path}: {cleanup_error}")
 
 
 def download_from_gcs(gcs_path: str) -> str:
     """
     Download file from GCS to local temp file.
-    TODO: Implement actual GCS download.
 
     Args:
         gcs_path: GCS path (gs://bucket/path)
 
     Returns:
-        Local file path
+        Local file path to downloaded file
     """
-    # Placeholder for GCS download
-    raise NotImplementedError("GCS download not yet implemented")
+    import tempfile
+    import os
+    from google.cloud import storage
+    
+    try:
+        # Parse GCS path (gs://bucket/path)
+        if not gcs_path.startswith("gs://"):
+            raise ValueError(f"Invalid GCS path format: {gcs_path}")
+        
+        path_parts = gcs_path[5:].split("/", 1)  # Remove "gs://" prefix
+        if len(path_parts) != 2:
+            raise ValueError(f"Invalid GCS path format: {gcs_path}")
+        
+        bucket_name, blob_path = path_parts
+        
+        # Initialize GCS client
+        storage_client = storage.Client()
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(blob_path)
+        
+        # Create temporary file
+        temp_dir = tempfile.gettempdir()
+        temp_filename = os.path.join(temp_dir, f"studybuddy_{os.path.basename(blob_path)}")
+        
+        # Download file
+        logger.info(f"Downloading {gcs_path} to {temp_filename}")
+        blob.download_to_filename(temp_filename)
+        
+        logger.info(f"Successfully downloaded file to {temp_filename}")
+        return temp_filename
+        
+    except Exception as e:
+        logger.error(f"Error downloading file from GCS {gcs_path}: {e}")
+        raise

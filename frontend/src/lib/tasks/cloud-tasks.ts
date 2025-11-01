@@ -3,11 +3,16 @@
  * Handles enqueueing async jobs to the AI service
  */
 
-import { CloudTasksClient } from '@google-cloud/tasks'
+let CloudTasksClient: any
+let client: any = null
 
-const client = process.env.NODE_ENV === 'production'
-  ? new CloudTasksClient()
-  : null
+try {
+  const tasks = require('@google-cloud/tasks')
+  CloudTasksClient = tasks.CloudTasksClient
+  client = process.env.NODE_ENV === 'production' ? new CloudTasksClient() : null
+} catch (error) {
+  console.warn('Cloud Tasks not available, using direct HTTP calls')
+}
 
 const PROJECT_ID = process.env.GCS_PROJECT_ID || 'studybuddy-dev'
 const LOCATION = process.env.CLOUD_TASKS_LOCATION || 'us-central1'
@@ -122,5 +127,45 @@ export async function enqueueContentGenerationJob(
     jobId,
     jobType: 'generate_content',
     data: { topicId, contentType, preferences },
+  })
+}
+
+/**
+ * Enqueue a chunking job
+ * @param jobId - Processing job ID
+ * @param materialId - Material ID to chunk
+ * @returns Task name
+ */
+export async function enqueueChunkingJob(
+  jobId: string,
+  materialId: string
+): Promise<string> {
+  return enqueueTask('/jobs/chunk-material', {
+    jobId,
+    jobType: 'chunk_material',
+    data: { materialId },
+  })
+}
+
+/**
+ * Enqueue an exam grading job
+ * @param jobId - Processing job ID
+ * @param submissionId - Exam submission ID
+ * @param examId - Exam ID
+ * @param questions - Exam questions
+ * @param answers - Student answers
+ * @returns Task name
+ */
+export async function enqueueExamGradingJob(
+  jobId: string,
+  submissionId: string,
+  examId: string,
+  questions: any[],
+  answers: Record<string, any>
+): Promise<string> {
+  return enqueueTask('/jobs/grade-exam', {
+    jobId,
+    jobType: 'grade_exam',
+    data: { submissionId, examId, questions, answers },
   })
 }

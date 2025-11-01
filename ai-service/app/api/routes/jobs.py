@@ -92,6 +92,39 @@ async def validate_material_job(payload: JobPayload):
             payload.jobId,
         )
 
+        # If validation succeeded, automatically trigger chunking
+        if validation_result.status == "valid":
+            logger.info(f"Material validated successfully, triggering chunking for {input_data.materialId}")
+            
+            # Get user_id and project_id from the current job
+            current_job = await execute_one(
+                """
+                SELECT user_id, project_id
+                FROM processing_jobs
+                WHERE id = $1
+                """,
+                payload.jobId,
+            )
+            
+            if current_job:
+                # Create chunking job
+                chunking_job = await execute_one(
+                    """
+                    INSERT INTO processing_jobs
+                    (user_id, project_id, job_type, status, input_data, progress_percent)
+                    VALUES ($1, $2, 'chunk_material', 'pending', $3, 0)
+                    RETURNING id
+                    """,
+                    current_job["user_id"],
+                    current_job["project_id"],
+                    {"materialId": input_data.materialId},
+                )
+                
+                # Log that chunking job was created
+                # In production, Cloud Tasks will pick it up via polling or scheduled task
+                # In development, frontend polling will trigger it
+                logger.info(f"Created chunking job {chunking_job['id']} for material {input_data.materialId}")
+
         logger.info(f"Completed material validation job: {payload.jobId}")
 
         return {"status": "success", "jobId": payload.jobId}
@@ -169,35 +202,106 @@ async def chunk_material_job(payload: JobPayload):
 
             return {"status": "success", "jobId": payload.jobId, "dev_mode": True}
 
-        # TODO: Download PDF from GCS in production
-        # pdf_path = download_from_gcs(material['gcs_path'])
+        # Download PDF from GCS
+        from app.services.document_processor.validator import download_from_gcs
+        from app.services.document_processor.chunker import chunk_pdf
+        from app.services.embeddings.generator import generate_embeddings
+        import os
+        
+        pdf_path = None
+        try:
+            pdf_path = download_from_gcs(material['gcs_path'])
+            
+            # Update progress
+            await execute_update(
+                """
+                UPDATE processing_jobs
+                SET progress_percent = 25
+                WHERE id = $1
+                """,
+                payload.jobId,
+            )
 
-        # Chunk PDF
-        # chunks = chunk_pdf(pdf_path)
-        # await execute_update(..., progress_percent = 50)
+            # Chunk PDF
+            chunks = chunk_pdf(pdf_path)
+            logger.info(f"Created {len(chunks)} chunks from PDF")
+            
+            # Update progress
+            await execute_update(
+                """
+                UPDATE processing_jobs
+                SET progress_percent = 50
+                WHERE id = $1
+                """,
+                payload.jobId,
+            )
 
-        # Generate embeddings
-        # texts = [chunk.chunk_text for chunk in chunks]
-        # embeddings = await generate_embeddings(texts)
-        # await execute_update(..., progress_percent = 75)
+            # Generate embeddings
+            texts = [chunk.chunk_text for chunk in chunks]
+            embeddings = await generate_embeddings(texts)
+            logger.info(f"Generated {len(embeddings)} embeddings")
+            
+            # Update progress
+            await execute_update(
+                """
+                UPDATE processing_jobs
+                SET progress_percent = 75
+                WHERE id = $1
+                """,
+                payload.jobId,
+            )
 
-        # Store chunks in database
-        # for chunk, embedding in zip(chunks, embeddings):
-        #     await execute_update(
-        #         """INSERT INTO material_chunks ..."""
-        #     )
+            # Store chunks in database with embeddings
+            chunks_created = 0
+            for chunk, embedding in zip(chunks, embeddings):
+                # Convert embedding to pgvector format
+                embedding_str = f"[{','.join(map(str, embedding))}]"
+                
+                await execute_update(
+                    """
+                    INSERT INTO material_chunks
+                    (material_id, chunk_text, chunk_embedding, section_hierarchy,
+                     page_start, page_end, chunk_index, token_count)
+                    VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8)
+                    """,
+                    input_data.materialId,
+                    chunk.chunk_text,
+                    embedding_str,
+                    chunk.section_hierarchy,
+                    chunk.page_start,
+                    chunk.page_end,
+                    chunk.chunk_index,
+                    chunk.token_count,
+                )
+                chunks_created += 1
 
-        # Mark job complete
-        await execute_update(
-            """
-            UPDATE processing_jobs
-            SET status = 'completed',
-                progress_percent = 100,
-                completed_at = NOW()
-            WHERE id = $1
-            """,
-            payload.jobId,
-        )
+            logger.info(f"Stored {chunks_created} chunks in database")
+
+            # Validate that chunks were actually created
+            if chunks_created == 0:
+                raise ValueError("No chunks were created from the PDF. The PDF may be empty or unreadable.")
+
+            # Mark job complete
+            await execute_update(
+                """
+                UPDATE processing_jobs
+                SET status = 'completed',
+                    progress_percent = 100,
+                    result_data = $1,
+                    completed_at = NOW()
+                WHERE id = $2
+                """,
+                {"chunks_created": chunks_created},
+                payload.jobId,
+            )
+        finally:
+            # Clean up temporary file
+            if pdf_path and os.path.exists(pdf_path):
+                try:
+                    os.remove(pdf_path)
+                    logger.debug(f"Cleaned up temp file: {pdf_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up temp file {pdf_path}: {e}")
 
         logger.info(f"Completed chunking job: {payload.jobId}")
         return {"status": "success", "jobId": payload.jobId}

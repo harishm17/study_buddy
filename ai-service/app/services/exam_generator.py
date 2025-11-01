@@ -99,17 +99,23 @@ class ExamGenerator:
 
     async def _fetch_topics(self, project_id: str, topic_ids: List[str]) -> List[Dict]:
         """Fetch topics for the exam."""
+        if not topic_ids:
+            return []
+        
+        # Build parameterized query safely
+        # Create placeholders for IN clause
         placeholders = ', '.join([f'${i+2}' for i in range(len(topic_ids))])
 
         query = f"""
             SELECT id, name, description, keywords
             FROM topics
-            WHERE project_id = $1 AND id IN ({placeholders})
+            WHERE project_id = $1 AND id = ANY($2::uuid[])
             ORDER BY order_index
         """
 
-        topics = await execute_query(query, project_id, *topic_ids)
-        return topics
+        # Use array parameter instead of multiple placeholders for better safety
+        topics = await execute_query(query, project_id, topic_ids)
+        return [dict(topic) for topic in topics]
 
     def _distribute_questions(self, topics: List[Dict], total_questions: int) -> Dict:
         """Distribute questions evenly across topics."""

@@ -77,7 +77,7 @@ export default function ExamGenerationPage({
       {/* Configuration */}
       <ExamConfiguration
         projectId={projectId}
-        topics={topics}
+        topics={topics as any}
         onExamCreated={handleExamCreated}
       />
     </div>

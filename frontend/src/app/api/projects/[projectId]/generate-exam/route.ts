@@ -97,27 +97,18 @@ export async function POST(
       },
     });
 
-    // Enqueue task to AI service
-    const aiServiceUrl = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-
+    // Enqueue task via Cloud Tasks (or direct call in dev)
     try {
-      const response = await fetch(`${aiServiceUrl}/api/jobs/generate-exam`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobId: job.id,
-          jobType: 'generate_exam',
-          data: {
-            projectId,
-            topicIds,
-            config,
-          },
-        }),
+      const { enqueueTask } = await import('@/lib/tasks/cloud-tasks');
+      await enqueueTask('/jobs/generate-exam', {
+        jobId: job.id,
+        jobType: 'generate_exam',
+        data: {
+          projectId,
+          topicIds,
+          config,
+        },
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to enqueue exam generation job');
-      }
     } catch (error) {
       console.error('Error enqueuing job:', error);
 

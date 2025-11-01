@@ -112,10 +112,32 @@ async def keyword_search(
     if not keywords:
         return []
 
-    # Build ILIKE conditions for each keyword
-    keyword_conditions = " OR ".join([
-        f"mc.chunk_text ILIKE '%{kw}%'" for kw in keywords
-    ])
+    # Escape special SQL LIKE characters and sanitize keywords
+    # Replace % and _ with escaped versions, and remove dangerous characters
+    sanitized_keywords = []
+    for kw in keywords:
+        # Escape SQL LIKE special characters
+        escaped = kw.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        # Remove any remaining SQL injection attempts
+        escaped = ''.join(c for c in escaped if c.isprintable())
+        if escaped:  # Only add non-empty keywords
+            sanitized_keywords.append(escaped)
+
+    if not sanitized_keywords:
+        return []
+
+    # Build ILIKE conditions with parameterized queries
+    # Use positional parameters to prevent SQL injection
+    conditions = []
+    params = [project_id]
+    param_idx = 2  # Start after $1 (project_id)
+    
+    for kw in sanitized_keywords:
+        conditions.append(f"mc.chunk_text ILIKE ${param_idx}")
+        params.append(f"%{kw}%")
+        param_idx += 1
+
+    keyword_conditions = " OR ".join(conditions)
 
     query = f"""
         SELECT
@@ -133,10 +155,11 @@ async def keyword_search(
           AND m.validation_status = 'valid'
           AND ({keyword_conditions})
         ORDER BY mc.chunk_index
-        LIMIT $2
+        LIMIT ${param_idx}
     """
 
-    chunks = await execute_query(query, project_id, limit)
+    params.append(limit)
+    chunks = await execute_query(query, *params)
     return [dict(chunk) for chunk in chunks]
 
 
