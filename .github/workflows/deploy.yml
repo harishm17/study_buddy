@@ -259,7 +259,7 @@ jobs:
             cat /tmp/cloud-sql-proxy.log || true
           fi
 
-      - name: Run Prisma migrations
+      - name: Push Prisma schema to database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
@@ -272,8 +272,8 @@ jobs:
           else
             echo "Using DATABASE_URL directly (ensure IP is authorized)"
           fi
-          echo "Running Prisma migrations..."
-          npx prisma migrate deploy
+          echo "Pushing Prisma schema to database..."
+          npx prisma db push --accept-data-loss --skip-generate
 
       - name: Generate Prisma Client
         run: |
