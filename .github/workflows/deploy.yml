@@ -183,22 +183,28 @@ jobs:
           npm install --legacy-peer-deps
 
       - name: Install netcat for port checking
-        if: ${{ secrets.CLOUD_SQL_CONNECTION_NAME != '' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y netcat-openbsd
 
       - name: Start Cloud SQL Proxy (if connection name provided)
-        if: ${{ secrets.CLOUD_SQL_CONNECTION_NAME != '' }}
         env:
           CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
         run: |
+          # Check if connection name is provided
+          if [ -z "$CLOUD_SQL_CONNECTION_NAME" ]; then
+            echo "CLOUD_SQL_CONNECTION_NAME not provided, skipping proxy setup"
+            echo "Will attempt direct database connection (ensure IP is authorized)"
+            exit 0
+          fi
+          
+          echo "Starting Cloud SQL Proxy for: $CLOUD_SQL_CONNECTION_NAME"
           # Download Cloud SQL Proxy v2
           wget -q https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.8.0/cloud-sql-proxy.linux.amd64 -O cloud-sql-proxy
           chmod +x cloud-sql-proxy
           
           # Start proxy in background on port 5432
-          ./cloud-sql-proxy ${{ secrets.CLOUD_SQL_CONNECTION_NAME }} --port 5432 > /tmp/cloud-sql-proxy.log 2>&1 &
+          ./cloud-sql-proxy "$CLOUD_SQL_CONNECTION_NAME" --port 5432 > /tmp/cloud-sql-proxy.log 2>&1 &
           PROXY_PID=$!
           echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
           
@@ -207,7 +213,7 @@ jobs:
           for i in {1..30}; do
             if nc -z localhost 5432; then
               echo "Cloud SQL Proxy started successfully on port 5432"
-              break
+              exit 0
             fi
             sleep 1
           done
@@ -220,11 +226,12 @@ jobs:
       - name: Run Prisma migrations
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
         run: |
           cd frontend
           # If Cloud SQL Proxy is used, replace host in DATABASE_URL with localhost
-          if [ -n "${{ secrets.CLOUD_SQL_CONNECTION_NAME }}" ]; then
-            export DATABASE_URL=$(echo "${{ secrets.DATABASE_URL }}" | sed 's/@[^:]*:/@localhost:/')
+          if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
+            export DATABASE_URL=$(echo "$DATABASE_URL" | sed 's/@[^:]*:/@localhost:/')
             echo "Using DATABASE_URL via Cloud SQL Proxy"
           else
             echo "Using DATABASE_URL directly (ensure IP is authorized)"
@@ -240,14 +247,16 @@ jobs:
       - name: Create vector index (if not exists)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
         run: |
           # Install PostgreSQL client
           sudo apt-get update
           sudo apt-get install -y postgresql-client
           
           # Update DATABASE_URL if using Cloud SQL Proxy
-          if [ -n "${{ secrets.CLOUD_SQL_CONNECTION_NAME }}" ]; then
-            export DATABASE_URL=$(echo "${{ secrets.DATABASE_URL }}" | sed 's/@[^:]*:/@localhost:/')
+          if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
+            export DATABASE_URL=$(echo "$DATABASE_URL" | sed 's/@[^:]*:/@localhost:/')
+            echo "Using DATABASE_URL via Cloud SQL Proxy for index creation"
           fi
           
           # Create vector index for embeddings (HNSW for performance)
