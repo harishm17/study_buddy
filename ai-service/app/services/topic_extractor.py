@@ -60,7 +60,8 @@ async def extract_topics_from_materials(project_id: str) -> List[ExtractedTopic]
                 mc.section_hierarchy,
                 mc.page_start,
                 m.filename,
-                m.category
+                m.category,
+                m.id as material_id
             FROM material_chunks mc
             JOIN materials m ON mc.material_id = m.id
             WHERE m.project_id = $1
