@@ -80,8 +80,8 @@ jobs:
         run: |
           # Build DATABASE_URL for Unix socket connection if CLOUD_SQL_CONNECTION_NAME is provided
           if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
-            # Unix socket format: postgresql://user:password@/database?host=/cloudsql/CONNECTION_NAME
-            DATABASE_URL="postgresql://postgres:studybuddy@/studybuddy?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
+            # Unix socket format: postgresql://user:password@localhost/database?host=/cloudsql/CONNECTION_NAME
+            DATABASE_URL="postgresql://postgres:studybuddy@localhost/studybuddy?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
             CLOUD_SQL_FLAG="--add-cloudsql-instances=$CLOUD_SQL_CONNECTION_NAME"
             echo "Using Unix socket connection via Cloud SQL Proxy"
           else
@@ -101,6 +101,11 @@ jobs:
             --set-env-vars "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}" \
             --set-env-vars "NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}" \
             --set-env-vars "AI_SERVICE_URL=${{ secrets.AI_SERVICE_URL }}" \
+            --set-env-vars "NODE_ENV=production" \
+            --set-env-vars "GCS_PROJECT_ID=$PROJECT_ID" \
+            --set-env-vars "GCS_BUCKET=${{ secrets.GCS_BUCKET_NAME }}" \
+            --set-env-vars "CLOUD_TASKS_LOCATION=$REGION" \
+            --set-env-vars "CLOUD_TASKS_QUEUE=studybuddy-jobs" \
             --set-env-vars "GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" \
             --set-env-vars "GOOGLE_OAUTH_CLIENT_SECRET=${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}" \
             --memory 1Gi \
@@ -150,8 +155,8 @@ jobs:
         run: |
           # Build DATABASE_URL for Unix socket connection if CLOUD_SQL_CONNECTION_NAME is provided
           if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
-            # Unix socket format: postgresql://user:password@/database?host=/cloudsql/CONNECTION_NAME
-            DATABASE_URL="postgresql://postgres:studybuddy@/studybuddy?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
+            # Unix socket format: postgresql://user:password@localhost/database?host=/cloudsql/CONNECTION_NAME
+            DATABASE_URL="postgresql://postgres:studybuddy@localhost/studybuddy?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
             CLOUD_SQL_FLAG="--add-cloudsql-instances=$CLOUD_SQL_CONNECTION_NAME"
             echo "Using Unix socket connection via Cloud SQL Proxy"
           else
