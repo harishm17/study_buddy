@@ -269,9 +269,9 @@ async def chunk_material_job(payload: JobPayload):
                     await conn.execute(
                         """
                         INSERT INTO material_chunks
-                        (material_id, chunk_text, chunk_embedding, section_hierarchy,
-                         page_start, page_end, chunk_index, token_count)
-                        VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8)
+                        (id, material_id, chunk_text, chunk_embedding, section_hierarchy,
+                         page_start, page_end, chunk_index, token_count, created_at)
+                        VALUES (gen_random_uuid(), $1, $2, $3::vector, $4, $5, $6, $7, $8, NOW())
                         """,
                         input_data.materialId,
                         chunk.chunk_text,
