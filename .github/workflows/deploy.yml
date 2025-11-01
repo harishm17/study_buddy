@@ -77,16 +77,23 @@ jobs:
       - name: Deploy Frontend to Cloud Run
         env:
           CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
+          DATABASE_URL_SECRET: ${{ secrets.DATABASE_URL }}
         run: |
           # Build DATABASE_URL for Unix socket connection if CLOUD_SQL_CONNECTION_NAME is provided
           if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
+            # Extract credentials from DATABASE_URL secret
+            # Format: postgresql://username:password@host:port/database
+            DB_USER=$(echo "$DATABASE_URL_SECRET" | sed -n 's|postgresql://\([^:]*\):.*|\1|p')
+            DB_PASS=$(echo "$DATABASE_URL_SECRET" | sed -n 's|postgresql://[^:]*:\([^@]*\)@.*|\1|p')
+            DB_NAME=$(echo "$DATABASE_URL_SECRET" | sed -n 's|.*/\([^?]*\).*|\1|p')
+
             # Unix socket format: postgresql://user:password@localhost/database?host=/cloudsql/CONNECTION_NAME
-            DATABASE_URL="postgresql://postgres:studybuddy@localhost/studybuddy?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
+            DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@localhost/${DB_NAME}?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
             CLOUD_SQL_FLAG="--add-cloudsql-instances=$CLOUD_SQL_CONNECTION_NAME"
             echo "Using Unix socket connection via Cloud SQL Proxy"
           else
             # Fall back to direct IP connection (requires authorized networks)
-            DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            DATABASE_URL="$DATABASE_URL_SECRET"
             CLOUD_SQL_FLAG=""
             echo "Using direct IP connection (ensure IP is authorized)"
           fi
@@ -152,20 +159,28 @@ jobs:
           OPENAI_MINI_MODEL: ${{ secrets.OPENAI_MINI_MODEL != '' && secrets.OPENAI_MINI_MODEL || 'gpt-5-mini' }}
           OPENAI_EMBEDDING_MODEL: ${{ secrets.OPENAI_EMBEDDING_MODEL != '' && secrets.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small' }}
           CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
+          DATABASE_URL_SECRET: ${{ secrets.DATABASE_URL }}
         run: |
           # Build DATABASE_URL for Unix socket connection if CLOUD_SQL_CONNECTION_NAME is provided
+          # Note: Python asyncpg requires format without @localhost (just @/)
           if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
-            # Unix socket format: postgresql://user:password@localhost/database?host=/cloudsql/CONNECTION_NAME
-            DATABASE_URL="postgresql://postgres:studybuddy@localhost/studybuddy?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
+            # Extract credentials from DATABASE_URL secret
+            # Format: postgresql://username:password@host:port/database
+            DB_USER=$(echo "$DATABASE_URL_SECRET" | sed -n 's|postgresql://\([^:]*\):.*|\1|p')
+            DB_PASS=$(echo "$DATABASE_URL_SECRET" | sed -n 's|postgresql://[^:]*:\([^@]*\)@.*|\1|p')
+            DB_NAME=$(echo "$DATABASE_URL_SECRET" | sed -n 's|.*/\([^?]*\).*|\1|p')
+
+            # Unix socket format for Python asyncpg: postgresql://user:password@/database?host=/cloudsql/CONNECTION_NAME
+            DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@/${DB_NAME}?host=/cloudsql/$CLOUD_SQL_CONNECTION_NAME"
             CLOUD_SQL_FLAG="--add-cloudsql-instances=$CLOUD_SQL_CONNECTION_NAME"
-            echo "Using Unix socket connection via Cloud SQL Proxy"
+            echo "Using Unix socket connection via Cloud SQL Proxy (asyncpg format)"
           else
             # Fall back to direct IP connection (requires authorized networks)
-            DATABASE_URL="${{ secrets.DATABASE_URL }}"
+            DATABASE_URL="$DATABASE_URL_SECRET"
             CLOUD_SQL_FLAG=""
             echo "Using direct IP connection (ensure IP is authorized)"
           fi
-          
+
           gcloud run deploy $AI_SERVICE \
             --image gcr.io/$PROJECT_ID/$AI_SERVICE:${{ github.sha }} \
             --region $REGION \
