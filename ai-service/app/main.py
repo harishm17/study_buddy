@@ -15,9 +15,17 @@ app = FastAPI(
 )
 
 # CORS middleware
+# In production, allow requests from frontend URL
+# In development, allow all origins for ease of testing
+frontend_url = getattr(settings, "FRONTEND_URL", None)
+allowed_origins = (
+    ["*"] if settings.is_development 
+    else ([frontend_url] if frontend_url else [settings.AI_SERVICE_URL])
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.is_development else [settings.AI_SERVICE_URL],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,11 +45,35 @@ async def startup_event():
     print(f"🚀 StudyBuddy AI Service starting in {settings.ENVIRONMENT} mode")
     print(f"📊 LLM Provider: {settings.LLM_PROVIDER}")
     print(f"🗄️  Database: {settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'}")
+    
+    # Validate database connection
+    try:
+        from app.db.connection import get_db_pool
+        pool = await get_db_pool()
+        await pool.fetchval("SELECT 1")
+        print("✅ Database connection validated")
+        
+        # Check if pgvector extension exists
+        extension_exists = await pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM pg_extension WHERE extname = 'vector')"
+        )
+        if not extension_exists:
+            print("⚠️  WARNING: pgvector extension not found. Vector searches will not work.")
+        else:
+            print("✅ pgvector extension confirmed")
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        raise
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
+    from app.db.connection import close_db_pool
+    
+    # Close database connection pool
+    await close_db_pool()
+    
     print("👋 StudyBuddy AI Service shutting down")
 
 

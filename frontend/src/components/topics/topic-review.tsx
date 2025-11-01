@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Loader2, Plus, Trash2, Check, X, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,10 +18,10 @@ interface Topic {
 
 interface TopicReviewProps {
   projectId: string
-  onConfirm?: () => void
 }
 
-export function TopicReview({ projectId, onConfirm }: TopicReviewProps) {
+export function TopicReview({ projectId }: TopicReviewProps) {
+  const router = useRouter()
   const [topics, setTopics] = useState<Topic[]>([])
   const [loading, setLoading] = useState(true)
   const [extracting, setExtracting] = useState(false)
@@ -167,7 +168,8 @@ export function TopicReview({ projectId, onConfirm }: TopicReviewProps) {
         body: JSON.stringify({ status: 'active' }),
       })
 
-      onConfirm?.()
+      // Optionally navigate back to project page after confirmation
+      router.push(`/projects/${projectId}`)
     } catch (error) {
       console.error('Error confirming topics:', error)
       alert('Failed to confirm topics')

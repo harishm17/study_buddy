@@ -118,10 +118,28 @@ class ExamGrader:
             'feedback': feedback,
         }
 
-    def _grade_true_false(self, question: Dict, student_answer: bool) -> Dict:
+    def _grade_true_false(self, question: Dict, student_answer: any) -> Dict:
         """Grade a true/false question."""
         correct_answer = question.get('correct_answer', False)
-        is_correct = student_answer == correct_answer
+        
+        # Normalize student answer to boolean
+        # Handle string inputs like "true", "false", "True", etc.
+        if isinstance(student_answer, str):
+            normalized_answer = student_answer.lower().strip() in ('true', '1', 'yes', 't')
+        elif isinstance(student_answer, bool):
+            normalized_answer = student_answer
+        elif isinstance(student_answer, (int, float)):
+            normalized_answer = bool(student_answer)
+        else:
+            normalized_answer = False
+        
+        # Ensure correct_answer is boolean
+        if isinstance(correct_answer, str):
+            correct_answer = correct_answer.lower().strip() in ('true', '1', 'yes', 't')
+        else:
+            correct_answer = bool(correct_answer)
+        
+        is_correct = normalized_answer == correct_answer
 
         points = question.get('points', 1) if is_correct else 0
 

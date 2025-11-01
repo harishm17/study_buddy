@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Service Configuration
     AI_SERVICE_URL: str = "http://localhost:8000"
+    FRONTEND_URL: str = "http://localhost:3000"  # Frontend URL for CORS
     ENVIRONMENT: str = "development"
 
     @property

@@ -88,6 +88,7 @@ model Material {
   @@index([projectId])
   @@index([category])
   @@index([validationStatus])
+  @@index([projectId, validationStatus])
   @@map("materials")
 }
 
@@ -112,6 +113,7 @@ model MaterialChunk {
   topicChunkMappings   TopicChunkMapping[]
 
   @@index([materialId])
+  @@index([materialId, chunkIndex])
   @@map("material_chunks")
 }
 
@@ -347,5 +349,7 @@ model ProcessingJob {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([projectId, status])
+  @@index([status, createdAt])
   @@map("processing_jobs")
 }

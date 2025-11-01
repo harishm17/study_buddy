@@ -401,10 +401,10 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
                               </p>
                             )}
                           </div>
-                          {topic.progress?.quizScore !== null && (
+                          {topic.progress?.quizScore !== null && topic.progress?.quizScore !== undefined && (
                             <Badge variant="default" className="bg-green-100 text-green-800">
                               <Award className="h-3 w-3 mr-1" />
-                              {Math.round(topic.progress.quizScore)}%
+                              {Math.round(topic.progress?.quizScore ?? 0)}%
                             </Badge>
                           )}
                         </div>

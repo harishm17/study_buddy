@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { Upload, FileText, X, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +11,6 @@ import { formatBytes, isValidPDF, isValidFileSize } from '@/lib/utils'
 
 interface MaterialUploadProps {
   projectId: string
-  onUploadComplete?: () => void
 }
 
 type MaterialCategory = 'lecture_notes' | 'sample_exams' | 'book_chapters'
@@ -31,7 +31,8 @@ const CATEGORIES = [
   { value: 'book_chapters', label: 'Book Chapters', description: 'Textbook chapters and reading materials' },
 ] as const
 
-export function MaterialUpload({ projectId, onUploadComplete }: MaterialUploadProps) {
+export function MaterialUpload({ projectId }: MaterialUploadProps) {
+  const router = useRouter()
   const [selectedCategory, setSelectedCategory] = useState<MaterialCategory>('lecture_notes')
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -151,7 +152,8 @@ export function MaterialUpload({ projectId, onUploadComplete }: MaterialUploadPr
                 : f
             )
           )
-          onUploadComplete?.()
+          // Optionally navigate back to project page after successful upload
+          // router.push(`/projects/${projectId}`)
           return
         }
 
