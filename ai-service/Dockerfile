@@ -31,10 +31,12 @@ COPY . .
 # Make sure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH
 
+# Make start script executable
+RUN chmod +x start.sh || true
+
 # Expose port (Cloud Run will set PORT env var, default to 8080)
 EXPOSE 8080
 
-# Run the application
-# Cloud Run sets PORT=8080, we need to listen on that port
-# Using shell form ensures environment variable expansion works correctly
-CMD ["/bin/sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Run the application using the start script
+# The start script handles PORT env var expansion correctly
+CMD ["./start.sh"]
