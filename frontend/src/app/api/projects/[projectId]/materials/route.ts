@@ -75,32 +75,33 @@ export async function POST(
       )
     }
 
-    // 6. Create material record
+    // 6. Generate material ID upfront for GCS path
+    const { randomUUID } = await import('crypto')
+    const materialId = randomUUID()
+
+    // 7. Upload to GCS FIRST (before creating DB record)
+    // This prevents orphaned DB records if upload fails
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const gcsPath = generateMaterialPath(
+      session.user.id,
+      projectId,
+      materialId,
+      file.name
+    )
+    const fullGcsPath = await uploadFile(buffer, gcsPath)
+
+    // 8. Create material record with correct GCS path
+    // Only after successful upload to prevent orphaned records
     const material = await prisma.material.create({
       data: {
+        id: materialId,
         projectId,
         category: validation.data.category,
         filename: file.name,
         sizeBytes: BigInt(file.size),
         validationStatus: 'pending',
-        gcsPath: '', // Will update after upload
+        gcsPath: fullGcsPath,
       },
-    })
-
-    // 7. Upload to GCS
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const gcsPath = generateMaterialPath(
-      session.user.id,
-      projectId,
-      material.id,
-      file.name
-    )
-    const fullGcsPath = await uploadFile(buffer, gcsPath)
-
-    // 8. Update material with GCS path
-    await prisma.material.update({
-      where: { id: material.id },
-      data: { gcsPath: fullGcsPath },
     })
 
     // 9. Create processing job

@@ -1,5 +1,6 @@
 """Job processing endpoints."""
 import logging
+import json
 from fastapi import APIRouter, HTTPException
 from app.models.jobs import JobPayload, MaterialValidationInput, ContentGenerationInput, ExamGenerationInput
 from app.services.document_processor.validator import validate_material
@@ -11,7 +12,8 @@ from app.services.content_generator import NotesGenerator, ExamplesGenerator, Qu
 from app.services.content_generator.examples import ExampleType
 from app.services.exam_generator import ExamGenerator
 from app.services.exam_grader import ExamGrader
-from app.db.connection import execute_one, execute_update, execute_query
+from app.services.cloud_tasks import enqueue_chunking_job
+from app.db.connection import execute_one, execute_update, execute_query, execute_in_transaction
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -85,10 +87,10 @@ async def validate_material_job(payload: JobPayload):
                 completed_at = NOW()
             WHERE id = $2
             """,
-            {
+            json.dumps({
                 "validation_status": validation_result.status,
                 "notes": validation_result.notes,
-            },
+            }),
             payload.jobId,
         )
 
@@ -117,13 +119,19 @@ async def validate_material_job(payload: JobPayload):
                     """,
                     current_job["user_id"],
                     current_job["project_id"],
-                    {"materialId": input_data.materialId},
+                    json.dumps({"materialId": input_data.materialId}),
                 )
                 
-                # Log that chunking job was created
-                # In production, Cloud Tasks will pick it up via polling or scheduled task
-                # In development, frontend polling will trigger it
+                # Trigger the chunking job via Cloud Tasks
                 logger.info(f"Created chunking job {chunking_job['id']} for material {input_data.materialId}")
+
+                # Enqueue the chunking job
+                await enqueue_chunking_job(
+                    job_id=chunking_job['id'],
+                    material_id=input_data.materialId
+                )
+
+                logger.info(f"Enqueued chunking job {chunking_job['id']}")
 
         logger.info(f"Completed material validation job: {payload.jobId}")
 
@@ -196,7 +204,7 @@ async def chunk_material_job(payload: JobPayload):
                     completed_at = NOW()
                 WHERE id = $2
                 """,
-                {"chunks_created": 0, "note": "Development mode"},
+                json.dumps({"chunks_created": 0, "note": "Development mode"}),
                 payload.jobId,
             )
 
@@ -251,30 +259,33 @@ async def chunk_material_job(payload: JobPayload):
                 payload.jobId,
             )
 
-            # Store chunks in database with embeddings
-            chunks_created = 0
-            for chunk, embedding in zip(chunks, embeddings):
-                # Convert embedding to pgvector format
-                embedding_str = f"[{','.join(map(str, embedding))}]"
-                
-                await execute_update(
-                    """
-                    INSERT INTO material_chunks
-                    (material_id, chunk_text, chunk_embedding, section_hierarchy,
-                     page_start, page_end, chunk_index, token_count)
-                    VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8)
-                    """,
-                    input_data.materialId,
-                    chunk.chunk_text,
-                    embedding_str,
-                    chunk.section_hierarchy,
-                    chunk.page_start,
-                    chunk.page_end,
-                    chunk.chunk_index,
-                    chunk.token_count,
-                )
-                chunks_created += 1
+            # Store chunks in database with embeddings (in transaction for atomicity)
+            async def insert_chunks_transaction(conn):
+                count = 0
+                for chunk, embedding in zip(chunks, embeddings):
+                    # Convert embedding to pgvector format
+                    embedding_str = f"[{','.join(map(str, embedding))}]"
 
+                    await conn.execute(
+                        """
+                        INSERT INTO material_chunks
+                        (material_id, chunk_text, chunk_embedding, section_hierarchy,
+                         page_start, page_end, chunk_index, token_count)
+                        VALUES ($1, $2, $3::vector, $4, $5, $6, $7, $8)
+                        """,
+                        input_data.materialId,
+                        chunk.chunk_text,
+                        embedding_str,
+                        chunk.section_hierarchy,
+                        chunk.page_start,
+                        chunk.page_end,
+                        chunk.chunk_index,
+                        chunk.token_count,
+                    )
+                    count += 1
+                return count
+
+            chunks_created = await execute_in_transaction(insert_chunks_transaction)
             logger.info(f"Stored {chunks_created} chunks in database")
 
             # Validate that chunks were actually created
@@ -291,7 +302,7 @@ async def chunk_material_job(payload: JobPayload):
                     completed_at = NOW()
                 WHERE id = $2
                 """,
-                {"chunks_created": chunks_created},
+                json.dumps({"chunks_created": chunks_created}),
                 payload.jobId,
             )
         finally:
@@ -353,48 +364,56 @@ async def extract_topics_job(payload: JobPayload):
         if not topics:
             raise HTTPException(status_code=404, detail="No topics extracted")
 
-        # Store topics in database
-        for idx, topic in enumerate(topics):
-            topic_record = await execute_one(
-                """
-                INSERT INTO topics
-                (project_id, name, description, keywords, order_index, user_confirmed)
-                VALUES ($1, $2, $3, $4, $5, FALSE)
-                RETURNING id
-                """,
-                project_id,
-                topic.name,
-                topic.description,
-                topic.keywords,
-                idx,
-            )
-
-            topic_id = topic_record['id']
-
-            # Map topic to relevant chunks using hybrid search
-            relevant_chunks = await hybrid_search_chunks(
-                project_id,
-                topic.name,
-                topic.description,
-                topic.keywords,
-                limit=15
-            )
-
-            # Store chunk mappings
-            for chunk in relevant_chunks:
-                await execute_update(
+        # Store topics in database with transaction for atomicity
+        async def insert_topics_transaction(conn):
+            topic_count = 0
+            for idx, topic in enumerate(topics):
+                topic_record = await conn.fetchrow(
                     """
-                    INSERT INTO topic_chunk_mappings
-                    (topic_id, chunk_id, relevance_score, relevance_source)
-                    VALUES ($1, $2, $3, $4)
-                    ON CONFLICT (topic_id, chunk_id) DO UPDATE
-                    SET relevance_score = EXCLUDED.relevance_score
+                    INSERT INTO topics
+                    (project_id, name, description, keywords, order_index, user_confirmed)
+                    VALUES ($1, $2, $3, $4, $5, FALSE)
+                    RETURNING id
                     """,
-                    topic_id,
-                    chunk['id'],
-                    chunk['relevance_score'],
-                    chunk['relevance_source'],
+                    project_id,
+                    topic.name,
+                    topic.description,
+                    topic.keywords,
+                    idx,
                 )
+
+                topic_id = topic_record['id']
+
+                # Map topic to relevant chunks using hybrid search
+                relevant_chunks = await hybrid_search_chunks(
+                    project_id,
+                    topic.name,
+                    topic.description,
+                    topic.keywords,
+                    limit=15
+                )
+
+                # Store chunk mappings
+                for chunk in relevant_chunks:
+                    await conn.execute(
+                        """
+                        INSERT INTO topic_chunk_mappings
+                        (topic_id, chunk_id, relevance_score, relevance_source)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (topic_id, chunk_id) DO UPDATE
+                        SET relevance_score = EXCLUDED.relevance_score
+                        """,
+                        topic_id,
+                        chunk['id'],
+                        chunk['relevance_score'],
+                        chunk['relevance_source'],
+                    )
+
+                topic_count += 1
+            return topic_count
+
+        # Execute all topic insertions in a single transaction
+        topics_created = await execute_in_transaction(insert_topics_transaction)
 
         # Update project status
         await execute_update(
@@ -416,15 +435,15 @@ async def extract_topics_job(payload: JobPayload):
                 completed_at = NOW()
             WHERE id = $2
             """,
-            {"topics_extracted": len(topics)},
+            json.dumps({"topics_extracted": topics_created}),
             payload.jobId,
         )
 
-        logger.info(f"Completed topic extraction: {len(topics)} topics created")
+        logger.info(f"Completed topic extraction: {topics_created} topics created")
         return {
             "status": "success",
             "jobId": payload.jobId,
-            "topicsCount": len(topics)
+            "topicsCount": topics_created
         }
 
     except Exception as e:
@@ -580,11 +599,17 @@ async def generate_content_job(payload: JobPayload):
         )
 
         # Store generated content in database
+        # Use ON CONFLICT to handle regeneration (replaces existing content)
         content_record = await execute_one(
             """
             INSERT INTO topic_content
-            (topic_id, content_type, content_data, metadata)
-            VALUES ($1, $2, $3, $4)
+            (topic_id, content_type, content_data, metadata, generated_at)
+            VALUES ($1, $2, $3, $4, NOW())
+            ON CONFLICT (topic_id, content_type)
+            DO UPDATE SET
+                content_data = EXCLUDED.content_data,
+                metadata = EXCLUDED.metadata,
+                generated_at = NOW()
             RETURNING id
             """,
             topic['id'],
@@ -603,11 +628,11 @@ async def generate_content_job(payload: JobPayload):
                 completed_at = NOW()
             WHERE id = $2
             """,
-            {
+            json.dumps({
                 "content_id": content_record['id'],
                 "content_type": content_type,
                 "metadata": metadata
-            },
+            }),
             payload.jobId,
         )
 
@@ -702,11 +727,11 @@ async def generate_exam_job(payload: JobPayload):
                 completed_at = NOW()
             WHERE id = $2
             """,
-            {
+            json.dumps({
                 "exam_id": exam_record['id'],
                 "total_questions": result['total_questions'],
                 "topics_covered": result['topics_covered']
-            },
+            }),
             payload.jobId,
         )
 
@@ -808,12 +833,12 @@ async def grade_exam_job(payload: JobPayload):
                 completed_at = NOW()
             WHERE id = $2
             """,
-            {
+            json.dumps({
                 "submission_id": submission_id,
                 "overall_score": grading_result["overall_score"],
                 "earned_points": grading_result["earned_points"],
                 "total_points": grading_result["total_points"],
-            },
+            }),
             payload.jobId,
         )
 

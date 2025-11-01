@@ -47,3 +47,27 @@ async def execute_update(query: str, *args):
     pool = await get_db_pool()
     async with pool.acquire() as conn:
         return await conn.execute(query, *args)
+
+
+async def execute_in_transaction(operations):
+    """
+    Execute multiple database operations in a transaction.
+
+    Args:
+        operations: Async function that takes a connection and performs operations
+
+    Returns:
+        Result of the operations function
+
+    Example:
+        async def insert_chunks(conn):
+            for chunk in chunks:
+                await conn.execute("INSERT INTO ...", ...)
+            return len(chunks)
+
+        result = await execute_in_transaction(insert_chunks)
+    """
+    pool = await get_db_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            return await operations(conn)

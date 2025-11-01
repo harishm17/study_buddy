@@ -214,10 +214,11 @@ def split_into_chunks(
     page_start: int,
     page_end: int,
     start_index: int,
-    target_size: int = 800
+    target_size: int = 800,
+    overlap_ratio: float = 0.15
 ) -> List[Chunk]:
     """
-    Split long text into chunks of approximately target_size tokens.
+    Split long text into chunks of approximately target_size tokens with overlap.
 
     Args:
         text: Text to split
@@ -226,6 +227,7 @@ def split_into_chunks(
         page_end: Ending page number
         start_index: Starting chunk index
         target_size: Target tokens per chunk
+        overlap_ratio: Ratio of overlap between chunks (default 0.15 = 15%)
 
     Returns:
         List of Chunk objects
@@ -252,6 +254,7 @@ def split_into_chunks(
     current_chunk = []
     current_tokens = 0
     chunk_idx = start_index
+    overlap_size = int(target_size * overlap_ratio)
 
     for para in paragraphs:
         para_tokens = estimate_tokens(para)
@@ -270,8 +273,23 @@ def split_into_chunks(
                 )
             )
             chunk_idx += 1
-            current_chunk = []
-            current_tokens = 0
+
+            # Create overlap by keeping last few paragraphs that fit within overlap_size
+            overlap_paras = []
+            overlap_tokens = 0
+
+            # Work backwards from end of current chunk to build overlap
+            for i in range(len(current_chunk) - 1, -1, -1):
+                para_tokens_i = estimate_tokens(current_chunk[i])
+                if overlap_tokens + para_tokens_i <= overlap_size:
+                    overlap_paras.insert(0, current_chunk[i])
+                    overlap_tokens += para_tokens_i
+                else:
+                    break
+
+            # Start new chunk with overlap
+            current_chunk = overlap_paras
+            current_tokens = overlap_tokens
 
         current_chunk.append(para)
         current_tokens += para_tokens
