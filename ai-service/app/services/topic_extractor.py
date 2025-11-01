@@ -53,12 +53,11 @@ async def extract_topics_from_materials(project_id: str) -> List[ExtractedTopic]
             logger.warning(f"No valid materials found for project {project_id}")
             return []
 
-        # 2. Fetch representative chunks (section hierarchies + sample text)
-        representative_chunks = await execute_query(
+        # 2. Fetch section hierarchies (lightweight - for structure overview)
+        section_chunks = await execute_query(
             """
-            SELECT
+            SELECT DISTINCT
                 mc.section_hierarchy,
-                mc.chunk_text,
                 mc.page_start,
                 m.filename,
                 m.category
@@ -67,18 +66,35 @@ async def extract_topics_from_materials(project_id: str) -> List[ExtractedTopic]
             WHERE m.project_id = $1
               AND m.validation_status = 'valid'
               AND mc.section_hierarchy IS NOT NULL
-            ORDER BY m.id, mc.chunk_index
+            ORDER BY m.id, mc.page_start
             LIMIT 100
             """,
             project_id
         )
 
-        if not representative_chunks:
+        # 3. Fetch sample content (only first 15 chunks for actual text)
+        sample_chunks = await execute_query(
+            """
+            SELECT
+                mc.chunk_text,
+                mc.page_start,
+                m.filename
+            FROM material_chunks mc
+            JOIN materials m ON mc.material_id = m.id
+            WHERE m.project_id = $1
+              AND m.validation_status = 'valid'
+            ORDER BY m.id, mc.chunk_index
+            LIMIT 15
+            """,
+            project_id
+        )
+
+        if not section_chunks and not sample_chunks:
             logger.warning(f"No chunks found for project {project_id}")
             return []
 
-        # 3. Build prompt for LLM
-        material_summary = build_material_summary(materials, representative_chunks)
+        # 4. Build prompt for LLM
+        material_summary = build_material_summary(materials, section_chunks, sample_chunks)
 
         prompt = f"""You are analyzing educational materials to extract key topics for a study guide.
 
@@ -107,7 +123,8 @@ Return a JSON object with this structure:
 }}
 """
 
-        # 4. Call LLM
+        # 4. Call LLM (using mini model for cost efficiency)
+        # Topic extraction from table of contents is straightforward enough for mini models
         llm = LLMFactory.get_provider()
         response = await llm.generate_structured(
             messages=[
@@ -117,7 +134,7 @@ Return a JSON object with this structure:
                 ),
                 LLMMessage(role="user", content=prompt)
             ],
-            use_mini=False  # Use full model for better topic extraction
+            use_mini=True  # Use mini model - topic extraction is straightforward (20x cost savings)
         )
 
         # 5. Parse response
@@ -132,13 +149,18 @@ Return a JSON object with this structure:
         raise
 
 
-def build_material_summary(materials: List[dict], chunks: List[dict]) -> str:
+def build_material_summary(
+    materials: List[dict],
+    section_chunks: List[dict],
+    sample_chunks: List[dict]
+) -> str:
     """
     Build a summary of materials for LLM prompt.
 
     Args:
         materials: List of material records
-        chunks: List of representative chunks
+        section_chunks: List of chunks with section hierarchies (lightweight)
+        sample_chunks: List of chunks with full text for samples
 
     Returns:
         Formatted summary string
@@ -155,8 +177,8 @@ def build_material_summary(materials: List[dict], chunks: List[dict]) -> str:
     # Section hierarchies (grouped)
     summary_parts.append("\n## Content Structure\n")
     hierarchies = {}
-    for chunk in chunks:
-        if chunk['section_hierarchy']:
+    for chunk in section_chunks:
+        if chunk.get('section_hierarchy'):
             key = chunk['filename']
             if key not in hierarchies:
                 hierarchies[key] = []
@@ -168,9 +190,9 @@ def build_material_summary(materials: List[dict], chunks: List[dict]) -> str:
         for section in sections[:20]:  # Limit to 20 sections per file
             summary_parts.append(f"- {section}")
 
-    # Sample content
+    # Sample content (using separate sample_chunks with full text)
     summary_parts.append("\n## Sample Content\n")
-    for i, chunk in enumerate(chunks[:10], 1):  # First 10 chunks
+    for i, chunk in enumerate(sample_chunks[:10], 1):  # First 10 samples
         summary_parts.append(
             f"\n**Sample {i}** ({chunk['filename']}, pp. {chunk['page_start']}):"
         )

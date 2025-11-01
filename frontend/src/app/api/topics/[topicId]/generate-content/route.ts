@@ -68,6 +68,30 @@ export async function POST(
       },
     })
 
+    // Check for existing pending/processing jobs to prevent duplicates (race condition)
+    const existingJob = await prisma.processingJob.findFirst({
+      where: {
+        projectId: topic.projectId,
+        jobType: 'generate_content',
+        status: {
+          in: ['pending', 'processing'],
+        },
+        inputData: {
+          path: ['topicId'],
+          equals: topicId,
+        },
+      },
+    })
+
+    if (existingJob) {
+      // Job already in progress, return existing job ID
+      return NextResponse.json({
+        jobId: existingJob.id,
+        message: 'Content generation already in progress',
+        replacingExisting: !!existingContent,
+      })
+    }
+
     // Create processing job
     const job = await prisma.processingJob.create({
       data: {
