@@ -203,9 +203,25 @@ async def chunk_material_job(payload: JobPayload):
             )
             return {"status": "skipped", "jobId": payload.jobId, "reason": "Material not found"}
 
-        # For development, skip actual PDF processing
+        # For development, create a dummy chunk to enable downstream processing
         if settings.is_development:
-            logger.info(f"[DEV] Simulating chunking for {material['filename']}")
+            logger.info(f"[DEV] Creating dummy chunk for {material['filename']}")
+
+            # Create a dummy chunk so topic extraction can be triggered
+            dummy_embedding = "[" + ",".join(["0.0"] * 1536) + "]"  # 1536-dim zero vector
+
+            await execute_update(
+                """
+                INSERT INTO material_chunks
+                (id, material_id, chunk_text, chunk_embedding, section_hierarchy,
+                 page_start, page_end, chunk_index, token_count, created_at)
+                VALUES (gen_random_uuid(), $1, $2, $3::vector, $4, 0, 0, 0, 100, NOW())
+                """,
+                input_data.materialId,
+                f"[DEV MODE] Dummy chunk for {material['filename']}",
+                dummy_embedding,
+                "Development Mode"
+            )
 
             # Update job as completed
             await execute_update(
@@ -217,9 +233,69 @@ async def chunk_material_job(payload: JobPayload):
                     completed_at = NOW()
                 WHERE id = $2
                 """,
-                json.dumps({"chunks_created": 0, "note": "Development mode"}),
+                json.dumps({"chunks_created": 1, "note": "Development mode - dummy chunk"}),
                 payload.jobId,
             )
+
+            # Check if all materials in project are chunked, trigger topic extraction
+            project_id = material['project_id']
+            if project_id:
+                # Check if all materials in project are now chunked
+                pending_materials = await execute_one(
+                    """
+                    SELECT COUNT(*) as count
+                    FROM materials m
+                    LEFT JOIN material_chunks mc ON m.id = mc.material_id
+                    WHERE m.project_id = $1
+                      AND m.validation_status = 'valid'
+                      AND mc.id IS NULL
+                    """,
+                    project_id
+                )
+
+                if pending_materials and pending_materials['count'] == 0:
+                    # All materials chunked, check if topic extraction already exists/pending
+                    existing_topic_job = await execute_one(
+                        """
+                        SELECT id FROM processing_jobs
+                        WHERE project_id = $1
+                          AND job_type = 'extract_topics'
+                          AND status IN ('pending', 'processing', 'completed')
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """,
+                        project_id
+                    )
+
+                    if not existing_topic_job:
+                        # Create and enqueue topic extraction job
+                        logger.info(f"[DEV] All materials chunked for project {project_id}, triggering topic extraction")
+
+                        # Get user_id from current job
+                        current_job = await execute_one(
+                            "SELECT user_id FROM processing_jobs WHERE id = $1",
+                            payload.jobId
+                        )
+                        user_id = current_job['user_id'] if current_job else None
+
+                        if user_id:
+                            topic_job = await execute_one(
+                                """
+                                INSERT INTO processing_jobs
+                                (id, user_id, project_id, job_type, status, input_data, progress_percent, created_at)
+                                VALUES (gen_random_uuid(), $1, $2, 'extract_topics', 'pending', $3, 0, NOW())
+                                RETURNING id
+                                """,
+                                user_id,
+                                project_id,
+                                json.dumps({"projectId": project_id})
+                            )
+
+                            # Enqueue topic extraction task
+                            await enqueue_topic_extraction_job(topic_job['id'], project_id)
+                            logger.info(f"[DEV] Topic extraction job {topic_job['id']} enqueued for project {project_id}")
+                    else:
+                        logger.info(f"[DEV] Topic extraction already exists for project {project_id}, skipping")
 
             return {"status": "success", "jobId": payload.jobId, "dev_mode": True}
 
