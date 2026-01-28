@@ -11,6 +11,9 @@ Transform your study materials into personalized learning experiences with intel
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.11-yellow?style=flat&logo=python)](https://www.python.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791?style=flat&logo=postgresql)](https://www.postgresql.org/)
+[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-412991?style=flat&logo=openai)](https://openai.com/)
+[![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=flat&logo=docker)](https://www.docker.com/)
+[![Lines of Code](https://img.shields.io/badge/Lines-15K+-blue?style=flat)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 [Features](#-key-features) • [Demo](#-demo) • [Quick Start](#-quick-start) • [Tech Stack](#-tech-stack) • [Architecture](#-architecture)
@@ -236,6 +239,17 @@ Instead of sending entire textbooks to AI (expensive & noisy):
 4. Send only top 10-15 chunks to LLM
 
 **Result:** 85% cost reduction while maintaining quality
+
+**Cost Comparison per Content Generation Request:**
+```
+Without Semantic Search (Full Documents):
+████████████████████████████ $0.12
+
+With Hybrid Search (Relevant Chunks Only):
+████ $0.02
+
+💰 Savings: 85% ↓
+```
 
 **Content Regeneration with Variation:**
 - Each "Practice More" click generates truly different content
