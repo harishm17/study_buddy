@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📚 StudyBuddy — Exam Prep RAG & Quiz Generator
+# StudyBuddy — Exam Prep RAG & Quiz Generator
 
 ### End-to-end study workflow: retrieval, generation, practice, grading
 
@@ -12,15 +12,15 @@ Turn lecture slides, books, and past papers into structured notes, quizzes, and 
 
 ---
 
-## 🎯 Overview
+## Overview
 
 **StudyBuddy** is a comprehensive learning platform designed for university students preparing for exams. Upload your lecture notes, textbooks, and past exams—let AI do the heavy lifting of creating study guides, practice problems, and mock exams tailored to your learning needs.
 
 ### The Problem
-- 📖 Students struggle to synthesize information from multiple sources
-- ⏰ Limited time to create comprehensive study materials
-- 🎯 Difficulty identifying key concepts and testing themselves effectively
-- 📝 No personalized practice with instant feedback
+- Students struggle to synthesize information from multiple sources
+- Limited time to create comprehensive study materials
+- Difficulty identifying key concepts and testing themselves effectively
+- No personalized practice with instant feedback
 
 ### The Solution
 StudyBuddy uses AI to:
@@ -32,40 +32,40 @@ StudyBuddy uses AI to:
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### 📤 Smart Material Processing
+### Smart Material Processing
 - **Upload PDFs**: Lecture notes, textbook chapters, sample exams
 - **Automatic Validation**: AI checks content quality and relevance
 - **Intelligent Chunking**: Breaks down materials into semantic sections
 - **Vector Search**: pgvector-powered semantic search for relevant content retrieval
 
-### 🎓 AI-Powered Content Generation
+### AI-Powered Content Generation
 - **Study Notes**: Comprehensive markdown notes synthesized from all materials
 - **Solved Examples**: Step-by-step problem walkthroughs with explanations
 - **Interactive Practice**: Multi-step problems with hints and real-time validation
 - **Topic Quizzes**: MCQ, short answer, numerical, and true/false questions
 - **Sample Exams**: Full-length timed exams combining multiple topics
 
-### 🔄 Unlimited Practice with Regeneration
+### Unlimited Practice with Regeneration
 - Click **"Practice More"** to generate completely different problems
 - **"New Questions"** creates fresh quiz variations—not just reshuffled
 - Each regeneration uses variation seeds for truly unique content
 - Track improvement across multiple attempts
 
-### 🤖 Intelligent AI Grading
+### Intelligent AI Grading
 - **Instant Grading**: MCQ, true/false, and numerical questions graded immediately
 - **Short Answer AI**: Semantic evaluation with partial credit
 - **Detailed Feedback**: Explanations for every question
 - **Score Tracking**: Monitor progress over time
 
-### 📊 Progress Tracking
+### Progress Tracking
 - Visual progress bars per topic
 - Quiz attempt history with best/average scores
 - Exam performance tracking
 - No overwhelming dashboards—just inline, actionable data
 
-### ⚡ Modern User Experience
+### Modern User Experience
 - Responsive design optimized for desktop and mobile
 - Real-time content generation with loading states
 - Countdown timers for timed exams with auto-submit
@@ -73,13 +73,13 @@ StudyBuddy uses AI to:
 
 ---
 
-## 🎬 Demo
+## Demo
 
-### 📹 Video Walkthrough
+### Video Walkthrough
 
 > **Coming Soon**: 90-second demo video showing the complete workflow
 
-### 📸 Screenshots
+### Screenshots
 
 **Material Upload & Processing**
 ![Upload Interface](./docs/screenshots/upload.png)
@@ -93,13 +93,13 @@ StudyBuddy uses AI to:
 ![Grading Results](./docs/screenshots/grading.png)
 *Instant grading with detailed explanations*
 
-### 🚀 Try It Locally
+### Try It Locally
 
 Want to run it yourself? Follow the [Quick Start](#-quick-start) guide below.
 
 ---
 
-## ✅ Evaluation
+## Evaluation
 
 This repo includes an **evaluation harness** to prevent regressions and track answer quality as prompts/models change.
 
@@ -116,7 +116,7 @@ This repo includes an **evaluation harness** to prevent regressions and track an
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - **Node.js** 20+ and **npm**
@@ -270,7 +270,7 @@ Without Semantic Search (Full Documents):
 With Hybrid Search (Relevant Chunks Only):
 ████ $0.02
 
-💰 Savings: 85% ↓
+Savings: 85% ↓
 ```
 
 **Content Regeneration with Variation:**
@@ -285,7 +285,7 @@ With Hybrid Search (Relevant Chunks Only):
 
 ---
 
-## 📖 How It Works
+## How It Works
 
 ### 1️⃣ Upload Materials
 Upload your PDFs (lecture notes, textbooks, past exams). AI validates and chunks them into searchable sections with embeddings.
@@ -387,7 +387,7 @@ GCP_PROJECT_ID=your-project-id
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Frontend tests
@@ -402,7 +402,7 @@ pytest --cov=app tests/  # With coverage
 
 ---
 
-## 🚢 Deployment
+## Deployment
 
 ### Option 1: Railway + Vercel + Supabase (Recommended for MVPs)
 
@@ -498,7 +498,7 @@ Config file: `frontend/vercel.json`
 
 ---
 
-## 💰 Cost Estimates
+## Cost Estimates
 
 **For 100 users (300 study projects):**
 
@@ -516,7 +516,7 @@ Config file: `frontend/vercel.json`
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
@@ -528,13 +528,13 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ---
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 👨‍💻 Author
+## Author
 
 **Harish Manoharan**
 - GitHub: [@harishm17](https://github.com/harishm17)
@@ -544,7 +544,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - UI components from [Shadcn/ui](https://ui.shadcn.com/)
 - Icons from [Lucide](https://lucide.dev/)
@@ -552,9 +552,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 📊 Project Status
+## Project Status
 
-✅ **Feature Complete** - All 10 development phases completed:
+**Feature Complete** - All 10 development phases completed:
 - Phase 1: Foundation (Database, Services, Auth)
 - Phase 2: Material Upload & Storage
 - Phase 3: Topic Extraction & Chunking
