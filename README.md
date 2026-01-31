@@ -197,7 +197,7 @@ CREATE EXTENSION vector;
 
 ---
 
-## 💻 Tech Stack
+## Tech Stack
 
 ### Frontend
 - **[Next.js 15](https://nextjs.org/)** - React framework with App Router
@@ -224,7 +224,7 @@ CREATE EXTENSION vector;
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 **Microservices Design:**
 
@@ -287,25 +287,25 @@ Savings: 85% ↓
 
 ## How It Works
 
-### 1️⃣ Upload Materials
+### 1. Upload Materials
 Upload your PDFs (lecture notes, textbooks, past exams). AI validates and chunks them into searchable sections with embeddings.
 
-### 2️⃣ Extract Topics
+### 2. Extract Topics
 AI analyzes all materials and automatically identifies key learning topics. Review and confirm the topics extracted.
 
-### 3️⃣ Generate Study Content
+### 3. Generate Study Content
 For each topic, generate:
 - **Notes**: Comprehensive study guides with citations
 - **Examples**: Solved problems with step-by-step explanations
 - **Practice**: Interactive problems with hints
 - **Quizzes**: Multiple question types with instant feedback
 
-### 4️⃣ Practice & Review
+### 4. Practice & Review
 - Click "Practice More" for unlimited fresh content
 - Take quizzes multiple times with different questions
 - Track your scores and improvement over time
 
-### 5️⃣ Take Sample Exams
+### 5. Take Sample Exams
 - Select topics to include
 - Configure question count, duration, and difficulty
 - Take timed exams with countdown timer
@@ -313,7 +313,7 @@ For each topic, generate:
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 study_buddy/
@@ -353,7 +353,7 @@ study_buddy/
 
 ---
 
-## 🔐 Environment Variables
+## Environment Variables
 
 ### Required
 ```env
