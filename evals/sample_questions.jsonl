@@ -1,0 +1,3 @@
+{"question":"Define convolution and list one practical application.","expected_topics":["convolution"],"notes":"Replace with your course-specific questions"}
+{"question":"Explain the difference between overfitting and underfitting.","expected_topics":["model generalization","bias-variance"],"notes":"Replace with your course-specific questions"}
+{"question":"What is the purpose of an activation function in a neural network?","expected_topics":["activation functions"],"notes":"Replace with your course-specific questions"}
