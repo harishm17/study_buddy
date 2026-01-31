@@ -1,10 +1,10 @@
 <div align="center">
 
-# 📚 StudyBuddy
+# 📚 StudyBuddy — Exam Prep RAG & Quiz Generator
 
-### AI-Powered Learning Platform for Exam Preparation
+### End-to-end study workflow: retrieval, generation, practice, grading
 
-Transform your study materials into personalized learning experiences with intelligent content generation, interactive practice, and automated grading.
+Turn lecture slides, books, and past papers into structured notes, quizzes, and practice exams with an evaluation-ready RAG pipeline.
 
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
@@ -16,7 +16,7 @@ Transform your study materials into personalized learning experiences with intel
 [![Lines of Code](https://img.shields.io/badge/Lines-15K+-blue?style=flat)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-[Features](#-key-features) • [Demo](#-demo) • [Quick Start](#-quick-start) • [Tech Stack](#-tech-stack) • [Architecture](#-architecture)
+[Why this exists](#-overview) • [Demo](#-demo) • [Evaluation](#-evaluation) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
 
 </div>
 
@@ -33,7 +33,7 @@ Transform your study materials into personalized learning experiences with intel
 - 📝 No personalized practice with instant feedback
 
 ### The Solution
-StudyBuddy uses AI to automatically:
+StudyBuddy uses AI to:
 - Extract key topics from your materials
 - Generate comprehensive study notes with citations
 - Create unlimited practice problems and quizzes
@@ -85,12 +85,28 @@ StudyBuddy uses AI to automatically:
 
 ## 🎬 Demo
 
-> **Note**: Add screenshots or GIFs here showing:
-> - Dashboard with project cards
-> - Material upload interface
-> - Topic learning interface with tabs
-> - Exam taking experience with timer
-> - Quiz results with feedback
+**Recommended proof assets (add when ready):**
+- 60–90s walkthrough video
+- 2–3 screenshots (upload → generate → quiz/exam)
+
+If you want a quick local demo, follow the [Quick Start](#-quick-start).
+
+---
+
+## ✅ Evaluation
+
+This repo includes an **evaluation harness** to prevent regressions and track answer quality as prompts/models change.
+
+**What to measure**
+- **Faithfulness:** Answers grounded in retrieved chunks
+- **Context precision:** % of retrieved chunks used in the answer
+- **Quiz accuracy:** Generated questions align with source material
+
+**Where it lives**
+- `evals/README.md` — evaluation plan + how to run
+- `evals/sample_questions.jsonl` — small seed dataset (replace with your own)
+
+> Tip: Run evals on a fixed dataset before/after prompt or model updates.
 
 ---
 
@@ -106,8 +122,8 @@ StudyBuddy uses AI to automatically:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/studybuddy.git
-   cd studybuddy
+   git clone https://github.com/harishm17/study_buddy.git
+   cd study_buddy
    ```
 
 2. **Set up environment variables**
@@ -238,7 +254,7 @@ Instead of sending entire textbooks to AI (expensive & noisy):
 3. Use keyword + semantic search to find relevant sections
 4. Send only top 10-15 chunks to LLM
 
-**Result:** 85% cost reduction while maintaining quality
+**Result:** up to 85% cost reduction while maintaining quality
 
 **Cost Comparison per Content Generation Request:**
 ```
@@ -294,7 +310,7 @@ For each topic, generate:
 ## 📂 Project Structure
 
 ```
-studybuddy/
+study_buddy/
 ├── frontend/                    # Next.js application
 │   ├── src/
 │   │   ├── app/                # App Router pages & API routes
