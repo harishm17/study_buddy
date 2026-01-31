@@ -498,24 +498,6 @@ Config file: `frontend/vercel.json`
 
 ---
 
-## Cost Estimates
-
-**For 100 users (300 study projects):**
-
-| Category | One-Time | Monthly |
-|----------|----------|---------|
-| Infrastructure (GCP) | - | $96 |
-| AI Embeddings | $15 | - |
-| Content Generation | $2,500 | - |
-| Ongoing AI Usage | - | $55 |
-| **Total** | **$2,515** | **$151** |
-
-**Per-user costs:**
-- Setup: ~$25 (one-time)
-- Ongoing: ~$1.50/month
-
----
-
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
@@ -542,36 +524,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Email: harish.manoharan@utdallas.edu
 - Portfolio: [harishm17.github.io](https://harishm17.github.io)
 
----
-
-## Acknowledgments
-
-- UI components from [Shadcn/ui](https://ui.shadcn.com/)
-- Icons from [Lucide](https://lucide.dev/)
-- Inspired by the need for better exam preparation tools
-
----
-
-## Project Status
-
-**Feature Complete** - All 10 development phases completed:
-- Phase 1: Foundation (Database, Services, Auth)
-- Phase 2: Material Upload & Storage
-- Phase 3: Topic Extraction & Chunking
-- Phase 4: Content Generation
-- Phase 5: Learning Interface
-- Phase 6: Practice & Review System
-- Phase 7: Sample Exam Creation
-- Phase 8: AI Grading
-- Phase 9: Material Management
-- Phase 10: Polish & Documentation
-
----
-
-<div align="center">
-
-**[⬆ Back to Top](#-studybuddy)**
-
-Made with ❤️ for students everywhere
-
-</div>
