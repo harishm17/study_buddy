@@ -6,16 +6,6 @@
 
 Turn lecture slides, books, and past papers into structured notes, quizzes, and practice exams with an evaluation-ready RAG pipeline.
 
-[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=flat&logo=next.js)](https://nextjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?style=flat&logo=fastapi)](https://fastapi.tiangolo.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
-[![Python](https://img.shields.io/badge/Python-3.11-yellow?style=flat&logo=python)](https://www.python.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791?style=flat&logo=postgresql)](https://www.postgresql.org/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4-412991?style=flat&logo=openai)](https://openai.com/)
-[![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?style=flat&logo=docker)](https://www.docker.com/)
-[![Lines of Code](https://img.shields.io/badge/Lines-15K+-blue?style=flat)]()
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-
 [Why this exists](#-overview) • [Demo](#-demo) • [Evaluation](#-evaluation) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
 
 </div>
@@ -85,11 +75,27 @@ StudyBuddy uses AI to:
 
 ## 🎬 Demo
 
-**Recommended proof assets (add when ready):**
-- 60–90s walkthrough video
-- 2–3 screenshots (upload → generate → quiz/exam)
+### 📹 Video Walkthrough
 
-If you want a quick local demo, follow the [Quick Start](#-quick-start).
+> **Coming Soon**: 90-second demo video showing the complete workflow
+
+### 📸 Screenshots
+
+**Material Upload & Processing**
+![Upload Interface](./docs/screenshots/upload.png)
+*Upload PDFs and see automatic topic extraction*
+
+**Quiz Generation & Taking**
+![Quiz Interface](./docs/screenshots/quiz.png)
+*AI-generated quizzes with multiple question types*
+
+**Exam Grading with Feedback**
+![Grading Results](./docs/screenshots/grading.png)
+*Instant grading with detailed explanations*
+
+### 🚀 Try It Locally
+
+Want to run it yourself? Follow the [Quick Start](#-quick-start) guide below.
 
 ---
 
@@ -398,7 +404,74 @@ pytest --cov=app tests/  # With coverage
 
 ## 🚢 Deployment
 
-### Deploy to Google Cloud Run
+### Option 1: Railway + Vercel + Supabase (Recommended for MVPs)
+
+**Architecture**:
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Vercel    │────▶│   Railway   │────▶│  Supabase   │
+│ (Frontend)  │     │ (AI Service)│     │ (PostgreSQL)│
+└─────────────┘     └─────────────┘     └─────────────┘
+```
+
+#### 1. Deploy Database (Supabase)
+
+```bash
+# Create Supabase project at https://supabase.com
+# Enable pgvector extension in SQL Editor:
+CREATE EXTENSION IF NOT EXISTS vector;
+
+# Apply Prisma migrations
+cd frontend
+npx prisma db push
+```
+
+#### 2. Deploy AI Service (Railway)
+
+```bash
+# Install Railway CLI
+npm i -g @railway/cli
+
+# Login and initialize
+railway login
+cd ai-service
+railway init
+
+# Set environment variables in Railway dashboard:
+# - OPENAI_API_KEY
+# - DATABASE_URL (copy from Supabase)
+# - ENVIRONMENT=production
+
+# Deploy
+railway up
+```
+
+Config file: `ai-service/railway.toml`
+
+#### 3. Deploy Frontend (Vercel)
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+cd frontend
+vercel
+
+# Set environment variables in Vercel dashboard:
+# - DATABASE_URL (Supabase connection string)
+# - NEXTAUTH_SECRET (generate: openssl rand -base64 32)
+# - NEXTAUTH_URL (your Vercel domain)
+# - AI_SERVICE_URL (Railway service URL)
+```
+
+Config file: `frontend/vercel.json`
+
+**Total Cost**: ~$5-25/month (free tiers available)
+
+---
+
+### Option 2: Google Cloud Run (Production Scale)
 
 1. **Enable required APIs**
    ```bash
@@ -463,16 +536,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👨‍💻 Author
 
-**Your Name**
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
-- Email: your.email@example.com
+**Harish Manoharan**
+- GitHub: [@harishm17](https://github.com/harishm17)
+- LinkedIn: [linkedin.com/in/harishm17](https://linkedin.com/in/harishm17)
+- Email: harish.manoharan@utdallas.edu
+- Portfolio: [harishm17.github.io](https://harishm17.github.io)
 
 ---
 
 ## 🙏 Acknowledgments
 
-- Built with [Claude Code](https://claude.ai/code) by Anthropic
 - UI components from [Shadcn/ui](https://ui.shadcn.com/)
 - Icons from [Lucide](https://lucide.dev/)
 - Inspired by the need for better exam preparation tools
