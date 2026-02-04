@@ -15,14 +15,17 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str
-    OPENAI_MODEL: str = "gpt-5"
-    OPENAI_MINI_MODEL: str = "gpt-5-mini"
+    OPENAI_MODEL: str = "gpt-4o"
+    OPENAI_MINI_MODEL: str = "gpt-4o-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
 
     # Anthropic (optional)
     ANTHROPIC_API_KEY: str = ""
-    ANTHROPIC_MODEL: str = "claude-4-5-sonnet"
-    ANTHROPIC_MINI_MODEL: str = "claude-4-5-haiku"
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MINI_MODEL: str = "claude-3-5-haiku-20241022"
+
+    # Processing control
+    ENABLE_PROCESSING: bool = True
 
     # GCP (optional, can use local storage)
     GCS_BUCKET: str = ""

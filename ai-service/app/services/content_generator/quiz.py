@@ -10,7 +10,6 @@ from enum import Enum
 from app.db.connection import execute_query
 from app.services.llm.factory import LLMFactory
 from app.services.llm.base import LLMMessage
-from app.config import settings
 
 
 class QuestionType(str, Enum):
@@ -217,11 +216,6 @@ For TRUE_FALSE:
 
 Return a JSON array of {question_count} question objects with varied types:"""
 
-        if settings.is_development:
-            return self._generate_mock_questions(
-                topic_name, question_count, question_types, difficulty_level
-            )
-
         messages = [LLMMessage(role="user", content=prompt)]
 
         response = await self.llm.generate_structured(
@@ -231,76 +225,3 @@ Return a JSON array of {question_count} question objects with varied types:"""
         )
 
         return response.get('questions', [])
-
-    def _generate_mock_questions(
-        self,
-        topic_name: str,
-        question_count: int,
-        question_types: List[QuestionType],
-        difficulty_level: str
-    ) -> List[Dict]:
-        """Generate mock questions for development."""
-        questions = []
-        types_cycle = question_types * (question_count // len(question_types) + 1)
-
-        for i in range(question_count):
-            q_type = types_cycle[i]
-
-            if q_type == QuestionType.MULTIPLE_CHOICE:
-                questions.append({
-                    "question_type": "multiple_choice",
-                    "question_text": f"Which of the following best describes a key concept in {topic_name}?",
-                    "options": [
-                        {"id": "A", "text": "Option A: Incorrect concept"},
-                        {"id": "B", "text": "Option B: Correct fundamental principle"},
-                        {"id": "C", "text": "Option C: Partially correct but incomplete"},
-                        {"id": "D", "text": "Option D: Common misconception"}
-                    ],
-                    "correct_answer": "B",
-                    "explanation": f"Option B correctly identifies the fundamental principle of {topic_name}. Option A is incorrect because... Option C is incomplete because... Option D represents a common misconception.",
-                    "points": 2,
-                    "difficulty": difficulty_level,
-                    "concepts_tested": [topic_name, "Fundamentals"]
-                })
-
-            elif q_type == QuestionType.SHORT_ANSWER:
-                questions.append({
-                    "question_type": "short_answer",
-                    "question_text": f"Explain the significance of {topic_name} in practical applications.",
-                    "sample_answer": f"{topic_name} is significant because it provides a framework for understanding complex systems and enables practical problem-solving in real-world scenarios.",
-                    "key_points": [
-                        "Identifies practical relevance",
-                        "Explains framework or methodology",
-                        "Connects to real-world applications"
-                    ],
-                    "explanation": "A good answer should demonstrate understanding of both theoretical and practical aspects.",
-                    "points": 3,
-                    "difficulty": difficulty_level,
-                    "concepts_tested": [topic_name, "Practical Application"]
-                })
-
-            elif q_type == QuestionType.NUMERICAL:
-                questions.append({
-                    "question_type": "numerical",
-                    "question_text": f"Calculate the expected value using the {topic_name} formula given: A = 10, B = 5.",
-                    "correct_answer": 50.0,
-                    "unit": "units",
-                    "tolerance": 0.5,
-                    "explanation": "Using the formula: Result = A × B = 10 × 5 = 50 units. This demonstrates the quantitative relationship in the topic.",
-                    "points": 3,
-                    "difficulty": difficulty_level,
-                    "concepts_tested": [topic_name, "Quantitative Analysis"]
-                })
-
-            else:  # TRUE_FALSE
-                questions.append({
-                    "question_type": "true_false",
-                    "question_text": f"{topic_name} always requires consideration of multiple variables in practical scenarios.",
-                    "correct_answer": True,
-                    "explanation": f"True. {topic_name} inherently involves complex relationships between multiple variables, making it essential to consider all relevant factors in practical applications.",
-                    "points": 1,
-                    "difficulty": difficulty_level,
-                    "concepts_tested": [topic_name, "Conceptual Understanding"]
-                })
-
-        return questions

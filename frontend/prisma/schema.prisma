@@ -183,7 +183,7 @@ model TopicContent {
   // Relations
   topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
-  @@index([topicId, contentType])
+  @@unique([topicId, contentType])
   @@map("topic_content")
 }
 

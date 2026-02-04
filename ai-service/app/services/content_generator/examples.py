@@ -10,7 +10,6 @@ from enum import Enum
 from app.db.connection import execute_query, execute_one
 from app.services.llm.factory import LLMFactory
 from app.services.llm.base import LLMMessage
-from app.config import settings
 
 
 class ExampleType(str, Enum):
@@ -156,9 +155,6 @@ class ExamplesGenerator:
 
 Return a JSON array of {count} example objects:"""
 
-        if settings.is_development:
-            return self._generate_mock_solved_examples(topic_name, count, difficulty_level)
-
         messages = [LLMMessage(role="user", content=prompt)]
 
         response = await self.llm.generate_structured(
@@ -233,9 +229,6 @@ Return a JSON array of {count} example objects:"""
 
 Return a JSON array of {count} interactive example objects:"""
 
-        if settings.is_development:
-            return self._generate_mock_interactive_examples(topic_name, count, difficulty_level)
-
         messages = [LLMMessage(role="user", content=prompt)]
 
         response = await self.llm.generate_structured(
@@ -245,92 +238,3 @@ Return a JSON array of {count} interactive example objects:"""
         )
 
         return response.get('examples', [])
-
-    def _generate_mock_solved_examples(
-        self, topic_name: str, count: int, difficulty_level: str
-    ) -> List[Dict]:
-        """Generate mock solved examples for development."""
-        examples = []
-
-        for i in range(count):
-            examples.append({
-                "title": f"Example {i+1}: {topic_name} Application",
-                "problem_statement": f"Consider a scenario involving {topic_name}. Calculate the expected outcome given the following conditions...",
-                "solution_steps": [
-                    {
-                        "step_number": 1,
-                        "description": "Identify given information",
-                        "work": "Given: Variable A = 5, Variable B = 10",
-                        "explanation": "We start by listing all known values from the problem statement."
-                    },
-                    {
-                        "step_number": 2,
-                        "description": "Apply relevant formula",
-                        "work": "Using Formula: Result = A × B + C",
-                        "explanation": "This formula relates our variables based on the topic principles."
-                    },
-                    {
-                        "step_number": 3,
-                        "description": "Calculate result",
-                        "work": "Result = 5 × 10 + 15 = 65",
-                        "explanation": "Substituting our values and solving."
-                    }
-                ],
-                "final_answer": "The final result is 65 units.",
-                "key_concepts": [topic_name, "Problem Solving", "Mathematical Application"],
-                "difficulty": difficulty_level
-            })
-
-        return examples
-
-    def _generate_mock_interactive_examples(
-        self, topic_name: str, count: int, difficulty_level: str
-    ) -> List[Dict]:
-        """Generate mock interactive examples for development."""
-        examples = []
-
-        for i in range(count):
-            examples.append({
-                "title": f"Interactive Practice {i+1}: {topic_name}",
-                "problem_statement": f"Let's work through a {topic_name} problem together. You'll solve it step by step with guidance.",
-                "steps": [
-                    {
-                        "step_number": 1,
-                        "question": "What is the first step in approaching this problem?",
-                        "hint": "Think about what information you need to identify first.",
-                        "answer_type": "text",
-                        "correct_answer": "Identify the given variables",
-                        "acceptable_answers": ["identify variables", "list given info", "find known values"],
-                        "explanation": "Correct! We always start by identifying what we know from the problem.",
-                        "feedback_correct": "Great! You've identified the first step.",
-                        "feedback_incorrect": "Not quite. Think about what information the problem provides."
-                    },
-                    {
-                        "step_number": 2,
-                        "question": "Which formula applies to this scenario?",
-                        "hint": "Look for formulas related to the key concept.",
-                        "answer_type": "multiple_choice",
-                        "correct_answer": "Formula B: y = mx + b",
-                        "acceptable_answers": ["y = mx + b", "linear equation"],
-                        "explanation": "That's right! This is a linear relationship.",
-                        "feedback_correct": "Perfect! You've selected the correct formula.",
-                        "feedback_incorrect": "Try again. Consider the relationship between the variables."
-                    },
-                    {
-                        "step_number": 3,
-                        "question": "Calculate the final result.",
-                        "hint": "Substitute the values into the formula.",
-                        "answer_type": "numeric",
-                        "correct_answer": "42",
-                        "acceptable_answers": ["42", "42.0"],
-                        "explanation": "Excellent! By substituting our values, we get 42.",
-                        "feedback_correct": "Well done! You've solved the problem correctly.",
-                        "feedback_incorrect": "Check your calculation. Make sure you substituted correctly."
-                    }
-                ],
-                "key_concepts": [topic_name, "Interactive Learning", "Step-by-step Problem Solving"],
-                "difficulty": difficulty_level,
-                "estimated_time_minutes": 8
-            })
-
-        return examples
