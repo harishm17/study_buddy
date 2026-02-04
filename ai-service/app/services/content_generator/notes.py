@@ -9,7 +9,6 @@ from datetime import datetime
 from app.db.connection import execute_query, execute_one, execute_update
 from app.services.llm.factory import LLMFactory
 from app.services.llm.base import LLMMessage
-from app.config import settings
 
 
 class NotesGenerator:
@@ -177,10 +176,6 @@ Section: {section}
 
 Generate comprehensive, student-friendly study notes:"""
 
-        if settings.is_development:
-            # Development mode: return mock content
-            return self._generate_mock_notes(topic_name, topic_description)
-
         messages = [LLMMessage(role="user", content=prompt)]
 
         response = await self.llm.generate_text(
@@ -190,57 +185,6 @@ Generate comprehensive, student-friendly study notes:"""
         )
 
         return response.content
-
-    def _generate_mock_notes(self, topic_name: str, topic_description: str) -> str:
-        """Generate mock notes for development mode."""
-        return f"""# {topic_name}
-
-## Overview
-{topic_description}
-
-This section covers the fundamental concepts and principles related to {topic_name}. The material draws from lecture notes, textbook chapters, and supplementary resources.
-
-## Key Concepts
-
-### Concept 1: Foundation
-The foundational principle of {topic_name} establishes the basic framework for understanding more advanced topics. [Citation: lecture_notes.pdf, pp. 5-7]
-
-**Important Definition:** Key term refers to the fundamental unit of analysis in this domain.
-
-### Concept 2: Advanced Applications
-Building on the foundation, we explore practical applications and real-world scenarios where {topic_name} plays a crucial role.
-
-## Detailed Content
-
-### Section 1: Theoretical Framework
-The theoretical framework provides a structured approach to understanding {topic_name}. This includes:
-
-- **Principle A**: Core principle that governs behavior
-- **Principle B**: Secondary principle that modifies outcomes
-- **Principle C**: Integration principle connecting multiple aspects
-
-### Section 2: Practical Examples
-Real-world examples help illustrate the concepts:
-
-1. **Example 1**: Industrial application demonstrating Principle A
-2. **Example 2**: Case study showing integration of multiple principles
-3. **Example 3**: Problem-solving scenario requiring analytical thinking
-
-### Section 3: Important Formulas
-
-When applicable, key equations include:
-- Formula 1: `y = mx + b` [Citation: textbook_ch3.pdf, pp. 45]
-- Formula 2: Advanced relationship between variables
-
-## Summary
-
-{topic_name} encompasses several key ideas:
-- Understanding the foundational concepts is essential
-- Practical applications demonstrate real-world relevance
-- Integration of theoretical and practical knowledge leads to mastery
-
-**Next Steps:** Practice problems and interactive examples will reinforce these concepts.
-"""
 
     def _extract_citations(self, chunks: List[Dict]) -> List[Dict]:
         """Extract citation metadata from chunks."""

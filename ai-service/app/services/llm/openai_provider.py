@@ -14,8 +14,8 @@ class OpenAIProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        default_model: str = "gpt-5",
-        mini_model: str = "gpt-5-mini",
+        default_model: str = "gpt-4o",
+        mini_model: str = "gpt-4o-mini",
         embedding_model: str = "text-embedding-3-small",
     ):
         """Initialize OpenAI provider.

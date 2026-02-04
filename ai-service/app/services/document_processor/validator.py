@@ -44,7 +44,7 @@ async def validate_material(
     """
     # For development, we'll skip actual GCS download
     # In production, download from GCS first
-    if settings.is_development:
+    if settings.is_development and not settings.ENABLE_PROCESSING:
         logger.info(f"[DEV] Simulating validation for {filename}")
         return ValidationResult(
             status="valid",
@@ -156,21 +156,28 @@ def download_from_gcs(gcs_path: str) -> str:
     """
     import tempfile
     import os
-    from google.cloud import storage
     
     try:
         # Parse GCS path (gs://bucket/path)
         if not gcs_path.startswith("gs://"):
             raise ValueError(f"Invalid GCS path format: {gcs_path}")
-        
+
         path_parts = gcs_path[5:].split("/", 1)  # Remove "gs://" prefix
         if len(path_parts) != 2:
             raise ValueError(f"Invalid GCS path format: {gcs_path}")
-        
+
         bucket_name, blob_path = path_parts
-        
+
+        # In development, check local storage first
+        if settings.is_development:
+            local_path = os.path.join("/data/uploads", blob_path)
+            if os.path.exists(local_path):
+                logger.info(f"Using local file: {local_path}")
+                return local_path
+
         # Initialize GCS client
-        storage_client = storage.Client()
+        from google.cloud import storage as gcs_storage
+        storage_client = gcs_storage.Client()
         bucket = storage_client.bucket(bucket_name)
         blob = bucket.blob(blob_path)
         

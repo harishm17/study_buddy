@@ -43,8 +43,13 @@ export async function uploadFile(
   const storage = await getStorage()
   
   if (!storage) {
-    // Development mode - simulate upload
-    console.log(`[DEV] Simulating file upload to: ${path}`)
+    // Development mode - write to local filesystem shared with ai-service
+    const fs = await import('fs')
+    const pathModule = await import('path')
+    const localFilePath = pathModule.join('/data/uploads', path)
+    fs.mkdirSync(pathModule.dirname(localFilePath), { recursive: true })
+    fs.writeFileSync(localFilePath, file)
+    console.log(`[DEV] File stored locally at: ${localFilePath}`)
     return `gs://${BUCKET_NAME}/${path}`
   }
 

@@ -203,8 +203,8 @@ async def chunk_material_job(payload: JobPayload):
             )
             return {"status": "skipped", "jobId": payload.jobId, "reason": "Material not found"}
 
-        # For development, skip actual PDF processing
-        if settings.is_development:
+        # For development without processing enabled, skip actual PDF processing
+        if settings.is_development and not settings.ENABLE_PROCESSING:
             logger.info(f"[DEV] Simulating chunking for {material['filename']}")
 
             # Update job as completed
@@ -381,7 +381,7 @@ async def chunk_material_job(payload: JobPayload):
 
         finally:
             # Clean up temporary file
-            if pdf_path and os.path.exists(pdf_path):
+            if pdf_path and os.path.exists(pdf_path) and not pdf_path.startswith("/data/uploads"):
                 try:
                     os.remove(pdf_path)
                     logger.debug(f"Cleaned up temp file: {pdf_path}")
@@ -677,13 +677,13 @@ async def generate_content_job(payload: JobPayload):
         content_record = await execute_one(
             """
             INSERT INTO topic_content
-            (topic_id, content_type, content_data, metadata, generated_at)
-            VALUES ($1, $2, $3, $4, NOW())
+            (topic_id, content_type, content_data, metadata)
+            VALUES ($1, $2, $3, $4)
             ON CONFLICT (topic_id, content_type)
             DO UPDATE SET
                 content_data = EXCLUDED.content_data,
                 metadata = EXCLUDED.metadata,
-                generated_at = NOW()
+                updated_at = NOW()
             RETURNING id
             """,
             topic['id'],

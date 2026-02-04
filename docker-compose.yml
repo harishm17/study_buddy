@@ -50,6 +50,7 @@ services:
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/prisma:/app/prisma
+      - uploads_data:/data/uploads
     restart: unless-stopped
 
   # Python AI service
@@ -67,8 +68,9 @@ services:
       - DATABASE_URL=postgresql://dev:devpass@postgres:5432/studybuddy
       - LLM_PROVIDER=openai
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=gpt-5
-      - OPENAI_MINI_MODEL=gpt-5-mini
+      - OPENAI_MODEL=gpt-4o
+      - OPENAI_MINI_MODEL=gpt-4o-mini
+      - ENABLE_PROCESSING=true
       - GCS_BUCKET=local-materials
       - AI_SERVICE_URL=http://localhost:8000
       - FRONTEND_URL=http://localhost:3000
@@ -78,8 +80,11 @@ services:
         condition: service_healthy
     volumes:
       - ./ai-service/app:/app/app
+      - uploads_data:/data/uploads
     restart: unless-stopped
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
     driver: local
