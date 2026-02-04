@@ -77,8 +77,6 @@ StudyBuddy uses AI to:
 
 ### Video Walkthrough
 
-> **Coming Soon**: 90-second demo video showing the complete workflow
-
 ### Screenshots
 
 **Material Upload & Processing**
@@ -523,4 +521,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - LinkedIn: [linkedin.com/in/harishm17](https://linkedin.com/in/harishm17)
 - Email: harish.manoharan@utdallas.edu
 - Portfolio: [harishm17.github.io](https://harishm17.github.io)
-
