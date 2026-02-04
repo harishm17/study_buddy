@@ -75,8 +75,6 @@ StudyBuddy uses AI to:
 
 ## Demo
 
-### Video Walkthrough
-
 ### Screenshots
 
 **Material Upload & Processing**
