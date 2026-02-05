@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,7 +8,10 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { MarkdownBlock, MarkdownInline } from '@/components/ui/markdown';
+import { formatLearningMarkdown } from '@/lib/utils/learning-markdown';
 
 interface Question {
   question_type: 'multiple_choice' | 'short_answer' | 'numerical' | 'true_false';
@@ -47,6 +50,15 @@ export default function ExamInterface({
   const [timeRemaining, setTimeRemaining] = useState(durationMinutes * 60); // in seconds
   const [isTimerActive, setIsTimerActive] = useState(true);
   const [showWarning, setShowWarning] = useState(false);
+  const answersRef = useRef<Record<string, any>>(answers);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  const handleAutoSubmit = useCallback(() => {
+    onSubmit(answersRef.current);
+  }, [onSubmit]);
 
   // Timer countdown
   useEffect(() => {
@@ -64,7 +76,7 @@ export default function ExamInterface({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [isTimerActive, timeRemaining]);
+  }, [isTimerActive, timeRemaining, handleAutoSubmit]);
 
   // Show warning when 5 minutes left
   useEffect(() => {
@@ -72,10 +84,6 @@ export default function ExamInterface({
       setShowWarning(true);
     }
   }, [timeRemaining]);
-
-  const handleAutoSubmit = useCallback(() => {
-    onSubmit(answers);
-  }, [answers, onSubmit]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -96,8 +104,26 @@ export default function ExamInterface({
   };
 
   const currentQuestion = questions[currentQuestionIndex];
-  const answeredCount = Object.keys(answers).length;
-  const progress = (answeredCount / questions.length) * 100;
+  const hasAnswer = (value: any) => {
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string') return value.trim().length > 0;
+    if (typeof value === 'number') return !Number.isNaN(value);
+    return true;
+  };
+  const totalQuestions = questions.length;
+  const answeredCount = Object.values(answers).filter(hasAnswer).length;
+  const progress = totalQuestions > 0 ? (answeredCount / totalQuestions) * 100 : 0;
+
+  if (totalQuestions === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{examName}</CardTitle>
+          <CardDescription>No questions are available for this exam.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   const handleNext = () => {
     if (currentQuestionIndex < questions.length - 1) {
@@ -111,13 +137,9 @@ export default function ExamInterface({
     }
   };
 
+  const unansweredCount = questions.length - answeredCount;
+
   const handleSubmitExam = () => {
-    if (answeredCount < questions.length) {
-      const unanswered = questions.length - answeredCount;
-      if (!confirm(`You have ${unanswered} unanswered question(s). Submit anyway?`)) {
-        return;
-      }
-    }
     onSubmit(answers);
   };
 
@@ -130,24 +152,46 @@ export default function ExamInterface({
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Clock className={`h-5 w-5 ${timeRemaining < 300 ? 'text-red-500' : ''}`} />
-                <span className={`text-2xl font-mono font-bold ${timeRemaining < 300 ? 'text-red-500' : ''}`}>
+                <span className={`text-2xl font-mono-ui font-bold ${timeRemaining < 300 ? 'text-red-500' : ''}`}>
                   {formatTime(timeRemaining)}
                 </span>
               </div>
               <div className="text-sm text-muted-foreground">
-                {answeredCount} of {questions.length} answered
+                {answeredCount} of {totalQuestions} answered
               </div>
             </div>
-            <Button onClick={handleSubmitExam} disabled={isSubmitting}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                'Submit Exam'
-              )}
-            </Button>
+            {unansweredCount > 0 ? (
+              <ConfirmDialog
+                title="Submit with unanswered questions?"
+                description={`You still have ${unansweredCount} unanswered question(s). Submit anyway?`}
+                confirmLabel="Submit Anyway"
+                onConfirm={handleSubmitExam}
+                disabled={isSubmitting}
+                trigger={
+                  <Button disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Exam'
+                    )}
+                  </Button>
+                }
+              />
+            ) : (
+              <Button onClick={handleSubmitExam} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit Exam'
+                )}
+              </Button>
+            )}
           </div>
           <Progress value={progress} className="h-2" />
         </CardContent>
@@ -164,34 +208,37 @@ export default function ExamInterface({
       )}
 
       {/* Question Card */}
-      <Card>
+      <Card className="border-primary/25">
         <CardHeader>
           <div className="flex justify-between items-start">
             <div className="flex-1">
               <CardTitle className="text-base font-normal text-muted-foreground">
                 Question {currentQuestionIndex + 1} of {questions.length}
               </CardTitle>
-              {currentQuestion.topic_name && (
+              {currentQuestion?.topic_name && (
                 <div className="text-sm text-muted-foreground mt-1">
-                  Topic: {currentQuestion.topic_name}
+                  Topic: {currentQuestion?.topic_name}
                 </div>
               )}
             </div>
             <div className="flex items-center gap-2 text-sm">
-              {currentQuestion.points && (
+              {currentQuestion?.points && (
                 <span className="text-muted-foreground">{currentQuestion.points} pts</span>
               )}
-              {answers[currentQuestionIndex] !== undefined && (
+              {hasAnswer(answers[currentQuestionIndex]) && (
                 <CheckCircle2 className="h-4 w-4 text-green-500" />
               )}
             </div>
           </div>
-          <CardDescription className="text-lg font-medium text-foreground mt-4">
-            {currentQuestion.question_text}
-          </CardDescription>
+          <div className="text-lg font-medium text-foreground mt-4">
+            <MarkdownBlock
+              content={formatLearningMarkdown(currentQuestion?.question_text || 'No questions available yet.')}
+              variant="compact"
+            />
+          </div>
         </CardHeader>
         <CardContent>
-          {currentQuestion.question_type === 'multiple_choice' && (
+          {currentQuestion?.question_type === 'multiple_choice' && (
             <RadioGroup
               value={answers[currentQuestionIndex] || ''}
               onValueChange={(value) => handleAnswerChange(currentQuestionIndex, value)}
@@ -200,14 +247,15 @@ export default function ExamInterface({
                 {currentQuestion.options?.map((option) => (
                   <div
                     key={option.id}
-                    className="flex items-start space-x-3 p-4 rounded-lg border hover:bg-accent transition-colors"
+                    className="flex items-start space-x-3 rounded-xl border border-border/70 bg-white/75 p-4 transition hover:border-primary/30 hover:bg-white"
                   >
                     <RadioGroupItem value={option.id} id={option.id} />
                     <label
                       htmlFor={option.id}
                       className="flex-1 text-sm cursor-pointer"
                     >
-                      <span className="font-medium">{option.id}.</span> {option.text}
+                      <span className="font-medium">{option.id}.</span>{' '}
+                      <MarkdownInline content={option.text} />
                     </label>
                   </div>
                 ))}
@@ -215,7 +263,7 @@ export default function ExamInterface({
             </RadioGroup>
           )}
 
-          {currentQuestion.question_type === 'short_answer' && (
+          {currentQuestion?.question_type === 'short_answer' && (
             <div className="space-y-2">
               <Label htmlFor="answer">Your Answer</Label>
               <textarea
@@ -233,7 +281,7 @@ export default function ExamInterface({
             </div>
           )}
 
-          {currentQuestion.question_type === 'numerical' && (
+          {currentQuestion?.question_type === 'numerical' && (
             <div className="space-y-2">
               <Label htmlFor="answer">Your Answer</Label>
               <div className="flex gap-2">
@@ -242,32 +290,35 @@ export default function ExamInterface({
                   type="number"
                   step="any"
                   placeholder="Enter numerical answer"
-                  value={answers[currentQuestionIndex] || ''}
-                  onChange={(e) => handleAnswerChange(currentQuestionIndex, parseFloat(e.target.value))}
+                  value={answers[currentQuestionIndex] ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value
+                    handleAnswerChange(currentQuestionIndex, raw === '' ? '' : parseFloat(raw))
+                  }}
                   className="flex-1"
                 />
                 {currentQuestion.unit && (
-                  <div className="flex items-center px-3 border rounded-md bg-muted">
-                    <span className="text-sm">{currentQuestion.unit}</span>
-                  </div>
+                <div className="flex items-center px-3 border rounded-md bg-muted">
+                  <span className="text-sm">{currentQuestion.unit}</span>
+                </div>
                 )}
               </div>
             </div>
           )}
 
-          {currentQuestion.question_type === 'true_false' && (
+          {currentQuestion?.question_type === 'true_false' && (
             <RadioGroup
               value={answers[currentQuestionIndex]?.toString() || ''}
               onValueChange={(value) => handleAnswerChange(currentQuestionIndex, value === 'true')}
             >
               <div className="space-y-3">
-                <div className="flex items-center space-x-3 p-4 rounded-lg border hover:bg-accent transition-colors">
+                <div className="flex items-center space-x-3 rounded-xl border border-border/70 bg-white/75 p-4 transition hover:border-primary/30 hover:bg-white">
                   <RadioGroupItem value="true" id="true" />
                   <label htmlFor="true" className="flex-1 text-sm cursor-pointer">
                     True
                   </label>
                 </div>
-                <div className="flex items-center space-x-3 p-4 rounded-lg border hover:bg-accent transition-colors">
+                <div className="flex items-center space-x-3 rounded-xl border border-border/70 bg-white/75 p-4 transition hover:border-primary/30 hover:bg-white">
                   <RadioGroupItem value="false" id="false" />
                   <label htmlFor="false" className="flex-1 text-sm cursor-pointer">
                     False
@@ -298,7 +349,7 @@ export default function ExamInterface({
               className={`w-8 h-8 rounded-md text-xs font-medium transition-colors ${
                 index === currentQuestionIndex
                   ? 'bg-primary text-primary-foreground'
-                  : answers[index] !== undefined
+                  : hasAnswer(answers[index])
                   ? 'bg-green-100 text-green-700 border border-green-300'
                   : 'bg-muted hover:bg-accent'
               }`}
