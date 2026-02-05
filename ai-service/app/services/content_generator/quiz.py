@@ -32,7 +32,8 @@ class QuizGenerator:
         topic_description: str,
         question_count: int = 10,
         question_types: Optional[List[QuestionType]] = None,
-        difficulty_level: str = "medium"
+        difficulty_level: str = "medium",
+        focus: Optional[str] = None
     ) -> Dict:
         """
         Generate a quiz for a topic.
@@ -73,7 +74,8 @@ class QuizGenerator:
             context=context,
             question_count=question_count,
             question_types=question_types,
-            difficulty_level=difficulty_level
+            difficulty_level=difficulty_level,
+            focus=focus
         )
 
         return {
@@ -91,13 +93,17 @@ class QuizGenerator:
                 mc.chunk_text,
                 mc.section_hierarchy,
                 m.filename,
+                m.category,
+                mc.page_start,
+                mc.page_end,
+                tcm.relevance_source,
                 tcm.relevance_score
             FROM topic_chunk_mappings tcm
             JOIN material_chunks mc ON tcm.chunk_id = mc.id
             JOIN materials m ON mc.material_id = m.id
             WHERE tcm.topic_id = $1
             ORDER BY tcm.relevance_score DESC
-            LIMIT 15
+            LIMIT 22
         """
 
         chunks = await execute_query(query, topic_id)
@@ -109,8 +115,25 @@ class QuizGenerator:
 
         for idx, chunk in enumerate(chunks, 1):
             section = chunk.get('section_hierarchy', 'N/A')
-            text = chunk['chunk_text'].strip()
-            context_parts.append(f"[Source {idx} - {section}]\n{text}")
+            text = chunk['chunk_text'].strip()[:1500]
+            filename = chunk.get('filename', 'unknown')
+            category = chunk.get('category', 'unknown')
+            page_start = chunk.get('page_start')
+            page_end = chunk.get('page_end')
+            pages = (
+                f"pp. {page_start}-{page_end}"
+                if page_start is not None and page_end is not None
+                else "pp. n/a"
+            )
+            relevance = chunk.get('relevance_score')
+            relevance_source = chunk.get('relevance_source', 'n/a')
+            relevance_str = f"{float(relevance):.3f}" if relevance is not None else "n/a"
+            context_parts.append(
+                f"[Source {idx}] {filename} ({category}, {pages})\n"
+                f"Section: {section}\n"
+                f"Relevance: {relevance_str} via {relevance_source}\n\n"
+                f"{text}"
+            )
 
         return "\n\n---\n\n".join(context_parts)
 
@@ -121,7 +144,8 @@ class QuizGenerator:
         context: str,
         question_count: int,
         question_types: List[QuestionType],
-        difficulty_level: str
+        difficulty_level: str,
+        focus: Optional[str] = None
     ) -> List[Dict]:
         """Generate quiz questions using LLM."""
 
@@ -134,6 +158,8 @@ class QuizGenerator:
 
         types_str = ", ".join([qt.value for qt in question_types])
 
+        focus_instruction = f"**Focus Request:** {focus}\nPrioritize this focus when selecting questions and explanations.\n\n" if focus else ""
+
         prompt = f"""You are an expert educator creating a quiz for students.
 
 **Topic:** {topic_name}
@@ -143,6 +169,7 @@ class QuizGenerator:
 **Question Types to Include:** {types_str}
 
 {guidance}
+{focus_instruction}
 
 **Source Material:**
 
@@ -159,7 +186,16 @@ class QuizGenerator:
 8. Provide detailed explanations for all correct answers
 9. Include points value for each question (typically 1-5 points based on complexity)
 
-**Format each question as a JSON object:**
+**Formatting rules (IMPORTANT — follow these exactly):**
+- All string fields support full markdown. Use it.
+- Any code snippet, memory layout, or command MUST be in a fenced code block with a language tag, e.g. ```c, ```python, ```text. NEVER dump code inline as plain text.
+- Use real line breaks (`\n`) inside JSON strings to separate paragraphs and before/after code fences. Do NOT put everything on one line.
+- Use `inline code` only for short identifiers, function names, or single expressions (e.g. `buf`, `strlen()`).
+- Keep question_text and options concise. If a question needs a code block, include it in question_text with proper fencing — do NOT put code blocks inside options.
+- For math expressions use LaTeX: inline `$E = mc^2$` or display `$$\\int_0^1 f(x)\\,dx$$`. For chemistry use `$2H_2 + O_2 \\to 2H_2O$`. Do NOT use plain-text math when LaTeX is clearer.
+- Separate distinct ideas into short paragraphs rather than one dense block of text.
+
+**Format each question as a JSON object (markdown allowed inside string fields):**
 
 For MULTIPLE_CHOICE:
 {{

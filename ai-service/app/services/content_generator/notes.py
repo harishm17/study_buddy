@@ -3,6 +3,7 @@ Section notes generator service.
 Synthesizes comprehensive study notes from relevant material chunks.
 """
 
+import re
 from typing import List, Dict, Optional
 from datetime import datetime
 
@@ -57,6 +58,7 @@ class NotesGenerator:
             detail_level=detail_level,
             include_examples=include_examples
         )
+        notes_content = self._postprocess_notes_markdown(notes_content)
 
         # Extract citations
         citations = self._extract_citations(chunks)
@@ -86,7 +88,7 @@ class NotesGenerator:
             JOIN materials m ON mc.material_id = m.id
             WHERE tcm.topic_id = $1
             ORDER BY tcm.relevance_score DESC
-            LIMIT 15
+            LIMIT 24
         """
 
         chunks = await execute_query(query, topic_id)
@@ -100,11 +102,17 @@ class NotesGenerator:
             section = chunk.get('section_hierarchy', 'N/A')
             filename = chunk['filename']
             pages = f"pp. {chunk['page_start']}-{chunk['page_end']}"
-            text = chunk['chunk_text'].strip()
+            category = chunk.get('category', 'unknown')
+            relevance = chunk.get('relevance_score')
+            relevance_source = chunk.get('relevance_source', 'n/a')
+            text = chunk['chunk_text'].strip()[:1800]
+            relevance_str = f"{float(relevance):.3f}" if relevance is not None else "n/a"
 
             context_part = f"""
 [Chunk {idx}] Source: {filename} ({pages})
+Category: {category}
 Section: {section}
+Relevance: {relevance_str} via {relevance_source}
 
 {text}
 
@@ -138,7 +146,7 @@ Section: {section}
             "Focus on concepts and explanations without detailed examples."
         )
 
-        prompt = f"""You are an expert educational content creator. Your task is to synthesize comprehensive study notes for a specific topic based on provided course materials.
+        prompt = f"""You are an expert educational content creator. Your task is to synthesize high-quality study notes for a specific topic based on provided course materials.
 
 **Topic:** {topic_name}
 **Description:** {topic_description}
@@ -151,30 +159,35 @@ Section: {section}
 {context}
 
 **Instructions:**
-1. Synthesize the information from all sources into cohesive, well-structured study notes
-2. Organize content with clear headings and subheadings
-3. Highlight key concepts, definitions, and important points
-4. Include relevant formulas, equations, or technical details
-5. Cross-reference information from multiple sources when applicable
-6. Use markdown formatting for better readability
-7. Add [Citation: filename, pages] after important facts or quotes
+1. Synthesize all excerpts into clear, cohesive notes for revision.
+2. Use concise markdown with headings, short paragraphs, bullet lists, and inline code where helpful.
+3. Prioritize conceptual understanding, definitions, intuition, and relationships.
+4. Keep it practical for exam prep: include key takeaways and common mistakes.
+5. Keep total length around 700-1100 words.
+6. Do NOT include inline citation tags like [Citation: ...]. A separate citation panel is shown in the UI.
+7. Do NOT include chatty endings (e.g., "If you want, I can...").
+8. Any code snippet, memory layout, or pseudo-code MUST be in a fenced code block with a language tag (e.g. ```c, ```python, ```text). NEVER dump code inline as plain text. Use `inline code` only for short identifiers or expressions.
+9. For math expressions use LaTeX: inline $E = mc^2$ or display $$\\int_0^1 f(x)\\,dx$$. For chemistry use $2H_2 + O_2 \\to 2H_2O$. Do NOT use plain-text math when LaTeX is clearer.
 
 **Format the notes as:**
 # {topic_name}
 
 ## Overview
-[Brief introduction to the topic]
+[Brief introduction]
 
 ## Key Concepts
-[Main concepts with explanations]
+[Bullet list of core ideas]
 
-## Detailed Content
-[Organized sections based on the material]
+## How It Works
+[Mechanisms / relationships / process explanation]
 
-## Summary
-[Concise summary of main takeaways]
+## Common Pitfalls
+[Frequent mistakes and misconceptions]
 
-Generate comprehensive, student-friendly study notes:"""
+## Exam-Ready Recap
+[Concise summary + 5-8 quick recall bullets]
+
+Return markdown only."""
 
         messages = [LLMMessage(role="user", content=prompt)]
 
@@ -185,6 +198,43 @@ Generate comprehensive, student-friendly study notes:"""
         )
 
         return response.content
+
+    def _postprocess_notes_markdown(self, content: str) -> str:
+        """Normalize model output into readable markdown for the notes viewer."""
+        text = (content or "").replace("\r\n", "\n").strip()
+        if not text:
+            return text
+
+        # Remove inline citation tags and chatty tail sections.
+        text = re.sub(r"\s*\[Citation:[^\]]+\]\s*", " ", text, flags=re.IGNORECASE)
+        text = re.sub(r"^\s*If you want, I can:.*$", "", text, flags=re.IGNORECASE | re.MULTILINE)
+        text = re.sub(r"^\s*Generate comprehensive, student-friendly study notes:\s*$", "", text, flags=re.IGNORECASE | re.MULTILINE)
+
+        # Promote bare section labels to markdown headings if model omitted '#'.
+        heading_labels = [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Detailed Content",
+            "Common Pitfalls",
+            "Summary",
+            "Exam-Ready Recap",
+            "Source Materials",
+        ]
+        for label in heading_labels:
+            text = re.sub(
+                rf"(?m)^(?!#)\s*{re.escape(label)}\s*$",
+                f"## {label}",
+                text,
+            )
+
+        # Convert numbered section labels like "1) ...".
+        text = re.sub(r"(?m)^\s*\d+\)\s+(.+)$", r"### \1", text)
+
+        # Collapse extra spacing from cleanup.
+        text = re.sub(r"[ \t]{2,}", " ", text)
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
+        return text
 
     def _extract_citations(self, chunks: List[Dict]) -> List[Dict]:
         """Extract citation metadata from chunks."""
@@ -202,3 +252,80 @@ Generate comprehensive, student-friendly study notes:"""
                 seen_files.add(filename)
 
         return citations
+
+
+async def generate_notes(
+    topic_id: str,
+    topic_name: str,
+    topic_description: str,
+    detail_level: str = "comprehensive",
+    include_examples: bool = True,
+    variation_seed: Optional[int] = None,
+) -> Dict:
+    """
+    Backward-compatible notes generation helper used by tests and legacy callers.
+
+    Returns structured JSON ({title, sections, ...}) rather than markdown text.
+    """
+    chunks = await execute_query(
+        """
+        SELECT
+            mc.chunk_text,
+            mc.section_hierarchy,
+            m.filename,
+            m.category
+        FROM topic_chunk_mappings tcm
+        JOIN material_chunks mc ON tcm.chunk_id = mc.id
+        JOIN materials m ON mc.material_id = m.id
+        WHERE tcm.topic_id = $1
+        ORDER BY tcm.relevance_score DESC
+        LIMIT 15
+        """,
+        topic_id,
+    )
+    if not chunks:
+        raise ValueError(f"No relevant chunks found for topic {topic_id}")
+
+    context_parts: List[str] = []
+    for idx, chunk in enumerate(chunks, 1):
+        text = str(chunk.get("chunk_text") or chunk.get("content") or "").strip()
+        section = str(chunk.get("section_hierarchy") or chunk.get("metadata", {}).get("section") or "N/A")
+        if not text:
+            continue
+        context_parts.append(f"[Chunk {idx}] Section: {section}\n{text}")
+    context = "\n\n".join(context_parts)
+    seed_instruction = (
+        f"\nVariation seed: {variation_seed}\nKeep output consistent for this seed."
+        if variation_seed is not None
+        else ""
+    )
+
+    prompt = f"""Create structured study notes in JSON for this topic.
+
+Topic: {topic_name}
+Description: {topic_description}
+Detail level: {detail_level}
+Include examples: {include_examples}
+{seed_instruction}
+
+Source context:
+{context}
+
+Return strict JSON:
+{{
+  "title": "...",
+  "sections": [
+    {{
+      "heading": "...",
+      "content": "...",
+      "key_points": ["..."]
+    }}
+  ]
+}}
+"""
+    llm = LLMFactory.get_provider()
+    messages = [LLMMessage(role="user", content=prompt)]
+    structured = await llm.generate_structured(messages=messages, use_mini=False)
+    if isinstance(structured, dict):
+        return structured
+    return {"title": topic_name, "sections": []}
