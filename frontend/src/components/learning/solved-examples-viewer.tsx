@@ -1,10 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle, Lightbulb, Code, Sparkles, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { CheckCircle, Lightbulb, Code, Sparkles, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Input } from '@/components/ui/input'
+import { MarkdownBlock, MarkdownInline } from '@/components/ui/markdown'
+import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
 
 interface SolutionStep {
   step_number: number
@@ -34,25 +39,30 @@ export function SolvedExamplesViewer({
   examples,
   metadata,
   topicId,
-  userId,
   isCompleted,
 }: SolvedExamplesViewerProps) {
+  const router = useRouter()
   const [expandedExample, setExpandedExample] = useState<number>(0)
-  const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({})
   const [markingComplete, setMarkingComplete] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [focusText, setFocusText] = useState('')
+  const isMountedRef = useRef(true)
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const toggleStep = (exampleIndex: number, stepNumber: number) => {
-    const key = `${exampleIndex}-${stepNumber}`
-    setExpandedSteps(prev => ({
-      ...prev,
-      [key]: !prev[key],
-    }))
-  }
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const handleMarkComplete = async () => {
     try {
       setMarkingComplete(true)
+      setError(null)
 
       const response = await fetch(`/api/topics/${topicId}/progress`, {
         method: 'POST',
@@ -64,11 +74,14 @@ export function SolvedExamplesViewer({
 
       if (!response.ok) throw new Error('Failed to update progress')
 
-      window.location.reload()
+      if (!isMountedRef.current) return
+      router.refresh()
     } catch (error) {
       console.error('Error marking complete:', error)
-      alert('Failed to update progress')
+      if (!isMountedRef.current) return
+      setError('Failed to update progress')
     } finally {
+      if (!isMountedRef.current) return
       setMarkingComplete(false)
     }
   }
@@ -76,16 +89,24 @@ export function SolvedExamplesViewer({
   const handleGenerateMore = async () => {
     try {
       setRegenerating(true)
+      setError(null)
+
+      const focus = focusText.trim()
+      const preferences: Record<string, any> = {
+        count: metadata?.count || 3,
+        difficulty_level: metadata?.difficulty_level || 'medium',
+        append: true,
+      }
+      if (focus) {
+        preferences.focus = focus
+      }
 
       const response = await fetch(`/api/topics/${topicId}/regenerate-content`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contentType: 'solved_examples',
-          preferences: {
-            count: metadata?.count || 3,
-            difficulty_level: metadata?.difficulty_level || 'medium',
-          },
+          preferences,
         }),
       })
 
@@ -97,11 +118,14 @@ export function SolvedExamplesViewer({
       await pollJobStatus(data.jobId)
 
       // Reload page to show new examples
-      window.location.reload()
+      if (!isMountedRef.current) return
+      router.refresh()
     } catch (error) {
       console.error('Error generating more examples:', error)
-      alert('Failed to generate more examples')
+      if (!isMountedRef.current) return
+      setError('Failed to generate more examples')
     } finally {
+      if (!isMountedRef.current) return
       setRegenerating(false)
     }
   }
@@ -125,7 +149,7 @@ export function SolvedExamplesViewer({
             return
           }
 
-          setTimeout(poll, 2000)
+          pollTimeoutRef.current = setTimeout(poll, 2000)
         } catch (error) {
           reject(error)
         }
@@ -151,7 +175,7 @@ export function SolvedExamplesViewer({
   return (
     <div className="space-y-6">
       {/* Header Card */}
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
@@ -171,25 +195,6 @@ export function SolvedExamplesViewer({
             </div>
 
             <div className="flex gap-2">
-              <Button
-                onClick={handleGenerateMore}
-                disabled={regenerating}
-                variant="outline"
-                size="lg"
-              >
-                {regenerating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    More Examples
-                  </>
-                )}
-              </Button>
-
               {!isCompleted && (
                 <Button
                   onClick={handleMarkComplete}
@@ -202,24 +207,79 @@ export function SolvedExamplesViewer({
             </div>
           </div>
         </CardHeader>
+        <CardContent className="pt-0">
+          <div className="rounded-xl border border-border/60 bg-white/70 p-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+              Focus (optional)
+            </div>
+            <Input
+              value={focusText}
+              onChange={(e) => setFocusText(e.target.value)}
+              placeholder="e.g., more conceptual problems, limiting reagent, practice offsets"
+              className="mt-2"
+            />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Leave blank to cover a broad mix of concepts. New examples will be appended.
+              </p>
+              <Button
+                onClick={handleGenerateMore}
+                disabled={regenerating}
+                variant="outline"
+                size="sm"
+              >
+                {regenerating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Add Examples
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
       </Card>
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Example Selector */}
       {examples.length > 1 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="rounded-2xl border border-border/70 bg-white/70 p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            Choose Example
+          </div>
+          <div className="flex flex-wrap gap-2">
           {examples.map((example, index) => (
-            <Button
-              key={index}
-              variant={expandedExample === index ? 'default' : 'outline'}
-              onClick={() => setExpandedExample(index)}
-              className="flex items-center gap-2"
-            >
-              Example {index + 1}
-              <Badge className={getDifficultyColor(example.difficulty)}>
-                {example.difficulty}
-              </Badge>
-            </Button>
+                <Button
+                  key={index}
+                  variant="outline"
+                  onClick={() => setExpandedExample(index)}
+                  className={`flex items-center gap-2 rounded-xl border ${
+                    expandedExample === index
+                      ? 'border-primary/80 bg-primary text-primary-foreground hover:bg-primary/95 hover:text-primary-foreground [&_*]:text-primary-foreground'
+                      : 'border-border/70 bg-white/80 text-foreground hover:border-primary/35 hover:bg-white'
+                  }`}
+                >
+                  Example {index + 1}
+                  <Badge
+                    className={expandedExample === index
+                      ? 'border-primary-foreground/35 bg-primary-foreground/15 text-primary-foreground'
+                      : getDifficultyColor(example.difficulty)
+                    }
+                  >
+                    {example.difficulty}
+                  </Badge>
+                </Button>
           ))}
+          </div>
         </div>
       )}
 
@@ -234,7 +294,9 @@ export function SolvedExamplesViewer({
             <CardHeader>
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
-                  <CardTitle className="text-xl mb-2">{example.title}</CardTitle>
+                  <CardTitle className="text-xl mb-2">
+                    <MarkdownInline content={example.title} />
+                  </CardTitle>
                   <div className="flex flex-wrap gap-2 mb-3">
                     <Badge className={getDifficultyColor(example.difficulty)}>
                       {example.difficulty}
@@ -250,8 +312,11 @@ export function SolvedExamplesViewer({
             </CardHeader>
             <CardContent>
               <div className="bg-muted/50 p-4 rounded-lg">
-                <p className="font-medium mb-2">Problem:</p>
-                <p className="text-foreground">{example.problem_statement}</p>
+                <p className="font-medium mb-2">Problem Statement</p>
+                <MarkdownBlock
+                  content={formatLearningMarkdown(example.problem_statement)}
+                  variant="compact"
+                />
               </div>
             </CardContent>
           </Card>
@@ -264,50 +329,51 @@ export function SolvedExamplesViewer({
             </h3>
 
             {example.solution_steps.map((step) => {
-              const key = `${exampleIndex}-${step.step_number}`
-              const isExpanded = expandedSteps[key] !== false // Default to expanded
-
               return (
-                <Card key={step.step_number}>
-                  <CardHeader
-                    className="cursor-pointer hover:bg-accent/50 transition-colors"
-                    onClick={() => toggleStep(exampleIndex, step.step_number)}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <Badge variant="outline" className="font-mono">
-                            Step {step.step_number}
-                          </Badge>
-                          <CardTitle className="text-base">
-                            {step.description}
-                          </CardTitle>
-                        </div>
+                <Card
+                  id={`example-${exampleIndex}-step-${step.step_number}`}
+                  key={step.step_number}
+                  className="border border-primary/10"
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-sm font-semibold text-primary">
+                        {step.step_number}
                       </div>
-                      {isExpanded ? (
-                        <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                      )}
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          Step {step.step_number}
+                        </div>
+                        <CardTitle className="text-base leading-snug mt-1">
+                          <MarkdownInline content={step.description} />
+                        </CardTitle>
+                      </div>
                     </div>
                   </CardHeader>
-
-                  {isExpanded && (
-                    <CardContent className="space-y-4">
-                      {/* Work */}
-                      <div className="bg-accent/30 p-4 rounded-lg font-mono text-sm">
-                        {step.work}
+                  <CardContent className="space-y-4">
+                    <div className="rounded-xl border border-amber-200/50 bg-amber-50/60 p-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700/80 mb-2">
+                        Working Out
                       </div>
-
-                      {/* Explanation */}
-                      <div className="flex gap-3 p-4 bg-muted/50 rounded-lg">
-                        <Lightbulb className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
-                        <p className="text-sm text-muted-foreground">
-                          {step.explanation}
-                        </p>
+                      <MarkdownBlock
+                        content={formatLearningMarkdown(step.work)}
+                        variant="compact"
+                      />
+                    </div>
+                    <div className="flex gap-3 rounded-xl border border-border/60 bg-white/70 p-4">
+                      <Lightbulb className="h-5 w-5 text-primary mt-0.5 flex-shrink-0" />
+                      <div className="flex-1">
+                        <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2">
+                          Reasoning
+                        </div>
+                        <MarkdownBlock
+                          content={formatLearningMarkdown(step.explanation)}
+                          variant="compact"
+                          className="text-muted-foreground"
+                        />
                       </div>
-                    </CardContent>
-                  )}
+                    </div>
+                  </CardContent>
                 </Card>
               )
             })}
@@ -323,7 +389,11 @@ export function SolvedExamplesViewer({
             </CardHeader>
             <CardContent>
               <div className="bg-primary/5 p-4 rounded-lg">
-                <p className="font-semibold text-lg">{example.final_answer}</p>
+                <MarkdownBlock
+                  content={formatLearningMarkdown(example.final_answer)}
+                  variant="compact"
+                  className="text-base font-semibold leading-7 text-foreground"
+                />
               </div>
             </CardContent>
           </Card>
