@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   ArrowLeft,
   FileText,
@@ -19,9 +20,11 @@ import {
   CheckCircle2,
   AlertCircle,
   Trash2,
+  Mic,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
+import { NextActionsCard } from '@/components/learning/next-actions-card';
 
 interface Material {
   id: string;
@@ -73,19 +76,35 @@ interface Project {
 
 interface ProjectDashboardProps {
   project: Project;
+  initialTab?: 'materials' | 'topics' | 'exams';
 }
 
-export default function ProjectDashboard({ project }: ProjectDashboardProps) {
+export default function ProjectDashboard({ project, initialTab }: ProjectDashboardProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'materials' | 'topics' | 'exams'>('materials');
+  const confirmedTopicsCount = project.topics.filter((topic) => topic.userConfirmed).length;
+  const unconfirmedTopicsCount = project.topics.length - confirmedTopicsCount;
+  const needsTopicConfirmation = unconfirmedTopicsCount > 0;
+  const resolvedInitialTab =
+    initialTab ||
+    (needsTopicConfirmation && project.topics.length > 0 ? 'topics' : 'materials');
+  const [activeTab, setActiveTab] = useState<'materials' | 'topics' | 'exams'>(resolvedInitialTab);
+
+  useEffect(() => {
+    setActiveTab(resolvedInitialTab);
+  }, [resolvedInitialTab]);
   const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null);
+  const [confirmingTopics, setConfirmingTopics] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const validMaterialsCount = project.materials.filter(
+    (material) => material.validationStatus === 'valid'
+  ).length;
+  const pendingMaterialsCount = project.materials.filter(
+    (material) => material.validationStatus === 'pending'
+  ).length;
 
-  const handleDeleteMaterial = async (materialId: string, filename: string) => {
-    if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
-      return;
-    }
-
+  const handleDeleteMaterial = async (materialId: string) => {
     setDeletingMaterialId(materialId);
+    setError(null);
 
     try {
       const response = await fetch(`/api/materials/${materialId}`, {
@@ -100,9 +119,33 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
       router.refresh();
     } catch (error) {
       console.error('Error deleting material:', error);
-      alert('Failed to delete material. Please try again.');
+      setError('Failed to delete material. Please try again.');
     } finally {
       setDeletingMaterialId(null);
+    }
+  };
+
+  const handleQuickConfirmTopics = async () => {
+    setConfirmingTopics(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/topics/confirm`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload?.error?.message || 'Failed to confirm topics');
+      }
+
+      setActiveTab('topics');
+      router.refresh();
+    } catch (confirmError) {
+      console.error('Error confirming topics:', confirmError);
+      setError(confirmError instanceof Error ? confirmError.message : 'Failed to confirm topics');
+    } finally {
+      setConfirmingTopics(false);
     }
   };
 
@@ -149,9 +192,12 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
   };
 
   const getStatusBadge = (status: string) => {
+    if (needsTopicConfirmation) {
+      return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Topics Review</Badge>;
+    }
     switch (status) {
       case 'setup':
-        return <Badge variant="outline">Setup</Badge>;
+        return <Badge variant="outline">Setup in progress</Badge>;
       case 'topics_pending':
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Topics Review</Badge>;
       case 'active':
@@ -163,55 +209,99 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
     }
   };
 
+  const getReadinessLabel = (status: string) => {
+    if (needsTopicConfirmation) {
+      return 'Awaiting topic confirmation';
+    }
+    if (status === 'setup' && validMaterialsCount > 0) {
+      return pendingMaterialsCount > 0 ? 'Processing materials' : 'Ready to extract topics';
+    }
+    switch (status) {
+      case 'setup':
+        return 'Setup in progress';
+      case 'topics_pending':
+        return 'Awaiting topic confirmation';
+      case 'active':
+        return 'Ready for study';
+      case 'completed':
+        return 'Course cycle completed';
+      default:
+        return status.replaceAll('_', ' ');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-4">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
-              </Button>
-            </Link>
+      <div className="hero-panel">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-4">
+              <Link href="/dashboard">
+                <Button variant="back" size="back">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Dashboard
+                </Button>
+              </Link>
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">
+              Project Overview
+            </div>
+            <h1 className="text-4xl font-semibold tracking-tight">{project.name}</h1>
+            {project.description && (
+              <p className="max-w-2xl text-muted-foreground">{project.description}</p>
+            )}
+            <div className="flex items-center gap-2 mt-2">
+              {getStatusBadge(project.status)}
+              <span className="text-sm text-muted-foreground">
+                Created {formatDistanceToNow(new Date(project.createdAt), { addSuffix: true })}
+              </span>
+            </div>
           </div>
-          <h1 className="text-4xl font-bold">{project.name}</h1>
-          {project.description && (
-            <p className="text-muted-foreground">{project.description}</p>
-          )}
-          <div className="flex items-center gap-2 mt-2">
-            {getStatusBadge(project.status)}
-            <span className="text-sm text-muted-foreground">
-              Created {formatDistanceToNow(new Date(project.createdAt), { addSuffix: true })}
-            </span>
+          <div className="rounded-2xl border border-border/70 bg-white/75 px-4 py-3 text-right">
+            <div className="text-xs uppercase tracking-[0.12em] text-muted-foreground">Readiness</div>
+            <div className="text-xl font-semibold">{getReadinessLabel(project.status)}</div>
           </div>
         </div>
       </div>
 
       {/* Status Alert */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       {project.status === 'setup' && project.materials.length === 0 && (
         <Alert>
           <Upload className="h-4 w-4" />
           <AlertDescription>
-            Get started by uploading your study materials (PDFs). We&apos;ll process them and extract
-            key topics automatically.
+            Get started by uploading your study materials (PDF, DOCX, PPTX, DOC). We&apos;ll process them, then you can
+            extract and confirm your topic list.
           </AlertDescription>
         </Alert>
       )}
 
-      {project.status === 'topics_pending' && (
+      {needsTopicConfirmation && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Topics have been extracted! Review and confirm them in the Topics tab before generating
-            study content.
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+            <span>
+              Topics are ready to review. Confirm the final list before generating study content.
+            </span>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => router.push(`/projects/${project.id}/topics/review`)}>
+                Review Topics
+              </Button>
+              <Button size="sm" onClick={handleQuickConfirmTopics} disabled={confirmingTopics}>
+                {confirmingTopics ? 'Confirming...' : 'Confirm Topics'}
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       )}
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -250,42 +340,47 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b">
-        <button
-          onClick={() => setActiveTab('materials')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'materials'
-              ? 'border-b-2 border-primary text-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Materials ({project.materials.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('topics')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'topics'
-              ? 'border-b-2 border-primary text-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Topics ({project.topics.length})
-        </button>
-        <button
-          onClick={() => setActiveTab('exams')}
-          className={`px-4 py-2 font-medium transition-colors ${
-            activeTab === 'exams'
-              ? 'border-b-2 border-primary text-primary'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          Exams ({project.exams.length})
-        </button>
+      <div className="mx-auto w-full max-w-6xl">
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveTab('materials')}
+            className={`tab-pill ${
+              activeTab === 'materials'
+                ? 'tab-pill-active'
+                : ''
+            }`}
+          >
+            Materials ({project.materials.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('topics')}
+            className={`tab-pill ${
+              activeTab === 'topics'
+                ? 'tab-pill-active'
+                : ''
+            }`}
+          >
+            Topics ({project.topics.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('exams')}
+            className={`tab-pill ${
+              activeTab === 'exams'
+                ? 'tab-pill-active'
+                : ''
+            }`}
+          >
+            Exams ({project.exams.length})
+          </button>
+        </div>
       </div>
 
-      {/* Materials Tab */}
-      {activeTab === 'materials' && (
-        <div className="space-y-4">
+      <div className="mx-auto w-full max-w-6xl space-y-4">
+        <NextActionsCard projectId={project.id} compact autoStartBatchGeneration />
+
+        {/* Materials Tab */}
+        {activeTab === 'materials' && (
+          <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">Study Materials</h2>
             <Button onClick={() => router.push(`/projects/${project.id}/upload`)}>
@@ -294,9 +389,29 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
             </Button>
           </div>
 
+          {project.topics.length === 0 && validMaterialsCount > 0 && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  {pendingMaterialsCount > 0
+                    ? 'Materials are still processing. You can continue once processing completes.'
+                    : 'Materials are validated. Continue to extract and confirm your topic list.'}
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => router.push(`/projects/${project.id}/topics/review`)}
+                  disabled={pendingMaterialsCount > 0}
+                >
+                  {pendingMaterialsCount > 0 ? 'Processing...' : 'Continue to Topics'}
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {project.materials.length === 0 ? (
             <Card>
-              <CardContent className="pt-6 text-center">
+              <CardContent className="pt-6 md:pt-6 text-center">
                 <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-4">No materials uploaded yet</p>
                 <Button onClick={() => router.push(`/projects/${project.id}/upload`)}>
@@ -308,16 +423,16 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
           ) : (
             <div className="space-y-3">
               {project.materials.map((material) => (
-                <Card key={material.id}>
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-4 flex-1">
-                        <div className="p-2 rounded-lg bg-accent">
+                <Card key={material.id} className="overflow-hidden">
+                  <CardContent className="py-5 md:py-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 flex-1 items-center gap-4">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/70">
                           {getCategoryIcon(material.category)}
                         </div>
-                        <div className="flex-1">
-                          <div className="font-medium">{material.filename}</div>
-                          <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-base font-medium">{material.filename}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                             <Badge variant="outline">{getCategoryLabel(material.category)}</Badge>
                             <span>{formatFileSize(material.sizeBytes)}</span>
                             <span>
@@ -327,74 +442,143 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
                             </span>
                           </div>
                           {material.validationStatus === 'valid' && (
-                            <div className="flex items-center gap-1 mt-2 text-sm text-green-600">
+                            <div className="mt-2 flex items-center gap-1 text-sm text-green-600">
                               <CheckCircle2 className="h-4 w-4" />
                               Validated
                             </div>
                           )}
                           {material.validationStatus === 'invalid' && (
-                            <div className="flex items-center gap-1 mt-2 text-sm text-red-600">
+                            <div className="mt-2 flex items-center gap-1 text-sm text-red-600">
                               <AlertCircle className="h-4 w-4" />
                               {material.validationNotes || 'Validation failed'}
                             </div>
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteMaterial(material.id, material.filename);
-                        }}
+                      <ConfirmDialog
+                        title="Delete material?"
+                        description={`"${material.filename}" will be removed permanently.`}
+                        confirmLabel="Delete"
+                        variant="destructive"
                         disabled={deletingMaterialId === material.id}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                        onConfirm={() => handleDeleteMaterial(material.id)}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="self-center"
+                            onClick={(event) => event.stopPropagation()}
+                            disabled={deletingMaterialId === material.id}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        }
+                      />
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Topics Tab */}
-      {activeTab === 'topics' && (
-        <div className="space-y-4">
+        {/* Topics Tab */}
+        {activeTab === 'topics' && (
+          <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">Learning Topics</h2>
-            <Button onClick={() => router.push(`/projects/${project.id}/generate-exam`)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Sample Exam
-            </Button>
+            <div>
+              <h2 className="text-2xl font-bold">Learning Topics</h2>
+              {needsTopicConfirmation && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {unconfirmedTopicsCount} topic{unconfirmedTopicsCount !== 1 ? 's' : ''} pending confirmation
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {needsTopicConfirmation && (
+                <Button
+                  variant="outline"
+                  onClick={() => router.push(`/projects/${project.id}/topics/review`)}
+                >
+                  Review Topics
+                </Button>
+              )}
+              {needsTopicConfirmation && (
+                <Button
+                  onClick={handleQuickConfirmTopics}
+                  disabled={confirmingTopics}
+                >
+                  {confirmingTopics ? 'Confirming...' : 'Confirm Topics'}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/projects/${project.id}/voice-sprint`)}
+                disabled={project.topics.length === 0}
+              >
+                <Mic className="h-4 w-4 mr-2" />
+                Voice Sprint
+              </Button>
+              <Button
+                onClick={() => router.push(`/projects/${project.id}/generate-exam`)}
+                disabled={confirmedTopicsCount === 0}
+                title={confirmedTopicsCount === 0 ? 'Confirm topics before creating an exam' : undefined}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Create Sample Exam
+              </Button>
+            </div>
           </div>
 
           {project.topics.length === 0 ? (
             <Card>
-              <CardContent className="pt-6 text-center">
+              <CardContent className="pt-6 md:pt-6 text-center">
                 <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-4">
-                  No topics extracted yet. Upload materials first.
+                  No topics extracted yet.
                 </p>
+                {validMaterialsCount > 0 ? (
+                  <Button onClick={() => router.push(`/projects/${project.id}/topics/review`)}>
+                    Extract Topics
+                  </Button>
+                ) : (
+                  <Button variant="outline" onClick={() => router.push(`/projects/${project.id}/upload`)}>
+                    Upload Materials
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-3">
+              {needsTopicConfirmation && (
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Confirm topics to unlock exam generation and stabilize your next study actions.
+                  </AlertDescription>
+                </Alert>
+              )}
               {project.topics.map((topic) => {
                 const progress = getTopicProgress(topic);
                 return (
                   <Card
                     key={topic.id}
-                    className="cursor-pointer hover:bg-accent transition-colors"
+                    className="cursor-pointer transition hover:-translate-y-0.5 hover:border-primary/35"
                     onClick={() => router.push(`/projects/${project.id}/topics/${topic.id}`)}
                   >
-                    <CardContent className="pt-6">
+                    <CardContent className="py-5 md:py-5">
                       <div className="space-y-3">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <div className="font-semibold text-lg">{topic.name}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="font-semibold text-lg">{topic.name}</div>
+                              {!topic.userConfirmed && needsTopicConfirmation && (
+                                <Badge variant="secondary" className="text-xs">
+                                  Needs confirmation
+                                </Badge>
+                              )}
+                            </div>
                             {topic.description && (
                               <p className="text-sm text-muted-foreground mt-1">
                                 {topic.description}
@@ -435,12 +619,12 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
               })}
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {/* Exams Tab */}
-      {activeTab === 'exams' && (
-        <div className="space-y-4">
+        {/* Exams Tab */}
+        {activeTab === 'exams' && (
+          <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">Sample Exams</h2>
             <Button onClick={() => router.push(`/projects/${project.id}/generate-exam`)}>
@@ -451,7 +635,7 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
 
           {project.exams.length === 0 ? (
             <Card>
-              <CardContent className="pt-6 text-center">
+              <CardContent className="pt-6 md:pt-6 text-center">
                 <ClipboardCheck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <p className="text-muted-foreground mb-4">No sample exams created yet</p>
                 <Button onClick={() => router.push(`/projects/${project.id}/generate-exam`)}>
@@ -465,10 +649,10 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
               {project.exams.map((exam) => (
                 <Card
                   key={exam.id}
-                  className="cursor-pointer hover:bg-accent transition-colors"
+                  className="cursor-pointer transition hover:-translate-y-0.5 hover:border-primary/35"
                   onClick={() => router.push(`/exams/${exam.id}`)}
                 >
-                  <CardContent className="pt-6">
+                  <CardContent className="py-5 md:py-5">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="font-semibold text-lg">{exam.name}</div>
@@ -508,8 +692,9 @@ export default function ProjectDashboard({ project }: ProjectDashboardProps) {
               ))}
             </div>
           )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
