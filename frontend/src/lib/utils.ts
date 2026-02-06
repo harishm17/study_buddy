@@ -38,11 +38,21 @@ export function formatRelativeTime(date: Date): string {
   return date.toLocaleDateString()
 }
 
+const SUPPORTED_MATERIAL_EXTENSIONS = ['.pdf', '.docx', '.pptx', '.doc']
+
 /**
- * Validate file type (PDF only)
+ * Validate file type for supported study materials.
+ */
+export function isValidStudyMaterial(file: File): boolean {
+  const filename = file.name.toLowerCase()
+  return SUPPORTED_MATERIAL_EXTENSIONS.some((ext) => filename.endsWith(ext))
+}
+
+/**
+ * Backward-compatible alias.
  */
 export function isValidPDF(file: File): boolean {
-  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+  return isValidStudyMaterial(file)
 }
 
 /**
