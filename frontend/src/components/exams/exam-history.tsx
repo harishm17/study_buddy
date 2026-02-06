@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -32,11 +32,7 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchHistory();
-  }, [examId]);
-
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch(`/api/exams/${examId}/submissions`);
@@ -54,7 +50,17 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [examId]);
+
+  useEffect(() => {
+    fetchHistory();
+  }, [fetchHistory]);
+
+  const sortedSubmissions = useMemo(() => {
+    return [...submissions].sort(
+      (a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime()
+    );
+  }, [submissions]);
 
   if (isLoading) {
     return (
@@ -94,12 +100,12 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
     <div className="space-y-6">
       {/* Stats Overview */}
       {stats && (
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Your Performance</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center">
                 <div className="flex items-center justify-center gap-2 mb-2">
                   <Award className="h-5 w-5 text-green-600" />
@@ -144,10 +150,10 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {submissions.slice(0, 5).map((submission, index) => (
+            {sortedSubmissions.slice(0, 5).map((submission, index) => (
               <div
                 key={submission.id}
-                className="flex items-center justify-between p-4 rounded-lg border hover:bg-accent transition-colors"
+                className="flex items-center justify-between rounded-xl border border-border/70 bg-white/70 p-4 transition hover:border-primary/30 hover:bg-white"
               >
                 <div className="flex items-center gap-4">
                   <div className="flex flex-col">
@@ -200,9 +206,9 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
             ))}
           </div>
 
-          {submissions.length > 5 && (
+          {sortedSubmissions.length > 5 && (
             <p className="text-xs text-muted-foreground text-center mt-4">
-              Showing 5 most recent attempts
+              Showing 5 of {sortedSubmissions.length} attempts
             </p>
           )}
         </CardContent>

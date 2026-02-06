@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, Trash2, Check, X, Sparkles } from 'lucide-react'
+import { Loader2, Plus, Trash2, Check, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useJobPolling } from '@/hooks/useJobPolling'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 interface Topic {
   id: string
@@ -27,14 +30,12 @@ export function TopicReview({ projectId }: TopicReviewProps) {
   const [extracting, setExtracting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [newTopicName, setNewTopicName] = useState('')
-  const [editingTopic, setEditingTopic] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 120_000 })
 
-  useEffect(() => {
-    fetchTopics()
-  }, [projectId])
-
-  const fetchTopics = async () => {
+  const fetchTopics = useCallback(async () => {
     try {
+      setError(null)
       const response = await fetch(`/api/projects/${projectId}/topics`)
       if (!response.ok) throw new Error('Failed to fetch topics')
 
@@ -42,74 +43,63 @@ export function TopicReview({ projectId }: TopicReviewProps) {
       setTopics(data.topics)
     } catch (error) {
       console.error('Error fetching topics:', error)
+      setError('Unable to load topics.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [projectId])
+
+  useEffect(() => {
+    fetchTopics()
+  }, [fetchTopics])
+
+  useEffect(() => {
+    return () => {
+      stopPolling()
+    }
+  }, [stopPolling])
 
   const handleExtractTopics = async () => {
     try {
       setExtracting(true)
+      setError(null)
 
       const response = await fetch(`/api/projects/${projectId}/extract-topics`, {
         method: 'POST',
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to extract topics')
+        const error = await response.json().catch(() => ({}))
+        const message = typeof error?.error === 'string'
+          ? error.error
+          : error?.error?.message || 'Failed to extract topics'
+        throw new Error(message)
       }
 
       const data = await response.json()
       const jobId = data.jobId
 
       // Poll for job completion
-      await pollJobStatus(jobId)
+      const pollResult = await pollJob(jobId)
+      if (pollResult.state !== 'completed') {
+        throw new Error(pollResult.error || 'Topic extraction failed')
+      }
 
       // Refresh topics list
       await fetchTopics()
     } catch (error) {
       console.error('Error extracting topics:', error)
-      alert(error instanceof Error ? error.message : 'Failed to extract topics')
+      setError(error instanceof Error ? error.message : 'Failed to extract topics')
     } finally {
       setExtracting(false)
     }
-  }
-
-  const pollJobStatus = async (jobId: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const poll = async () => {
-        try {
-          const response = await fetch(`/api/jobs/${jobId}`)
-          if (!response.ok) throw new Error('Failed to fetch job status')
-
-          const job = await response.json()
-
-          if (job.status === 'completed') {
-            resolve()
-            return
-          }
-
-          if (job.status === 'failed') {
-            reject(new Error(job.errorMessage || 'Topic extraction failed'))
-            return
-          }
-
-          // Continue polling
-          setTimeout(poll, 2000)
-        } catch (error) {
-          reject(error)
-        }
-      }
-
-      poll()
-    })
   }
 
   const handleAddTopic = async () => {
     if (!newTopicName.trim()) return
 
     try {
+      setError(null)
       const response = await fetch(`/api/projects/${projectId}/topics`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -125,14 +115,13 @@ export function TopicReview({ projectId }: TopicReviewProps) {
       setNewTopicName('')
     } catch (error) {
       console.error('Error adding topic:', error)
-      alert('Failed to add topic')
+      setError('Failed to add topic')
     }
   }
 
   const handleDeleteTopic = async (topicId: string) => {
-    if (!confirm('Are you sure you want to delete this topic?')) return
-
     try {
+      setError(null)
       const response = await fetch(`/api/topics/${topicId}`, {
         method: 'DELETE',
       })
@@ -142,37 +131,26 @@ export function TopicReview({ projectId }: TopicReviewProps) {
       setTopics(topics.filter(t => t.id !== topicId))
     } catch (error) {
       console.error('Error deleting topic:', error)
-      alert('Failed to delete topic')
+      setError('Failed to delete topic')
     }
   }
 
   const handleConfirmTopics = async () => {
     try {
       setSaving(true)
-
-      // Confirm all topics
-      await Promise.all(
-        topics.map(topic =>
-          fetch(`/api/topics/${topic.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userConfirmed: true }),
-          })
-        )
-      )
-
-      // Update project status
-      await fetch(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'active' }),
+      setError(null)
+      const response = await fetch(`/api/projects/${projectId}/topics/confirm`, {
+        method: 'POST',
       })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload?.error?.message || 'Failed to confirm topics')
+      }
 
-      // Optionally navigate back to project page after confirmation
-      router.push(`/projects/${projectId}`)
+      router.push(`/projects/${projectId}?tab=topics`)
     } catch (error) {
       console.error('Error confirming topics:', error)
-      alert('Failed to confirm topics')
+      setError('Failed to confirm topics')
     } finally {
       setSaving(false)
     }
@@ -189,7 +167,7 @@ export function TopicReview({ projectId }: TopicReviewProps) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader>
           <CardTitle>Topic Extraction</CardTitle>
           <CardDescription>
@@ -197,6 +175,11 @@ export function TopicReview({ projectId }: TopicReviewProps) {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
           {topics.length === 0 ? (
             <Button
               onClick={handleExtractTopics}
@@ -254,7 +237,7 @@ export function TopicReview({ projectId }: TopicReviewProps) {
               {topics.map((topic, index) => (
                 <div
                   key={topic.id}
-                  className="border rounded-lg p-4 hover:bg-accent/5 transition-colors"
+                  className="rounded-xl border border-border/70 bg-white/70 p-4 transition hover:border-primary/35 hover:bg-white"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
@@ -290,19 +273,28 @@ export function TopicReview({ projectId }: TopicReviewProps) {
                       )}
                     </div>
 
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteTopic(topic.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <ConfirmDialog
+                      title="Delete topic?"
+                      description={`"${topic.name}" and its generated content will be removed.`}
+                      confirmLabel="Delete"
+                      variant="destructive"
+                      onConfirm={() => handleDeleteTopic(topic.id)}
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
                   </div>
                 </div>
               ))}
 
               {/* Add Topic */}
-              <div className="border-2 border-dashed rounded-lg p-4">
+              <div className="rounded-xl border-2 border-dashed border-border/80 bg-white/60 p-4">
                 <div className="flex gap-2">
                   <input
                     type="text"
@@ -310,7 +302,7 @@ export function TopicReview({ projectId }: TopicReviewProps) {
                     value={newTopicName}
                     onChange={(e) => setNewTopicName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddTopic()}
-                    className="flex-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="flex-1 rounded-xl border border-input/80 bg-white/90 px-3 py-2 text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   />
                   <Button
                     onClick={handleAddTopic}
