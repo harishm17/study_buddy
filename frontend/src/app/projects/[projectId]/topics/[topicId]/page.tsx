@@ -7,17 +7,30 @@ import { notFound } from 'next/navigation'
 import { requireAuth } from '@/lib/auth/get-session'
 import { prisma } from '@/lib/db/prisma'
 import { TopicLearningInterface } from '@/components/learning/topic-learning-interface'
+import { PageShell } from '@/components/ui/page-shell'
+
+type TopicTab =
+  | 'notes'
+  | 'solved_examples'
+  | 'interactive_examples'
+  | 'quiz'
+  | 'voice_drill'
+  | 'generate'
 
 interface TopicPageProps {
   params: Promise<{
     projectId: string
     topicId: string
   }>
+  searchParams?: Promise<{
+    tab?: string
+  }>
 }
 
-export default async function TopicPage({ params }: TopicPageProps) {
+export default async function TopicPage({ params, searchParams }: TopicPageProps) {
   const session = await requireAuth()
   const { projectId, topicId } = await params
+  const resolvedSearchParams = searchParams ? await searchParams : undefined
 
   // Fetch topic with content and progress
   const topic = await prisma.topic.findFirst({
@@ -38,6 +51,16 @@ export default async function TopicPage({ params }: TopicPageProps) {
       content: {
         orderBy: {
           createdAt: 'desc',
+        },
+      },
+      topicQuizzes: {
+        orderBy: {
+          createdAt: 'desc',
+        },
+        select: {
+          id: true,
+          questions: true,
+          createdAt: true,
         },
       },
       progress: {
@@ -79,12 +102,13 @@ export default async function TopicPage({ params }: TopicPageProps) {
   })
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-7xl">
+    <PageShell>
       <TopicLearningInterface
         topic={topic}
         allTopics={allTopics}
         userId={session.user.id}
+        initialTab={(resolvedSearchParams?.tab as TopicTab | undefined) ?? null}
       />
-    </div>
+    </PageShell>
   )
 }

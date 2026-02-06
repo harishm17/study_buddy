@@ -1,9 +1,17 @@
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { JetBrains_Mono, Manrope } from "next/font/google"
 import "./globals.css"
 import { SessionProvider } from "@/components/providers/session-provider"
 
-const inter = Inter({ subsets: ["latin"] })
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-sans",
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+})
 
 export const metadata: Metadata = {
   title: "StudyBuddy - AI-Powered Learning Platform",
@@ -17,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${manrope.variable} ${jetbrainsMono.variable}`}>
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

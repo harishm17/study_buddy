@@ -7,6 +7,7 @@ import { MaterialUpload } from '@/components/materials/material-upload';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { PageHeader, PageShell } from '@/components/ui/page-shell';
 
 interface UploadPageProps {
   params: Promise<{
@@ -18,7 +19,7 @@ export default async function UploadPage({ params }: UploadPageProps) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    redirect('/auth/signin');
+    redirect('/login');
   }
 
   const { projectId } = await params;
@@ -40,26 +41,25 @@ export default async function UploadPage({ params }: UploadPageProps) {
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-4xl">
-      <div className="mb-6">
-        <Link href={`/projects/${projectId}`}>
-          <Button variant="ghost" className="mb-4">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Project
-          </Button>
-        </Link>
-        <h1 className="text-3xl font-bold">Upload Study Materials</h1>
-        <p className="text-muted-foreground mt-2">
-          Upload PDF files for <strong>{project.name}</strong>
-        </p>
-      </div>
-
+    <PageShell className="max-w-5xl">
+      <PageHeader
+        eyebrow="Materials"
+        title="Upload Study Materials"
+        description={`Add study files for ${project.name} (PDF, DOCX, PPTX, DOC). Files are validated and queued for processing automatically.`}
+        actions={
+          <Link href={`/projects/${projectId}`}>
+            <Button variant="back" size="back">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Project
+            </Button>
+          </Link>
+        }
+      />
       <Suspense fallback={<div>Loading upload form...</div>}>
         <MaterialUpload
           projectId={projectId}
         />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }
-
