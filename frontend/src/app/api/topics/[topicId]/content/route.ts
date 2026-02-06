@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
+import type { Prisma } from '@prisma/client'
 
 export async function GET(
   request: NextRequest,
@@ -35,7 +36,7 @@ export async function GET(
     }
 
     // Build where clause
-    const where: any = { topicId }
+    const where: Prisma.TopicContentWhereInput = { topicId }
     if (contentType) {
       where.contentType = contentType
     }

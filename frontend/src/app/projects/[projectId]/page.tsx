@@ -4,21 +4,31 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import ProjectDashboard from '@/components/projects/project-dashboard';
+import { PageShell } from '@/components/ui/page-shell';
 
 interface ProjectPageProps {
   params: Promise<{
     projectId: string;
   }>;
+  searchParams?: Promise<{
+    tab?: string;
+  }>;
 }
 
-export default async function ProjectPage({ params }: ProjectPageProps) {
+export default async function ProjectPage({ params, searchParams }: ProjectPageProps) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    redirect('/auth/signin');
+    redirect('/login');
   }
 
   const { projectId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const requestedTab = resolvedSearchParams?.tab;
+  const initialTab =
+    requestedTab === 'materials' || requestedTab === 'topics' || requestedTab === 'exams'
+      ? requestedTab
+      : undefined;
 
   // Fetch project with all related data
   const project = await prisma.project.findFirst({
@@ -57,9 +67,10 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-7xl">
+    <PageShell>
       <Suspense fallback={<div>Loading project...</div>}>
         <ProjectDashboard
+          initialTab={initialTab}
           project={{
             id: project.id,
             name: project.name,
@@ -103,6 +114,6 @@ export default async function ProjectPage({ params }: ProjectPageProps) {
           }}
         />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

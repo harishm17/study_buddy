@@ -3,9 +3,20 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { z } from 'zod';
+import { createHash } from 'crypto';
+import { stableStringify } from '@/lib/utils/stable-json';
+import {
+  apiError,
+  ApiErrorCode,
+  apiInternal,
+  zodDetails,
+} from '@/lib/api/errors';
+import { ensureAiGenerationReady } from '@/lib/api/ai-preflight';
 
 const submitExamSchema = z.object({
-  answers: z.record(z.any()), // Map of questionIndex -> answer
+  answers: z.record(
+    z.union([z.string(), z.number(), z.boolean(), z.null()])
+  ), // Map of questionIndex -> answer
 });
 
 export async function POST(
@@ -39,17 +50,55 @@ export async function POST(
       return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
     }
 
+    const preflightError = await ensureAiGenerationReady();
+    if (preflightError) {
+      return preflightError;
+    }
+
     const body = await req.json();
     const validation = submitExamSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
-        { status: 400 }
+      return apiError(
+        ApiErrorCode.INVALID_INPUT,
+        'Invalid input',
+        zodDetails(validation.error),
+        400
       );
     }
 
     const { answers } = validation.data;
+    const questionsPayload = Array.isArray(exam.questions) ? exam.questions : [];
+    const answersFingerprint = createHash('sha256')
+      .update(stableStringify(answers))
+      .digest('hex');
+    const idempotencyKey = `${examId}:${answersFingerprint}`;
+
+    const existingJob = await prisma.processingJob.findFirst({
+      where: {
+        userId: session.user.id,
+        projectId: exam.projectId,
+        jobType: 'grade_exam',
+        status: { in: ['pending', 'processing'] },
+        inputData: {
+          path: ['idempotencyKey'],
+          equals: idempotencyKey,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingJob) {
+      return NextResponse.json({
+        submissionId: existingJob.inputData && typeof existingJob.inputData === 'object'
+          ? (existingJob.inputData as { submissionId?: string }).submissionId
+          : null,
+        jobId: existingJob.id,
+        status: existingJob.status === 'processing' ? 'processing' : 'queued',
+        message: 'Exam grading already in progress',
+        estimatedSeconds: 90,
+      });
+    }
 
     // Create exam submission
     const submission = await prisma.examSubmission.create({
@@ -67,11 +116,13 @@ export async function POST(
         projectId: exam.projectId,
         jobType: 'grade_exam',
         status: 'pending',
+        stage: 'grading',
         inputData: {
           submissionId: submission.id,
           examId,
           answers,
-          questions: exam.questions,
+          questions: questionsPayload,
+          idempotencyKey,
         },
       },
     });
@@ -83,18 +134,23 @@ export async function POST(
         job.id,
         submission.id,
         examId,
-        exam.questions as any[],
+        questionsPayload as Record<string, unknown>[],
         answers
       );
     } catch (error) {
       console.error('Error enqueuing grading job:', error);
+      const retryable = typeof (error as { retryable?: unknown })?.retryable === 'boolean'
+        ? Boolean((error as { retryable: boolean }).retryable)
+        : true
 
       // Update job status to failed
       await prisma.processingJob.update({
         where: { id: job.id },
         data: {
           status: 'failed',
+          errorCode: retryable ? 'ENQUEUE_FAILED' : 'ENQUEUE_PERMANENT',
           errorMessage: 'Failed to start exam grading',
+          retryable,
           completedAt: new Date(),
         },
       });
@@ -108,13 +164,12 @@ export async function POST(
     return NextResponse.json({
       submissionId: submission.id,
       jobId: job.id,
-      status: 'pending',
+      status: 'queued',
+      message: 'Exam submitted and grading started',
+      estimatedSeconds: 90,
     });
   } catch (error) {
     console.error('Error submitting exam:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiInternal('Internal server error');
   }
 }

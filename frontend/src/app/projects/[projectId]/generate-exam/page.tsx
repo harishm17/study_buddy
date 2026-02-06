@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import ExamGenerationPage from '@/components/exams/exam-generation-page';
+import { PageShell } from '@/components/ui/page-shell';
 
 interface GenerateExamPageProps {
   params: Promise<{
@@ -15,7 +16,7 @@ export default async function GenerateExamPage({ params }: GenerateExamPageProps
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    redirect('/auth/signin');
+    redirect('/login');
   }
 
   const { projectId } = await params;
@@ -48,7 +49,7 @@ export default async function GenerateExamPage({ params }: GenerateExamPageProps
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-4xl">
+    <PageShell className="max-w-5xl">
       <Suspense fallback={<div>Loading...</div>}>
         <ExamGenerationPage
           projectId={project.id}
@@ -56,6 +57,6 @@ export default async function GenerateExamPage({ params }: GenerateExamPageProps
           topics={project.topics}
         />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

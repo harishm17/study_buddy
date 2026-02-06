@@ -6,7 +6,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
-import { enqueueTopicExtractionJob } from '@/lib/tasks/cloud-tasks'
+import { enqueueTopicExtractionJob, TaskEnqueueError } from '@/lib/tasks/cloud-tasks'
+import {
+  apiInternal,
+  apiNotFound,
+  apiUnauthorized,
+  apiUpstream,
+  isUnauthorizedError,
+} from '@/lib/api/errors'
+import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
+
+const STALE_JOB_WINDOW_MS = 8 * 60 * 1000
+const PENDING_DISPATCH_STALE_MS = 90 * 1000
 
 export async function POST(
   request: NextRequest,
@@ -25,10 +36,7 @@ export async function POST(
     })
 
     if (!project) {
-      return NextResponse.json(
-        { error: 'Project not found' },
-        { status: 404 }
-      )
+      return apiNotFound('Project not found')
     }
 
     // Check if project has valid materials
@@ -41,9 +49,71 @@ export async function POST(
 
     if (validMaterialsCount === 0) {
       return NextResponse.json(
-        { error: 'No valid materials found. Please upload and validate materials first.' },
-        { status: 400 }
+        { error: { code: 'CONFLICT', message: 'No valid materials found. Please upload and validate materials first.' } },
+        { status: 409 }
       )
+    }
+
+    const preflightError = await ensureAiGenerationReady()
+    if (preflightError) {
+      return preflightError
+    }
+
+    const idempotencyKey = `${projectId}:extract_topics`
+    const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS)
+    const pendingDispatchBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS)
+
+    await prisma.processingJob.updateMany({
+      where: {
+        projectId,
+        userId: session.user.id,
+        jobType: 'extract_topics',
+        status: { in: ['pending', 'processing'] },
+        OR: [
+          {
+            createdAt: { lt: staleBefore },
+          },
+          {
+            status: 'pending',
+            startedAt: null,
+            createdAt: { lt: pendingDispatchBefore },
+          },
+        ],
+        inputData: {
+          path: ['idempotencyKey'],
+          equals: idempotencyKey,
+        },
+      },
+      data: {
+        status: 'failed',
+        errorCode: 'STALE_JOB',
+        errorMessage: 'Automatically closed stale in-flight job. Please retry.',
+        retryable: true,
+        completedAt: new Date(),
+      },
+    })
+
+    const existingJob = await prisma.processingJob.findFirst({
+      where: {
+        projectId,
+        userId: session.user.id,
+        jobType: 'extract_topics',
+        status: { in: ['pending', 'processing'] },
+        inputData: {
+          path: ['idempotencyKey'],
+          equals: idempotencyKey,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    if (existingJob) {
+      return NextResponse.json({
+        jobId: existingJob.id,
+        status: existingJob.status === 'processing' ? 'processing' : 'queued',
+        message: 'Topic extraction already in progress',
+        estimatedSeconds: 45,
+      })
     }
 
     // Create processing job
@@ -53,31 +123,45 @@ export async function POST(
         projectId,
         jobType: 'extract_topics',
         status: 'pending',
-        inputData: { projectId },
+        stage: 'extracting',
+        inputData: { projectId, idempotencyKey },
         progressPercent: 0,
       },
     })
 
     // Enqueue topic extraction task
-    await enqueueTopicExtractionJob(job.id, projectId)
+    try {
+      await enqueueTopicExtractionJob(job.id, projectId)
+    } catch (enqueueError) {
+      const retryable = enqueueError instanceof TaskEnqueueError
+        ? enqueueError.retryable
+        : true
+      await prisma.processingJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          errorCode: retryable ? 'ENQUEUE_FAILED' : 'ENQUEUE_PERMANENT',
+          errorMessage: 'Failed to enqueue topic extraction job',
+          retryable,
+          completedAt: new Date(),
+        },
+      })
+      return apiUpstream('Failed to start topic extraction')
+    }
 
     return NextResponse.json({
       jobId: job.id,
+      status: 'queued',
       message: 'Topic extraction started',
+      estimatedSeconds: 45,
     })
   } catch (error) {
     console.error('Topic extraction error:', error)
 
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+    if (isUnauthorizedError(error)) {
+      return apiUnauthorized()
     }
 
-    return NextResponse.json(
-      { error: 'Failed to start topic extraction' },
-      { status: 500 }
-    )
+    return apiInternal('Failed to start topic extraction')
   }
 }

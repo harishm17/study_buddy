@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import ExamPageClient from '@/components/exams/exam-page-client';
+import { PageShell } from '@/components/ui/page-shell';
 
 interface ExamPageProps {
   params: Promise<{
@@ -11,11 +12,16 @@ interface ExamPageProps {
   }>;
 }
 
+const toQuestionArray = (value: unknown) => {
+  if (!Array.isArray(value)) return []
+  return value.filter((item) => typeof item === 'object' && item !== null)
+}
+
 export default async function ExamPage({ params }: ExamPageProps) {
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.id) {
-    redirect('/auth/signin');
+    redirect('/login');
   }
 
   const { examId } = await params;
@@ -43,7 +49,7 @@ export default async function ExamPage({ params }: ExamPageProps) {
   }
 
   return (
-    <div className="container mx-auto py-8 max-w-6xl">
+    <PageShell className="max-w-6xl">
       <Suspense fallback={<div>Loading exam...</div>}>
         <ExamPageClient
           exam={{
@@ -51,7 +57,7 @@ export default async function ExamPage({ params }: ExamPageProps) {
             name: exam.name,
             projectId: exam.project.id,
             projectName: exam.project.name,
-            questions: exam.questions as any,
+            questions: toQuestionArray(exam.questions),
             durationMinutes: exam.durationMinutes,
             difficultyLevel: exam.difficultyLevel,
             topicsCovered: exam.topicsCovered,
@@ -59,6 +65,6 @@ export default async function ExamPage({ params }: ExamPageProps) {
           }}
         />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }

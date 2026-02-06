@@ -3,6 +3,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 
+const getOverallScore = (value: unknown): number | null => {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = (value as { overall_score?: unknown }).overall_score;
+  return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : null;
+};
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ examId: string }> }
@@ -51,7 +57,7 @@ export async function GET(
 
     if (gradedSubmissions.length > 0) {
       const scores = gradedSubmissions.map(
-        (s) => (s.aiGrading as any).overall_score || 0
+        (s) => getOverallScore(s.aiGrading) ?? 0
       );
 
       stats = {
@@ -67,7 +73,7 @@ export async function GET(
         id: s.id,
         submittedAt: s.submittedAt,
         gradedAt: s.gradedAt,
-        score: s.aiGrading ? (s.aiGrading as any).overall_score : null,
+        score: getOverallScore(s.aiGrading),
         isPending: !s.aiGrading,
       })),
       stats,

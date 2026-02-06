@@ -69,7 +69,7 @@ export async function POST(
         notesCompleted: validation.data.notesCompleted || false,
         examplesCompleted: validation.data.examplesCompleted || false,
         quizCompleted: validation.data.quizCompleted || false,
-        quizScore: validation.data.quizScore || null,
+        quizScore: validation.data.quizScore ?? null,
         lastAccessedAt: new Date(),
       },
     })

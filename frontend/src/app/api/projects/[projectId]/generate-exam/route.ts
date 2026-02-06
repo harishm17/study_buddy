@@ -3,6 +3,19 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { z } from 'zod';
+import { stableStringify } from '@/lib/utils/stable-json';
+import {
+  apiError,
+  ApiErrorCode,
+  apiInternal,
+  apiUnauthorized,
+  apiUpstream,
+  zodDetails,
+} from '@/lib/api/errors';
+import { ensureAiGenerationReady } from '@/lib/api/ai-preflight';
+
+const STALE_JOB_WINDOW_MS = 12 * 60 * 1000;
+const PENDING_DISPATCH_STALE_MS = 90 * 1000;
 
 const generateExamSchema = z.object({
   topicIds: z.array(z.string()).min(1, 'At least one topic must be selected'),
@@ -14,6 +27,20 @@ const generateExamSchema = z.object({
     short_answer: z.number().min(0).max(100),
     numerical: z.number().min(0).max(100),
   }).optional(),
+}).superRefine((value, ctx) => {
+  if (value.questionTypeDistribution) {
+    const total =
+      value.questionTypeDistribution.multiple_choice +
+      value.questionTypeDistribution.short_answer +
+      value.questionTypeDistribution.numerical;
+    if (Math.abs(total - 100) > 0.001) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'questionTypeDistribution must add up to 100',
+        path: ['questionTypeDistribution'],
+      });
+    }
+  }
 });
 
 export async function POST(
@@ -40,28 +67,36 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    const preflightError = await ensureAiGenerationReady();
+    if (preflightError) {
+      return preflightError;
+    }
+
     const body = await req.json();
     const validation = generateExamSchema.safeParse(body);
 
     if (!validation.success) {
-      return NextResponse.json(
-        { error: 'Invalid input', details: validation.error.errors },
-        { status: 400 }
+      return apiError(
+        ApiErrorCode.INVALID_INPUT,
+        'Invalid input',
+        zodDetails(validation.error),
+        400
       );
     }
 
-    const { topicIds, totalQuestions, durationMinutes, difficultyLevel, questionTypeDistribution } = validation.data;
+    const uniqueTopicIds = Array.from(new Set(validation.data.topicIds));
+    const { totalQuestions, durationMinutes, difficultyLevel, questionTypeDistribution } = validation.data;
 
     // Verify all topics belong to this project
     const topics = await prisma.topic.findMany({
       where: {
-        id: { in: topicIds },
+        id: { in: uniqueTopicIds },
         projectId,
       },
       select: { id: true },
     });
 
-    if (topics.length !== topicIds.length) {
+    if (topics.length !== uniqueTopicIds.length) {
       return NextResponse.json(
         { error: 'Some topics not found or do not belong to this project' },
         { status: 400 }
@@ -82,6 +117,63 @@ export async function POST(
       question_type_distribution: questionTypeDistribution || defaultDistribution,
     };
 
+    const idempotencyKey = `${projectId}:${uniqueTopicIds.sort().join(',')}:${stableStringify(config)}`;
+    const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS);
+    const pendingDispatchBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS);
+
+    await prisma.processingJob.updateMany({
+      where: {
+        userId: session.user.id,
+        projectId,
+        jobType: 'generate_exam',
+        status: { in: ['pending', 'processing'] },
+        OR: [
+          {
+            createdAt: { lt: staleBefore },
+          },
+          {
+            status: 'pending',
+            startedAt: null,
+            createdAt: { lt: pendingDispatchBefore },
+          },
+        ],
+        inputData: {
+          path: ['idempotencyKey'],
+          equals: idempotencyKey,
+        },
+      },
+      data: {
+        status: 'failed',
+        errorCode: 'STALE_JOB',
+        errorMessage: 'Automatically closed stale in-flight job. Please retry.',
+        retryable: true,
+        completedAt: new Date(),
+      },
+    });
+
+    const existingJob = await prisma.processingJob.findFirst({
+      where: {
+        userId: session.user.id,
+        projectId,
+        jobType: 'generate_exam',
+        status: { in: ['pending', 'processing'] },
+        inputData: {
+          path: ['idempotencyKey'],
+          equals: idempotencyKey,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingJob) {
+      return NextResponse.json({
+        jobId: existingJob.id,
+        status: existingJob.status === 'processing' ? 'processing' : 'queued',
+        message: 'Exam generation already in progress',
+        estimatedSeconds: 90,
+      });
+    }
+
     // Create processing job
     const job = await prisma.processingJob.create({
       data: {
@@ -89,10 +181,12 @@ export async function POST(
         projectId,
         jobType: 'generate_exam',
         status: 'pending',
+        stage: 'generating',
         inputData: {
           projectId,
-          topicIds,
+          topicIds: uniqueTopicIds,
           config,
+          idempotencyKey,
         },
       },
     });
@@ -105,38 +199,39 @@ export async function POST(
         jobType: 'generate_exam',
         data: {
           projectId,
-          topicIds,
+          topicIds: uniqueTopicIds,
           config,
         },
       });
     } catch (error) {
       console.error('Error enqueuing job:', error);
+      const retryable = typeof (error as { retryable?: unknown })?.retryable === 'boolean'
+        ? Boolean((error as { retryable: boolean }).retryable)
+        : true
 
       // Update job status to failed
       await prisma.processingJob.update({
         where: { id: job.id },
         data: {
           status: 'failed',
+          errorCode: retryable ? 'ENQUEUE_FAILED' : 'ENQUEUE_PERMANENT',
           errorMessage: 'Failed to start exam generation',
+          retryable,
           completedAt: new Date(),
         },
       });
 
-      return NextResponse.json(
-        { error: 'Failed to start exam generation' },
-        { status: 500 }
-      );
+      return apiUpstream('Failed to start exam generation');
     }
 
     return NextResponse.json({
       jobId: job.id,
-      status: 'pending',
+      status: 'queued',
+      message: 'Exam generation started',
+      estimatedSeconds: 90,
     });
   } catch (error) {
     console.error('Error in generate-exam:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return apiInternal('Internal server error');
   }
 }

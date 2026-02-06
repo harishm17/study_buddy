@@ -6,6 +6,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
+import {
+  apiInternal,
+  apiNotFound,
+  apiUnauthorized,
+  isUnauthorizedError,
+} from '@/lib/api/errors'
+
+const stageByJobType: Record<string, string> = {
+  validate_material: 'validating',
+  chunk_material: 'chunking',
+  extract_topics: 'extracting',
+  generate_content: 'generating',
+  generate_exam: 'generating',
+  grade_exam: 'grading',
+}
 
 export async function GET(
   request: NextRequest,
@@ -24,17 +39,20 @@ export async function GET(
     })
 
     if (!job) {
-      return NextResponse.json(
-        { error: 'Job not found' },
-        { status: 404 }
-      )
+      return apiNotFound('Job not found')
     }
+
+    const stage = job.stage || stageByJobType[job.jobType] || null
 
     return NextResponse.json({
       id: job.id,
       jobType: job.jobType,
       status: job.status,
       progressPercent: job.progressPercent,
+      stage,
+      retryable: job.retryable,
+      errorCode: job.errorCode,
+      attemptCount: job.attemptCount,
       inputData: job.inputData,
       resultData: job.resultData,
       errorMessage: job.errorMessage,
@@ -45,16 +63,10 @@ export async function GET(
   } catch (error) {
     console.error('Job status error:', error)
 
-    if (error instanceof Error && error.message === 'Unauthorized') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+    if (isUnauthorizedError(error)) {
+      return apiUnauthorized()
     }
 
-    return NextResponse.json(
-      { error: 'Failed to fetch job status' },
-      { status: 500 }
-    )
+    return apiInternal('Failed to fetch job status')
   }
 }
