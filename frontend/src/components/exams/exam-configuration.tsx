@@ -14,7 +14,7 @@ import { Loader2, FileText, Clock, BarChart3 } from 'lucide-react';
 interface Topic {
   id: string;
   name: string;
-  description?: string;
+  description?: string | null;
 }
 
 interface ExamConfigurationProps {
@@ -34,6 +34,8 @@ export default function ExamConfiguration({
   const [difficultyLevel, setDifficultyLevel] = useState<'easy' | 'medium' | 'hard'>('medium');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isDifficulty = (value: string): value is 'easy' | 'medium' | 'hard' =>
+    value === 'easy' || value === 'medium' || value === 'hard';
 
   const handleTopicToggle = (topicId: string) => {
     const newSelection = new Set(selectedTopics);
@@ -75,8 +77,11 @@ export default function ExamConfiguration({
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to generate exam');
+        const data = await response.json().catch(() => ({}));
+        const message = typeof data?.error === 'string'
+          ? data.error
+          : data?.error?.message || 'Failed to generate exam';
+        throw new Error(message);
       }
 
       const data = await response.json();
@@ -113,7 +118,7 @@ export default function ExamConfiguration({
             {topics.map((topic) => (
               <div
                 key={topic.id}
-                className="flex items-start space-x-3 p-3 rounded-lg hover:bg-accent transition-colors"
+                className="flex items-start space-x-3 rounded-xl border border-border/60 bg-white/70 p-3 transition hover:border-primary/30 hover:bg-white"
               >
                 <Checkbox
                   id={topic.id}
@@ -200,9 +205,13 @@ export default function ExamConfiguration({
             </Label>
             <RadioGroup
               value={difficultyLevel}
-              onValueChange={(value) => setDifficultyLevel(value as any)}
+              onValueChange={(value) => {
+                if (isDifficulty(value)) {
+                  setDifficultyLevel(value);
+                }
+              }}
             >
-              <div className="flex items-center space-x-2 p-3 rounded-lg border">
+              <div className="flex items-center space-x-2 rounded-xl border border-border/70 bg-white/70 p-3">
                 <RadioGroupItem value="easy" id="easy" />
                 <div className="flex-1">
                   <label
@@ -217,7 +226,7 @@ export default function ExamConfiguration({
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 p-3 rounded-lg border">
+              <div className="flex items-center space-x-2 rounded-xl border border-border/70 bg-white/70 p-3">
                 <RadioGroupItem value="medium" id="medium" />
                 <div className="flex-1">
                   <label
@@ -232,7 +241,7 @@ export default function ExamConfiguration({
                 </div>
               </div>
 
-              <div className="flex items-center space-x-2 p-3 rounded-lg border">
+              <div className="flex items-center space-x-2 rounded-xl border border-border/70 bg-white/70 p-3">
                 <RadioGroupItem value="hard" id="hard" />
                 <div className="flex-1">
                   <label

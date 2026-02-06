@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,13 +10,26 @@ import ExamInterface from './exam-interface';
 import ExamHistory from './exam-history';
 import { ArrowLeft, Clock, BarChart3, BookOpen, Play, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useJobPolling } from '@/hooks/useJobPolling';
+import { PageHeader } from '@/components/ui/page-shell';
+
+interface ExamQuestion {
+  question_type: 'multiple_choice' | 'short_answer' | 'numerical' | 'true_false';
+  question_text: string;
+  topic_name?: string;
+  points?: number;
+  difficulty?: string;
+  options?: Array<{ id: string; text: string }>;
+  key_points?: string[];
+  unit?: string;
+}
 
 interface Exam {
   id: string;
   name: string;
   projectId: string;
   projectName: string;
-  questions: any[];
+  questions: ExamQuestion[];
   durationMinutes: number;
   difficultyLevel: string;
   topicsCovered: string[];
@@ -33,6 +46,16 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionComplete, setSubmissionComplete] = useState(false);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+  const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 300_000 });
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      stopPolling();
+    };
+  }, [stopPolling]);
 
   const handleStartExam = () => {
     setIsStarted(true);
@@ -40,6 +63,7 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
 
   const handleSubmitExam = async (answers: Record<string, any>) => {
     setIsSubmitting(true);
+    setError(null);
 
     try {
       const response = await fetch(`/api/exams/${exam.id}/submit`, {
@@ -57,45 +81,31 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
       setSubmissionComplete(true);
 
       // Poll for grading completion
-      pollGradingStatus(data.jobId);
+      const pollResult = await pollJob(data.jobId);
+      if (pollResult.state !== 'completed') {
+        throw new Error(pollResult.error || 'Grading did not complete');
+      }
+      if (!isMountedRef.current) return;
+      setIsSubmitting(false);
+      router.refresh();
     } catch (error) {
       console.error('Error submitting exam:', error);
-      alert('Failed to submit exam. Please try again.');
+      setError('Failed to submit exam. Please try again.');
       setIsSubmitting(false);
     }
   };
 
-  const pollGradingStatus = async (gradingJobId: string) => {
-    const maxAttempts = 60; // 5 minutes
-    let attempts = 0;
-
-    const poll = setInterval(async () => {
-      attempts++;
-
-      try {
-        const response = await fetch(`/api/jobs/${gradingJobId}`);
-        const job = await response.json();
-
-        if (job.status === 'completed') {
-          clearInterval(poll);
-          setIsSubmitting(false);
-          // Refresh the page to show updated history
-          router.refresh();
-        } else if (job.status === 'failed' || attempts >= maxAttempts) {
-          clearInterval(poll);
-          setIsSubmitting(false);
-          alert('Grading is taking longer than expected. Please check back later.');
-        }
-      } catch (error) {
-        console.error('Error polling job:', error);
-      }
-    }, 5000); // Poll every 5 seconds
-  };
+  const errorBanner = error ? (
+    <Alert variant="destructive">
+      <AlertDescription>{error}</AlertDescription>
+    </Alert>
+  ) : null;
 
   if (submissionComplete) {
     return (
       <div className="space-y-6">
-        <Card>
+        {errorBanner}
+        <Card className="overflow-hidden">
           <CardHeader>
             <CardTitle>Exam Submitted!</CardTitle>
             <CardDescription>
@@ -129,7 +139,7 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
               >
                 View Results
               </Button>
-              <Button onClick={() => router.push(`/projects/${exam.projectId}`)}>
+              <Button variant="back" size="back" onClick={() => router.push(`/projects/${exam.projectId}`)}>
                 Back to Project
               </Button>
             </div>
@@ -143,14 +153,20 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
     return (
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">{exam.name}</h1>
-            <p className="text-muted-foreground">
-              {exam.projectName} • {exam.questions.length} questions
-            </p>
-          </div>
-        </div>
+        <PageHeader
+          eyebrow={exam.projectName}
+          title={exam.name}
+          description={`${exam.questions.length} questions • ${exam.durationMinutes} minutes • ${exam.difficultyLevel} difficulty`}
+          actions={
+            <Link href={`/projects/${exam.projectId}`}>
+              <Button variant="back" size="back">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Project
+              </Button>
+            </Link>
+          }
+        />
+        {errorBanner}
 
         {/* Exam Interface */}
         <ExamInterface
@@ -168,23 +184,25 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Link href={`/projects/${exam.projectId}`}>
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Project
-          </Button>
-        </Link>
-      </div>
+      <PageHeader
+        eyebrow={exam.projectName}
+        title={exam.name}
+        description="Timed exam session with autosave-style submission and AI grading."
+        actions={
+          <Link href={`/projects/${exam.projectId}`}>
+            <Button variant="back" size="back">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Project
+            </Button>
+          </Link>
+        }
+      />
+      {errorBanner}
 
       {/* Exam Info */}
       <Card>
-        <CardHeader>
-          <CardTitle>{exam.name}</CardTitle>
-          <CardDescription>{exam.projectName}</CardDescription>
-        </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-muted-foreground" />
               <div>
