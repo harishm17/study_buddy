@@ -60,9 +60,10 @@ class ExamGenerator:
 
         # Generate questions for each topic
         all_questions = []
-        for topic, question_count in questions_per_topic.items():
+        for topic in topics:
+            question_count = questions_per_topic.get(topic["id"], 1)
             # Fetch relevant chunks for this topic
-            chunks = await self._fetch_topic_chunks(topic['id'])
+            chunks = await self._fetch_topic_chunks(topic["id"])
 
             # Build context
             context = self._build_context(chunks)
@@ -102,14 +103,10 @@ class ExamGenerator:
         if not topic_ids:
             return []
         
-        # Build parameterized query safely
-        # Create placeholders for IN clause
-        placeholders = ', '.join([f'${i+2}' for i in range(len(topic_ids))])
-
         query = f"""
             SELECT id, name, description, keywords
             FROM topics
-            WHERE project_id = $1 AND id = ANY($2::uuid[])
+            WHERE project_id = $1 AND id = ANY($2::text[])
             ORDER BY order_index
         """
 
@@ -117,17 +114,17 @@ class ExamGenerator:
         topics = await execute_query(query, project_id, topic_ids)
         return [dict(topic) for topic in topics]
 
-    def _distribute_questions(self, topics: List[Dict], total_questions: int) -> Dict:
+    def _distribute_questions(self, topics: List[Dict], total_questions: int) -> Dict[str, int]:
         """Distribute questions evenly across topics."""
-        questions_per_topic = {}
+        questions_per_topic: Dict[str, int] = {}
         base_count = total_questions // len(topics)
         remainder = total_questions % len(topics)
 
         for i, topic in enumerate(topics):
             count = base_count + (1 if i < remainder else 0)
-            questions_per_topic[topic['name']] = count
+            questions_per_topic[topic["id"]] = max(count, 1)
 
-        return {topic['name']: questions_per_topic[topic['name']] for topic in topics}
+        return questions_per_topic
 
     async def _fetch_topic_chunks(self, topic_id: str) -> List[Dict]:
         """Fetch relevant chunks for a topic."""
@@ -195,6 +192,15 @@ class ExamGenerator:
 **Instructions:**
 Create {question_count} diverse questions based on the source material.
 Question types needed: {', '.join(set(question_types))}
+
+**Formatting rules (IMPORTANT — follow these exactly):**
+- All string fields support full markdown. Use it.
+- Any code snippet, memory layout, or command MUST be in a fenced code block with a language tag, e.g. ```c, ```python, ```text. NEVER dump code inline as plain text.
+- Use real line breaks (`\n`) inside JSON strings to separate paragraphs and before/after code fences. Do NOT put everything on one line.
+- Use `inline code` only for short identifiers, function names, or single expressions (e.g. `buf`, `strlen()`).
+- Keep question_text and options concise. If a question needs a code block, include it in question_text with proper fencing — do NOT put code blocks inside options.
+- For math expressions use LaTeX: inline `$E = mc^2$` or display `$$\\int_0^1 f(x)\\,dx$$`. For chemistry use `$2H_2 + O_2 \\to 2H_2O$`. Do NOT use plain-text math when LaTeX is clearer.
+- Separate distinct ideas into short paragraphs rather than one dense block of text.
 
 For MULTIPLE_CHOICE:
 {{
