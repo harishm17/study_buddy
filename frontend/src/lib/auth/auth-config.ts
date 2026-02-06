@@ -7,6 +7,11 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import { compare } from 'bcryptjs'
 import { prisma } from '@/lib/db/prisma'
 
+const nextAuthSecret =
+  process.env.NEXTAUTH_SECRET ||
+  process.env.AUTH_SECRET ||
+  'studybuddy-dev-insecure-secret'
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -73,5 +78,33 @@ export const authOptions: NextAuthOptions = {
       return session
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  logger: {
+    error(code, metadata) {
+      // Common when a cookie was signed with an older NEXTAUTH_SECRET.
+      // Keep runtime logs clean while users refresh/sign in again.
+      const metadataMessage =
+        typeof metadata === 'object' && metadata && 'message' in metadata
+          ? String((metadata as { message?: unknown }).message ?? '')
+          : ''
+      const metadataUrl =
+        typeof metadata === 'object' && metadata && 'url' in metadata
+          ? String((metadata as { url?: unknown }).url ?? '')
+          : ''
+      if (
+        code === 'JWT_SESSION_ERROR' &&
+        metadataMessage.toLowerCase().includes('decryption operation failed')
+      ) {
+        return
+      }
+      if (
+        code === 'CLIENT_FETCH_ERROR' &&
+        metadataUrl === '/api/auth/session' &&
+        metadataMessage.toLowerCase().includes('load failed')
+      ) {
+        return
+      }
+      console.error(`[next-auth][error][${code}]`, metadata)
+    },
+  },
+  secret: nextAuthSecret,
 }
