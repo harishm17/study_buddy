@@ -54,6 +54,24 @@ export async function POST(
       )
     }
 
+    // Check if materials have been chunked
+    const chunkedMaterialsCount = await prisma.material.count({
+      where: {
+        projectId,
+        validationStatus: 'valid',
+        materialChunks: {
+          some: {},
+        },
+      },
+    })
+
+    if (chunkedMaterialsCount === 0) {
+      return NextResponse.json(
+        { error: { code: 'CONFLICT', message: 'Materials are still being processed. Please wait a moment and try again.' } },
+        { status: 409 }
+      )
+    }
+
     const preflightError = await ensureAiGenerationReady()
     if (preflightError) {
       return preflightError
