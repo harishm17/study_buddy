@@ -17,74 +17,44 @@ Turn lecture slides, books, and past papers into structured notes, quizzes, prac
 **StudyBuddy** is a comprehensive learning platform designed for university students preparing for exams. Upload your lecture notes, textbooks, and past exams—let AI do the heavy lifting of creating study guides, practice problems, mock exams, and real-time voice coaching tailored to your learning needs.
 
 ### The Problem
-- Students struggle to synthesize information from multiple sources
-- Limited time to create comprehensive study materials
-- Difficulty identifying key concepts and testing themselves effectively
-- No personalized practice with instant feedback
+- **Time-consuming**: Creating study materials from multiple sources takes hours
+- **No personalized practice**: Generic study guides don't adapt to your weak areas
+- **Limited feedback**: Hard to know if you're actually understanding concepts
 
 ### The Solution
-StudyBuddy uses AI to:
-- Extract key topics from your materials
-- Generate comprehensive study notes with citations
-- Create unlimited practice problems and quizzes
-- Build full-length mock exams across multiple topics
-- Grade your work with detailed explanations and feedback
-- Provide real-time voice coaching for oral exam preparation
+**AI-powered study assistant** that transforms your materials into:
+- **Structured study content**: Notes, examples, quizzes, and exams—all with citations
+- **Unlimited practice**: Generate fresh problems and questions on-demand
+- **Real-time voice coaching**: Oral exam prep with instant conceptual feedback
+- **Intelligent grading**: AI evaluates your answers with detailed explanations
 
 ---
 
 ## Key Features
 
-### Smart Material Processing
-- **Upload Documents**: PDF, DOCX, PPTX, and DOC lecture notes, textbook chapters, and sample exams
-- **Automatic Validation**: AI checks content quality and relevance
-- **Intelligent Chunking**: Breaks down materials into semantic sections
-- **Vector Search**: pgvector-powered semantic search for relevant content retrieval
+### 📚 Smart Material Processing
+Upload PDFs, DOCX, PPTX, or DOC files → AI validates, chunks, and indexes them with vector embeddings for semantic search
 
-### AI-Powered Content Generation
-- **Study Notes**: Comprehensive markdown notes with LaTeX math and code highlighting
-- **Solved Examples**: Step-by-step problem walkthroughs with formatted work sections
-- **Interactive Practice**: Multi-step problems with hints and real-time validation
-- **Topic Quizzes**: MCQ, short answer, numerical, and true/false questions with markdown support
-- **Sample Exams**: Full-length timed exams with proper rendering of code and equations
+### ✍️ AI-Powered Content Generation
+Generate **study notes**, **solved examples**, **interactive practice problems**, **quizzes** (MCQ, short answer, numerical), and **full-length timed exams**—all with proper LaTeX math and code formatting
 
-### Unlimited Practice with Regeneration
-- Click **"Practice More"** to generate completely different problems
-- **"New Questions"** creates fresh quiz variations—not just reshuffled
-- Each regeneration uses variation seeds for truly unique content
-- Track improvement across multiple attempts
+### 🔄 Unlimited Practice
+Click **"Practice More"** to generate completely different problems (not reshuffled). Each regeneration creates fresh content using variation seeds
 
-### Intelligent AI Grading
-- **Instant Grading**: MCQ, true/false, and numerical questions graded immediately
-- **Short Answer AI**: Semantic evaluation with partial credit
-- **Detailed Feedback**: Explanations for every question
-- **Score Tracking**: Monitor progress over time
+### ✅ Intelligent AI Grading
+- Instant grading for MCQ/numerical questions
+- Semantic evaluation for short answers with partial credit
+- Detailed feedback and explanations for every question
 
-### Progress Tracking
-- Visual progress bars per topic
-- Quiz attempt history with best/average scores
-- Exam performance tracking
-- No overwhelming dashboards—just inline, actionable data
+### 🎤 Voice Coach — Real-Time Oral Exam Prep
+- **Real-time voice interaction** via WebRTC (OpenAI Realtime API)
+- **Three learning styles**: Oral Q&A, guided notes, or free topic conversation
+- **Concept-only focus**: Automatically filters math/calculations—perfect for oral exams
+- **Topic Drill** or **Voice Sprint** modes for targeted practice
+- Instant feedback with key-point grading
 
-### Voice Coach — Real-Time Oral Exam Prep
-- **Multiple Learning Styles**: Choose from oral Q&A, guided notes, or free topic conversation
-- **Real-Time Voice Interaction**: WebRTC-powered low-latency audio with OpenAI Realtime API
-- **Concept-Only Enforcement**: Automatically filters out math/calculations—focuses on definitions, intuition, relationships, and reasoning
-- **Intelligent Question Generation**: Uses topic context to generate conceptual questions on-the-fly
-- **Instant Feedback**: Key-point grading with semantic evaluation and detailed explanations
-- **Language Support**: English-first with optional auto-detection and confirmation
-- **Performance Metrics**: Tracks time-to-first-token (TTFT) and time-to-first-audio (TTFA) for latency monitoring
-- **Topic Drill Mode**: Practice individual topics with structured Q&A sessions
-- **Voice Sprint Mode**: Rapid-fire drills across your weakest topics at the project level
-- **Session Persistence**: All attempts and progress are saved for review
-
-### Modern User Experience
-- Responsive design optimized for desktop and mobile
-- Real-time content generation with loading states
-- Countdown timers for timed exams with auto-submit
-- Question navigator with completion indicators
-- Rich content rendering with LaTeX math, code syntax highlighting, and markdown
-- Proper formatting for STEM content (equations, chemical formulas, code snippets)
+### 📊 Progress Tracking
+Visual progress bars, attempt history, and performance metrics—all inline, no overwhelming dashboards
 
 ---
 
