@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     # Processing control
     ENABLE_PROCESSING: bool = True
-    AUTO_EXTRACT_TOPICS_ON_CHUNK: bool = False
+    AUTO_EXTRACT_TOPICS_ON_CHUNK: bool = True
 
     # GCP (optional, can use local storage)
     GCS_BUCKET: str = ""
