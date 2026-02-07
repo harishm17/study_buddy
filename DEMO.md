@@ -38,10 +38,11 @@ Re-running the seed script is safe — it deletes the previous demo project befo
 
 ## Environment Variables
 
-The `OPENAI_API_KEY` must be set in your shell before `docker compose up`:
+The `OPENAI_API_KEY` **and** `AI_INTERNAL_TOKEN` must be set in your shell before `docker compose up`:
 
 ```bash
 export OPENAI_API_KEY=sk-your-key-here
+export AI_INTERNAL_TOKEN=replace-with-shared-secret
 docker compose up --build
 ```
 
@@ -52,6 +53,9 @@ All other variables are configured in `docker-compose.yml`. Key defaults:
 | LLM_PROVIDER        | openai               |
 | OPENAI_MODEL        | gpt-4o               |
 | OPENAI_MINI_MODEL   | gpt-4o-mini          |
+| OPENAI_REALTIME_MODEL | gpt-realtime-mini  |
+| OPENAI_REALTIME_VOICE | marin              |
+| OPENAI_TRANSCRIPTION_MODEL | gpt-4o-mini-transcribe |
 | ENABLE_PROCESSING   | true                 |
 | ENVIRONMENT         | development          |
 
@@ -97,6 +101,12 @@ All other variables are configured in `docker-compose.yml`. Key defaults:
 2. Configure: select all topics, medium difficulty, 10 questions
 3. Start the exam, answer a few questions, submit
 4. Show the AI-graded results and feedback
+
+### Scene 8 — Voice Coach (Concept-Only)
+1. Open a topic page and click **Voice Drill**
+2. Connect and answer 2–3 questions
+3. Speak over the coach to show barge‑in / interruption
+4. Show the concept-only feedback and hints
 
 ---
 
