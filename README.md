@@ -2,9 +2,9 @@
 
 # StudyBuddy — Exam Prep RAG & Quiz Generator
 
-### End-to-end study workflow: retrieval, generation, practice, grading
+### End-to-end study workflow: retrieval, generation, practice, grading, voice coaching
 
-Turn lecture slides, books, and past papers into structured notes, quizzes, and practice exams with an evaluation-ready RAG pipeline.
+Turn lecture slides, books, and past papers into structured notes, quizzes, practice exams, and real-time voice coaching with an evaluation-ready RAG pipeline.
 
 [Why this exists](#-overview) • [Demo](#-demo) • [Evaluation](#-evaluation) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
 
@@ -14,7 +14,7 @@ Turn lecture slides, books, and past papers into structured notes, quizzes, and 
 
 ## Overview
 
-**StudyBuddy** is a comprehensive learning platform designed for university students preparing for exams. Upload your lecture notes, textbooks, and past exams—let AI do the heavy lifting of creating study guides, practice problems, and mock exams tailored to your learning needs.
+**StudyBuddy** is a comprehensive learning platform designed for university students preparing for exams. Upload your lecture notes, textbooks, and past exams—let AI do the heavy lifting of creating study guides, practice problems, mock exams, and real-time voice coaching tailored to your learning needs.
 
 ### The Problem
 - Students struggle to synthesize information from multiple sources
@@ -29,6 +29,7 @@ StudyBuddy uses AI to:
 - Create unlimited practice problems and quizzes
 - Build full-length mock exams across multiple topics
 - Grade your work with detailed explanations and feedback
+- Provide real-time voice coaching for oral exam preparation
 
 ---
 
@@ -65,11 +66,17 @@ StudyBuddy uses AI to:
 - Exam performance tracking
 - No overwhelming dashboards—just inline, actionable data
 
-### Voice Coach (Concept-Only)
-- **Oral exam drills** for each topic with real-time voice interaction
-- **Concept-only enforcement**: no equations or calculations, just intuition and reasoning
-- **Instant feedback** with key-point grading and hints
-- **Voice sprint** mode for weakest topics (project-level)
+### Voice Coach — Real-Time Oral Exam Prep
+- **Multiple Learning Styles**: Choose from oral Q&A, guided notes, or free topic conversation
+- **Real-Time Voice Interaction**: WebRTC-powered low-latency audio with OpenAI Realtime API
+- **Concept-Only Enforcement**: Automatically filters out math/calculations—focuses on definitions, intuition, relationships, and reasoning
+- **Intelligent Question Generation**: Uses topic context to generate conceptual questions on-the-fly
+- **Instant Feedback**: Key-point grading with semantic evaluation and detailed explanations
+- **Language Support**: English-first with optional auto-detection and confirmation
+- **Performance Metrics**: Tracks time-to-first-token (TTFT) and time-to-first-audio (TTFA) for latency monitoring
+- **Topic Drill Mode**: Practice individual topics with structured Q&A sessions
+- **Voice Sprint Mode**: Rapid-fire drills across your weakest topics at the project level
+- **Session Persistence**: All attempts and progress are saved for review
 
 ### Modern User Experience
 - Responsive design optimized for desktop and mobile
@@ -269,6 +276,8 @@ CREATE EXTENSION vector;
 │ • Auth          │      │ • Embeddings     │      │ • Materials     │
 │ • API Routes    │      │ • LLM Calls      │      │ • Vectors       │
 │ • SSR           │      │ • Content Gen    │      │ • Progress      │
+│ • Voice Coach   │      │ • Voice Tools    │      │ • Voice Sessions│
+│ • WebRTC        │      │ • Realtime Token │      │                 │
 └─────────────────┘      └──────────────────┘      └─────────────────┘
          │                         │
          │                         │
@@ -280,43 +289,47 @@ CREATE EXTENSION vector;
               │                │
               │ • GPT-5-mini   │
               │ • Embeddings   │
-              │ • Realtime     │
+              │ • Realtime API │
+              │   (Voice)      │
               └────────────────┘
 ```
 
 ### Key Design Decisions
 
-**Hybrid Search for Cost Efficiency:**
-Instead of sending entire textbooks to AI (expensive & noisy):
-1. Break PDFs into semantic chunks (500-1000 tokens)
-2. Generate vector embeddings for each chunk
-3. Use keyword + semantic search to find relevant sections
-4. Send only top 10-15 chunks to LLM
+**1. Hybrid Search Architecture for Cost Efficiency**
+Instead of sending entire textbooks to AI (expensive & noisy), StudyBuddy uses a two-stage retrieval system:
+- **Semantic Chunking**: PDFs are broken into semantic chunks (500-1000 tokens) with vector embeddings
+- **Hybrid Retrieval**: Combines keyword matching and vector similarity search to find the most relevant sections
+- **Smart Context Selection**: Sends only the top 15-24 most relevant chunks to the LLM (instead of entire documents)
+- **Result**: Significant cost reduction (typically 70-85%) while maintaining or improving answer quality
 
-**Result:** up to 85% cost reduction while maintaining quality
+**Why this matters**: A typical textbook might be 50,000+ tokens. Sending all of it costs ~$0.10-0.15 per request. By retrieving only relevant sections, we reduce this to ~$0.02-0.03 per request while getting better, more focused answers.
 
-**Cost Comparison per Content Generation Request:**
-```
-Without Semantic Search (Full Documents):
-████████████████████████████ $0.12
+**2. Content Regeneration with True Variation**
+- Each "Practice More" click generates completely different content—not just reshuffled questions
+- Uses `variation_seed` (timestamp-based) to ensure uniqueness across regenerations
+- LLM creates fresh scenarios, different problem setups, and novel question formulations
+- Tracks improvement across multiple attempts with unique content each time
 
-With Hybrid Search (Relevant Chunks Only):
-████ $0.02
+**3. Async Job Processing with Cloud Tasks**
+- Long-running tasks (PDF processing, content generation, exam grading) run asynchronously
+- Production uses Google Cloud Tasks for reliable job queuing and retries
+- Development mode uses direct HTTP calls with automatic retry logic
+- Frontend polls job status with exponential backoff and bounded timeouts
+- Duplicate requests are automatically deduplicated while a job is in-flight
+- No HTTP timeout issues—jobs can run for minutes without blocking the UI
 
-Savings: 85% ↓
-```
+**4. Concept-Only Voice Coach Design**
+- Voice Coach intentionally avoids math, equations, and calculations
+- Focuses on conceptual understanding: definitions, intuition, relationships, trade-offs
+- Uses regex filtering and LLM instructions to enforce concept-only content
+- Perfect for oral exam prep where conceptual reasoning matters more than computation
 
-**Content Regeneration with Variation:**
-- Each "Practice More" click generates truly different content
-- Uses `variation_seed` (timestamp) to ensure uniqueness
-- LLM creates fresh scenarios, not just reshuffled questions
-
-**Async Job Processing:**
-- Long-running tasks (PDF processing, content generation) run async
-- Frontend polls job status for real-time updates
-- Polling has bounded timeouts so the UI does not stay in indefinite "processing" states
-- Duplicate extraction requests are deduplicated while a job is already in flight
-- No HTTP timeout issues
+**5. Microservices Architecture**
+- **Frontend (Next.js)**: Handles UI, authentication, API routing, and job orchestration
+- **AI Service (FastAPI)**: Dedicated service for LLM calls, PDF processing, embeddings, and content generation
+- **Database (PostgreSQL + pgvector)**: Stores user data, materials, vectors, and progress
+- Clear separation of concerns enables independent scaling and deployment
 
 ---
 
@@ -346,10 +359,16 @@ For each topic, generate:
 - Take timed exams with countdown timer
 - Get AI-graded results with detailed feedback
 
-### 6. Voice Coach (Concept-Only)
-- Launch a topic **Voice Drill** for oral exam prep
-- Use **Voice Sprint** to drill weak topics across a project
-- Concept-only by design (definitions, intuition, relationships, reasoning)
+### 6. Voice Coach — Real-Time Oral Exam Prep
+- **Launch a Topic Drill**: Start a structured Q&A session for any topic with real-time voice interaction
+- **Choose Your Learning Style**:
+  - **Oral Q&A**: One question at a time with answer checking and feedback
+  - **Guided Notes**: Coach explains concepts first, then checks understanding
+  - **Topic Conversation**: Free-form discussion anchored to the topic
+- **Voice Sprint Mode**: Rapid-fire drills across your weakest topics at the project level
+- **Concept-Only Focus**: Automatically filters out math/calculations—perfect for oral exams focusing on intuition and reasoning
+- **Performance Tracking**: Monitor latency metrics (TTFT/TTFA) and session progress
+- **Language Support**: English-first with optional auto-detection for multilingual learners
 
 ---
 
