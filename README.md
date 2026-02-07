@@ -32,28 +32,28 @@ Turn lecture slides, books, and past papers into structured notes, quizzes, prac
 
 ## Key Features
 
-### 📚 Smart Material Processing
+### Smart Material Processing
 Upload PDFs, DOCX, PPTX, or DOC files → AI validates, chunks, and indexes them with vector embeddings for semantic search
 
-### ✍️ AI-Powered Content Generation
+### AI-Powered Content Generation
 Generate **study notes**, **solved examples**, **interactive practice problems**, **quizzes** (MCQ, short answer, numerical), and **full-length timed exams**—all with proper LaTeX math and code formatting
 
-### 🔄 Unlimited Practice
+### Unlimited Practice
 Click **"Practice More"** to generate completely different problems (not reshuffled). Each regeneration creates fresh content using variation seeds
 
-### ✅ Intelligent AI Grading
+### Intelligent AI Grading
 - Instant grading for MCQ/numerical questions
 - Semantic evaluation for short answers with partial credit
 - Detailed feedback and explanations for every question
 
-### 🎤 Voice Coach — Real-Time Oral Exam Prep
+### Voice Coach — Real-Time Oral Exam Prep
 - **Real-time voice interaction** via WebRTC (OpenAI Realtime API)
 - **Three learning styles**: Oral Q&A, guided notes, or free topic conversation
 - **Concept-only focus**: Automatically filters math/calculations—perfect for oral exams
 - **Topic Drill** or **Voice Sprint** modes for targeted practice
 - Instant feedback with key-point grading
 
-### 📊 Progress Tracking
+### Progress Tracking
 Visual progress bars, attempt history, and performance metrics—all inline, no overwhelming dashboards
 
 ---
