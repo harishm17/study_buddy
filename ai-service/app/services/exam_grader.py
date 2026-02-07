@@ -3,12 +3,15 @@ Exam grader service.
 Grades student exam submissions using AI for open-ended questions.
 """
 
+import logging
 from typing import List, Dict, Any
 from datetime import datetime
 
 from app.services.llm.factory import LLMFactory
 from app.services.llm.base import LLMMessage
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class ExamGrader:
@@ -237,7 +240,7 @@ Return a JSON object:
                 'feedback': response.get('feedback', 'Graded by AI'),
             }
         except Exception as e:
-            print(f"Error grading short answer: {e}")
+            logger.error("Error grading short answer: %s", e)
             # Fallback to partial credit
             return {
                 'points_earned': max_points * 0.5,

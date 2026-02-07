@@ -1,15 +1,17 @@
 """Job processing endpoints."""
 import logging
 import json
+import re
 from fastapi import APIRouter, HTTPException
 from app.models.jobs import JobPayload, MaterialValidationInput, ContentGenerationInput, ExamGenerationInput
 from app.services.document_processor.validator import validate_material
-from app.services.document_processor.chunker import chunk_pdf
+from app.services.document_processor.chunker import chunk_document
 from app.services.embeddings.generator import generate_embeddings
 from app.services.topic_extractor import extract_topics_from_materials
 from app.services.embeddings.search import hybrid_search_chunks
 from app.services.content_generator import NotesGenerator, ExamplesGenerator, QuizGenerator
 from app.services.content_generator.examples import ExampleType
+from app.services.content_generator.quiz import QuestionType
 from app.services.exam_generator import ExamGenerator
 from app.services.exam_grader import ExamGrader
 from app.services.cloud_tasks import enqueue_chunking_job, enqueue_topic_extraction_job
@@ -18,6 +20,20 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _is_permanent_llm_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "openai_api_key is not configured" in message
+        or "missing bearer" in message
+        or "authentication" in message
+        or "invalid api key" in message
+    )
+
+
+def _normalize_topic_name(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
 
 
 @router.post("/jobs/validate-material")
@@ -36,7 +52,11 @@ async def validate_material_job(payload: JobPayload):
         await execute_update(
             """
             UPDATE processing_jobs
-            SET status = 'processing', started_at = NOW(), progress_percent = 10
+            SET status = 'processing',
+                stage = 'validating',
+                started_at = NOW(),
+                progress_percent = 10,
+                attempt_count = attempt_count + 1
             WHERE id = $1
             """,
             payload.jobId,
@@ -82,6 +102,9 @@ async def validate_material_job(payload: JobPayload):
             """
             UPDATE processing_jobs
             SET status = 'completed',
+                error_code = NULL,
+                error_message = NULL,
+                retryable = TRUE,
                 progress_percent = 100,
                 result_data = $1,
                 completed_at = NOW()
@@ -113,8 +136,8 @@ async def validate_material_job(payload: JobPayload):
                 chunking_job = await execute_one(
                     """
                     INSERT INTO processing_jobs
-                    (id, user_id, project_id, job_type, status, input_data, progress_percent, created_at)
-                    VALUES (gen_random_uuid(), $1, $2, 'chunk_material', 'pending', $3, 0, NOW())
+                    (id, user_id, project_id, job_type, status, stage, input_data, progress_percent, created_at)
+                    VALUES (gen_random_uuid()::text, $1, $2, 'chunk_material', 'pending', 'chunking', $3, 0, NOW())
                     RETURNING id
                     """,
                     current_job["user_id"],
@@ -145,6 +168,8 @@ async def validate_material_job(payload: JobPayload):
             """
             UPDATE processing_jobs
             SET status = 'failed',
+                error_code = 'VALIDATION_FAILED',
+                retryable = FALSE,
                 error_message = $1,
                 completed_at = NOW()
             WHERE id = $2
@@ -172,7 +197,11 @@ async def chunk_material_job(payload: JobPayload):
         await execute_update(
             """
             UPDATE processing_jobs
-            SET status = 'processing', started_at = NOW(), progress_percent = 10
+            SET status = 'processing',
+                stage = 'chunking',
+                started_at = NOW(),
+                progress_percent = 10,
+                attempt_count = attempt_count + 1
             WHERE id = $1
             """,
             payload.jobId,
@@ -195,6 +224,8 @@ async def chunk_material_job(payload: JobPayload):
                 """
                 UPDATE processing_jobs
                 SET status = 'failed',
+                    error_code = 'MATERIAL_NOT_FOUND',
+                    retryable = FALSE,
                     error_message = 'Material not found (deleted)',
                     completed_at = NOW()
                 WHERE id = $1
@@ -212,6 +243,9 @@ async def chunk_material_job(payload: JobPayload):
                 """
                 UPDATE processing_jobs
                 SET status = 'completed',
+                    error_code = NULL,
+                    error_message = NULL,
+                    retryable = TRUE,
                     progress_percent = 100,
                     result_data = $1,
                     completed_at = NOW()
@@ -223,9 +257,8 @@ async def chunk_material_job(payload: JobPayload):
 
             return {"status": "success", "jobId": payload.jobId, "dev_mode": True}
 
-        # Download PDF from GCS
+        # Download source file from storage
         from app.services.document_processor.validator import download_from_gcs
-        from app.services.document_processor.chunker import chunk_pdf
         from app.services.embeddings.generator import generate_embeddings
         import os
         
@@ -243,9 +276,9 @@ async def chunk_material_job(payload: JobPayload):
                 payload.jobId,
             )
 
-            # Chunk PDF
-            chunks = chunk_pdf(pdf_path)
-            logger.info(f"Created {len(chunks)} chunks from PDF")
+            # Chunk source document
+            chunks = chunk_document(pdf_path, material["filename"])
+            logger.info(f"Created {len(chunks)} chunks from {material['filename']}")
             
             # Update progress
             await execute_update(
@@ -257,10 +290,21 @@ async def chunk_material_job(payload: JobPayload):
                 payload.jobId,
             )
 
-            # Generate embeddings
+            # Generate embeddings (best-effort). If embeddings fail, keep chunks with NULL vectors
+            # and let downstream retrieval run keyword-only fallback paths.
             texts = [chunk.chunk_text for chunk in chunks]
-            embeddings = await generate_embeddings(texts)
-            logger.info(f"Generated {len(embeddings)} embeddings")
+            embeddings = []
+            embeddings_available = True
+            try:
+                embeddings = await generate_embeddings(texts)
+                logger.info(f"Generated {len(embeddings)} embeddings")
+            except Exception as embedding_error:
+                embeddings_available = False
+                logger.warning(
+                    "Embedding generation failed for job %s: %s. Continuing with keyword-only chunks.",
+                    payload.jobId,
+                    embedding_error,
+                )
             
             # Update progress
             await execute_update(
@@ -275,16 +319,20 @@ async def chunk_material_job(payload: JobPayload):
             # Store chunks in database with embeddings (in transaction for atomicity)
             async def insert_chunks_transaction(conn):
                 count = 0
-                for chunk, embedding in zip(chunks, embeddings):
-                    # Convert embedding to pgvector format
-                    embedding_str = f"[{','.join(map(str, embedding))}]"
+                for idx, chunk in enumerate(chunks):
+                    embedding = embeddings[idx] if idx < len(embeddings) else None
+                    embedding_str = (
+                        f"[{','.join(map(str, embedding))}]"
+                        if embedding is not None
+                        else None
+                    )
 
                     await conn.execute(
                         """
                         INSERT INTO material_chunks
                         (id, material_id, chunk_text, chunk_embedding, section_hierarchy,
                          page_start, page_end, chunk_index, token_count, created_at)
-                        VALUES (gen_random_uuid(), $1, $2, $3::vector, $4, $5, $6, $7, $8, NOW())
+                        VALUES (gen_random_uuid()::text, $1, $2, $3::vector, $4, $5, $6, $7, $8, NOW())
                         """,
                         input_data.materialId,
                         chunk.chunk_text,
@@ -303,25 +351,37 @@ async def chunk_material_job(payload: JobPayload):
 
             # Validate that chunks were actually created
             if chunks_created == 0:
-                raise ValueError("No chunks were created from the PDF. The PDF may be empty or unreadable.")
+                raise ValueError(
+                    "No chunks were created from the material. "
+                    "The file may be empty or contain unreadable text."
+                )
 
             # Mark job complete
             await execute_update(
                 """
                 UPDATE processing_jobs
                 SET status = 'completed',
+                    error_code = NULL,
+                    error_message = NULL,
+                    retryable = TRUE,
                     progress_percent = 100,
                     result_data = $1,
                     completed_at = NOW()
                 WHERE id = $2
                 """,
-                json.dumps({"chunks_created": chunks_created}),
+                json.dumps(
+                    {
+                        "chunks_created": chunks_created,
+                        "embeddings_available": embeddings_available,
+                    }
+                ),
                 payload.jobId,
             )
 
-            # Check if all materials in project are chunked, trigger topic extraction
+            # Keep topic extraction user-driven by default to avoid surprise topic churn
+            # while users are still uploading multiple files.
             project_id = material['project_id']
-            if project_id:
+            if settings.AUTO_EXTRACT_TOPICS_ON_CHUNK and project_id:
                 # Check if all materials in project are now chunked
                 pending_materials = await execute_one(
                     """
@@ -342,7 +402,7 @@ async def chunk_material_job(payload: JobPayload):
                         SELECT id FROM processing_jobs
                         WHERE project_id = $1
                           AND job_type = 'extract_topics'
-                          AND status IN ('pending', 'processing', 'completed')
+                          AND status IN ('pending', 'processing')
                         ORDER BY created_at DESC
                         LIMIT 1
                         """,
@@ -364,8 +424,8 @@ async def chunk_material_job(payload: JobPayload):
                             topic_job = await execute_one(
                                 """
                                 INSERT INTO processing_jobs
-                                (id, user_id, project_id, job_type, status, input_data, progress_percent, created_at)
-                                VALUES (gen_random_uuid(), $1, $2, 'extract_topics', 'pending', $3, 0, NOW())
+                                (id, user_id, project_id, job_type, status, stage, input_data, progress_percent, created_at)
+                                VALUES (gen_random_uuid()::text, $1, $2, 'extract_topics', 'pending', 'extracting', $3, 0, NOW())
                                 RETURNING id
                                 """,
                                 user_id,
@@ -373,9 +433,28 @@ async def chunk_material_job(payload: JobPayload):
                                 json.dumps({"projectId": project_id})
                             )
 
-                            # Enqueue topic extraction task
-                            await enqueue_topic_extraction_job(topic_job['id'], project_id)
-                            logger.info(f"Topic extraction job {topic_job['id']} enqueued for project {project_id}")
+                            # Enqueue topic extraction task only when API credentials are configured.
+                            # This prevents retry noise in local environments that intentionally omit keys.
+                            if settings.OPENAI_API_KEY:
+                                await enqueue_topic_extraction_job(topic_job['id'], project_id)
+                                logger.info(f"Topic extraction job {topic_job['id']} enqueued for project {project_id}")
+                            else:
+                                logger.warning(
+                                    "Skipping automatic topic extraction for project %s because OPENAI_API_KEY is missing",
+                                    project_id,
+                                )
+                                await execute_update(
+                                    """
+                                    UPDATE processing_jobs
+                                    SET status = 'failed',
+                                        error_code = 'OPENAI_KEY_MISSING',
+                                        retryable = FALSE,
+                                        error_message = 'OPENAI_API_KEY is not configured',
+                                        completed_at = NOW()
+                                    WHERE id = $1
+                                    """,
+                                    topic_job['id'],
+                                )
                     else:
                         logger.info(f"Topic extraction already exists for project {project_id}, skipping")
 
@@ -398,6 +477,8 @@ async def chunk_material_job(payload: JobPayload):
             """
             UPDATE processing_jobs
             SET status = 'failed',
+                error_code = 'CHUNKING_FAILED',
+                retryable = TRUE,
                 error_message = $1,
                 completed_at = NOW()
             WHERE id = $2
@@ -426,7 +507,11 @@ async def extract_topics_job(payload: JobPayload):
         await execute_update(
             """
             UPDATE processing_jobs
-            SET status = 'processing', started_at = NOW(), progress_percent = 10
+            SET status = 'processing',
+                stage = 'extracting',
+                started_at = NOW(),
+                progress_percent = 10,
+                attempt_count = attempt_count + 1
             WHERE id = $1
             """,
             payload.jobId,
@@ -440,23 +525,65 @@ async def extract_topics_job(payload: JobPayload):
 
         # Store topics in database with transaction for atomicity
         async def insert_topics_transaction(conn):
-            topic_count = 0
-            for idx, topic in enumerate(topics):
-                topic_record = await conn.fetchrow(
-                    """
-                    INSERT INTO topics
-                    (project_id, name, description, keywords, order_index, user_confirmed)
-                    VALUES ($1, $2, $3, $4, $5, FALSE)
-                    RETURNING id
-                    """,
-                    project_id,
-                    topic.name,
-                    topic.description,
-                    topic.keywords,
-                    idx,
-                )
+            existing_topics = await conn.fetch(
+                """
+                SELECT id, name
+                FROM topics
+                WHERE project_id = $1
+                ORDER BY created_at ASC
+                """,
+                project_id,
+            )
+            existing_by_name = {
+                _normalize_topic_name(row["name"]): row
+                for row in existing_topics
+                if _normalize_topic_name(row["name"])
+            }
 
-                topic_id = topic_record['id']
+            topic_count = 0
+            kept_topic_ids: list[str] = []
+            for idx, topic in enumerate(topics):
+                topic_keywords = [keyword.strip() for keyword in (topic.keywords or []) if keyword and keyword.strip()]
+                if not topic_keywords:
+                    topic_keywords = [topic.name.lower()]
+
+                existing_topic = existing_by_name.get(_normalize_topic_name(topic.name))
+
+                if existing_topic:
+                    topic_id = existing_topic["id"]
+                    await conn.execute(
+                        """
+                        UPDATE topics
+                        SET description = $1,
+                            keywords = $2,
+                            order_index = $3,
+                            source_material_ids = COALESCE(source_material_ids, '{}'::text[])
+                        WHERE id = $4
+                        """,
+                        topic.description,
+                        topic_keywords,
+                        idx,
+                        topic_id,
+                    )
+                else:
+                    topic_record = await conn.fetchrow(
+                        """
+                        INSERT INTO topics
+                        (id, project_id, name, description, keywords, order_index, source_material_ids, user_confirmed)
+                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, FALSE)
+                        RETURNING id
+                        """,
+                        project_id,
+                        topic.name,
+                        topic.description,
+                        topic_keywords,
+                        idx,
+                        [],
+                    )
+                    topic_id = topic_record['id']
+                    existing_by_name[_normalize_topic_name(topic.name)] = {"id": topic_id, "name": topic.name}
+
+                kept_topic_ids.append(topic_id)
 
                 # Map topic to relevant chunks using hybrid search
                 relevant_chunks = await hybrid_search_chunks(
@@ -467,13 +594,22 @@ async def extract_topics_job(payload: JobPayload):
                     limit=15
                 )
 
+                # Replace existing mappings so each extraction run reflects newest chunk ranking.
+                await conn.execute(
+                    """
+                    DELETE FROM topic_chunk_mappings
+                    WHERE topic_id = $1
+                    """,
+                    topic_id,
+                )
+
                 # Store chunk mappings
                 for chunk in relevant_chunks:
                     await conn.execute(
                         """
                         INSERT INTO topic_chunk_mappings
-                        (topic_id, chunk_id, relevance_score, relevance_source)
-                        VALUES ($1, $2, $3, $4)
+                        (id, topic_id, chunk_id, relevance_score, relevance_source)
+                        VALUES (gen_random_uuid()::text, $1, $2, $3, $4)
                         ON CONFLICT (topic_id, chunk_id) DO UPDATE
                         SET relevance_score = EXCLUDED.relevance_score
                         """,
@@ -484,6 +620,20 @@ async def extract_topics_job(payload: JobPayload):
                     )
 
                 topic_count += 1
+
+            # Remove stale, unconfirmed topics from previous extraction runs.
+            # This keeps the review list focused and prevents duplicate topic drift.
+            if kept_topic_ids:
+                await conn.execute(
+                    """
+                    DELETE FROM topics
+                    WHERE project_id = $1
+                      AND user_confirmed = FALSE
+                      AND id <> ALL($2::text[])
+                    """,
+                    project_id,
+                    kept_topic_ids,
+                )
             return topic_count
 
         # Execute all topic insertions in a single transaction
@@ -504,6 +654,9 @@ async def extract_topics_job(payload: JobPayload):
             """
             UPDATE processing_jobs
             SET status = 'completed',
+                error_code = NULL,
+                error_message = NULL,
+                retryable = TRUE,
                 progress_percent = 100,
                 result_data = $1,
                 completed_at = NOW()
@@ -522,20 +675,27 @@ async def extract_topics_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in topic extraction job {payload.jobId}: {e}")
+        retryable = not _is_permanent_llm_error(e)
+        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'TOPIC_EXTRACTION_FAILED'
+        status_code = 400 if not retryable else 500
 
         await execute_update(
             """
             UPDATE processing_jobs
             SET status = 'failed',
-                error_message = $1,
+                error_code = $1,
+                retryable = $2,
+                error_message = $3,
                 completed_at = NOW()
-            WHERE id = $2
+            WHERE id = $4
             """,
+            error_code,
+            retryable,
             str(e),
             payload.jobId,
         )
 
-        raise HTTPException(status_code=500, detail=f"Topic extraction failed: {str(e)}")
+        raise HTTPException(status_code=status_code, detail=f"Topic extraction failed: {str(e)}")
 
 
 @router.post("/jobs/generate-content")
@@ -553,7 +713,11 @@ async def generate_content_job(payload: JobPayload):
         await execute_update(
             """
             UPDATE processing_jobs
-            SET status = 'processing', started_at = NOW(), progress_percent = 10
+            SET status = 'processing',
+                stage = 'preparing',
+                started_at = NOW(),
+                progress_percent = 10,
+                attempt_count = attempt_count + 1
             WHERE id = $1
             """,
             payload.jobId,
@@ -579,11 +743,25 @@ async def generate_content_job(payload: JobPayload):
         await execute_update(
             """
             UPDATE processing_jobs
-            SET progress_percent = 30
+            SET progress_percent = 20
             WHERE id = $1
             """,
             payload.jobId,
         )
+
+        # Update progress before generation
+        await execute_update(
+            """
+            UPDATE processing_jobs
+            SET progress_percent = 40,
+                stage = 'generating'
+            WHERE id = $1
+            """,
+            payload.jobId,
+        )
+
+        focus = input_data.preferences.get("focus")
+        append = bool(input_data.preferences.get("append"))
 
         # Generate content based on type
         if content_type == "section_notes":
@@ -611,7 +789,8 @@ async def generate_content_job(payload: JobPayload):
                 topic_description=topic['description'],
                 example_type=ExampleType.SOLVED,
                 count=count,
-                difficulty_level=difficulty
+                difficulty_level=difficulty,
+                focus=focus
             )
             generated_content = result['examples']
             metadata = {
@@ -631,7 +810,8 @@ async def generate_content_job(payload: JobPayload):
                 topic_description=topic['description'],
                 example_type=ExampleType.INTERACTIVE,
                 count=count,
-                difficulty_level=difficulty
+                difficulty_level=difficulty,
+                focus=focus
             )
             generated_content = result['examples']
             metadata = {
@@ -644,13 +824,26 @@ async def generate_content_job(payload: JobPayload):
             generator = QuizGenerator()
             question_count = input_data.preferences.get('question_count', 10)
             difficulty = input_data.preferences.get('difficulty_level', 'medium')
+            question_types_raw = input_data.preferences.get('question_types')
+            question_types = None
+            if isinstance(question_types_raw, list) and question_types_raw:
+                parsed = []
+                for entry in question_types_raw:
+                    try:
+                        parsed.append(QuestionType(str(entry)))
+                    except Exception:
+                        continue
+                if parsed:
+                    question_types = parsed
 
             result = await generator.generate_quiz(
                 topic_id=topic['id'],
                 topic_name=topic['name'],
                 topic_description=topic['description'],
                 question_count=question_count,
-                difficulty_level=difficulty
+                question_types=question_types,
+                difficulty_level=difficulty,
+                focus=focus
             )
             generated_content = result['questions']
             metadata = {
@@ -666,19 +859,111 @@ async def generate_content_job(payload: JobPayload):
         await execute_update(
             """
             UPDATE processing_jobs
-            SET progress_percent = 70
+            SET progress_percent = 75,
+                stage = 'saving'
             WHERE id = $1
             """,
             payload.jobId,
         )
 
+        # Append to existing content when requested (examples/practice only)
+        if append and content_type in {"solved_examples", "interactive_examples"}:
+            existing_record = await execute_one(
+                """
+                SELECT content_data, metadata
+                FROM topic_content
+                WHERE topic_id = $1 AND content_type = $2
+                """,
+                topic['id'],
+                content_type,
+            )
+            if existing_record:
+                existing_content = existing_record.get("content_data")
+                if isinstance(existing_content, str):
+                    try:
+                        existing_content = json.loads(existing_content)
+                    except json.JSONDecodeError:
+                        existing_content = []
+                if not isinstance(existing_content, list):
+                    existing_content = []
+                if isinstance(generated_content, list):
+                    generated_content = existing_content + generated_content
+                else:
+                    generated_content = existing_content
+
+                if isinstance(metadata, dict):
+                    metadata["count"] = len(generated_content) if isinstance(generated_content, list) else metadata.get("count")
+
+        quiz_set_id = None
+        if content_type == "topic_quiz":
+            # Preserve any pre-existing single quiz payload before appending the new set.
+            # This keeps the original quiz visible as Set 1 instead of appearing replaced.
+            existing_quiz_set_count_row = await execute_one(
+                """
+                SELECT COUNT(*)::int AS count
+                FROM topic_quizzes
+                WHERE topic_id = $1
+                """,
+                topic['id'],
+            )
+            existing_quiz_set_count = int(existing_quiz_set_count_row.get("count", 0)) if existing_quiz_set_count_row else 0
+
+            if existing_quiz_set_count == 0:
+                legacy_quiz_row = await execute_one(
+                    """
+                    SELECT content_data, created_at, updated_at
+                    FROM topic_content
+                    WHERE topic_id = $1 AND content_type = 'topic_quiz'
+                    """,
+                    topic['id'],
+                )
+                if legacy_quiz_row:
+                    legacy_questions = legacy_quiz_row.get("content_data")
+                    if isinstance(legacy_questions, str):
+                        try:
+                            legacy_questions = json.loads(legacy_questions)
+                        except json.JSONDecodeError:
+                            legacy_questions = None
+
+                    if isinstance(legacy_questions, list) and legacy_questions:
+                        await execute_update(
+                            """
+                            INSERT INTO topic_quizzes
+                            (id, topic_id, questions, created_at)
+                            VALUES (gen_random_uuid()::text, $1, $2, COALESCE($3, $4, NOW()))
+                            """,
+                            topic['id'],
+                            json.dumps(legacy_questions),
+                            legacy_quiz_row.get("updated_at"),
+                            legacy_quiz_row.get("created_at"),
+                        )
+
+            quiz_set_record = await execute_one(
+                """
+                INSERT INTO topic_quizzes
+                (id, topic_id, questions, created_at)
+                VALUES (gen_random_uuid()::text, $1, $2, NOW())
+                RETURNING id
+                """,
+                topic['id'],
+                json.dumps(generated_content),
+            )
+            if quiz_set_record:
+                quiz_set_id = quiz_set_record.get("id")
+                if isinstance(metadata, dict):
+                    metadata["quiz_set_id"] = quiz_set_id
+
         # Store generated content in database
+        # asyncpg expects JSON values as serialized strings unless explicit codecs are configured.
+        content_payload = json.dumps(generated_content)
+        metadata_payload = json.dumps(metadata) if metadata is not None else None
+
         # Use ON CONFLICT to handle regeneration (replaces existing content)
         content_record = await execute_one(
             """
             INSERT INTO topic_content
-            (topic_id, content_type, content_data, metadata)
-            VALUES ($1, $2, $3, $4)
+            (id, topic_id, content_type, content_data, metadata, created_at, updated_at)
+            VALUES (gen_random_uuid()::text, $1, $2, $3, $4, NOW(), NOW())
             ON CONFLICT (topic_id, content_type)
             DO UPDATE SET
                 content_data = EXCLUDED.content_data,
@@ -688,8 +973,19 @@ async def generate_content_job(payload: JobPayload):
             """,
             topic['id'],
             content_type,
-            generated_content,
-            metadata,
+            content_payload,
+            metadata_payload,
+        )
+
+        # Update progress
+        await execute_update(
+            """
+            UPDATE processing_jobs
+            SET progress_percent = 90,
+                stage = 'finalizing'
+            WHERE id = $1
+            """,
+            payload.jobId,
         )
 
         # Mark job complete
@@ -697,7 +993,11 @@ async def generate_content_job(payload: JobPayload):
             """
             UPDATE processing_jobs
             SET status = 'completed',
+                error_code = NULL,
+                error_message = NULL,
+                retryable = TRUE,
                 progress_percent = 100,
+                stage = 'completed',
                 result_data = $1,
                 completed_at = NOW()
             WHERE id = $2
@@ -720,20 +1020,27 @@ async def generate_content_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in content generation job {payload.jobId}: {e}")
+        retryable = not _is_permanent_llm_error(e)
+        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'CONTENT_GENERATION_FAILED'
+        status_code = 400 if not retryable else 500
 
         await execute_update(
             """
             UPDATE processing_jobs
             SET status = 'failed',
-                error_message = $1,
+                error_code = $1,
+                retryable = $2,
+                error_message = $3,
                 completed_at = NOW()
-            WHERE id = $2
+            WHERE id = $4
             """,
+            error_code,
+            retryable,
             str(e),
             payload.jobId,
         )
 
-        raise HTTPException(status_code=500, detail=f"Content generation failed: {str(e)}")
+        raise HTTPException(status_code=status_code, detail=f"Content generation failed: {str(e)}")
 
 
 @router.post("/jobs/generate-exam")
@@ -751,7 +1058,11 @@ async def generate_exam_job(payload: JobPayload):
         await execute_update(
             """
             UPDATE processing_jobs
-            SET status = 'processing', started_at = NOW(), progress_percent = 10
+            SET status = 'processing',
+                stage = 'generating',
+                started_at = NOW(),
+                progress_percent = 10,
+                attempt_count = attempt_count + 1
             WHERE id = $1
             """,
             payload.jobId,
@@ -779,13 +1090,13 @@ async def generate_exam_job(payload: JobPayload):
         exam_record = await execute_one(
             """
             INSERT INTO sample_exams
-            (project_id, name, questions, duration_minutes, difficulty_level, topics_covered, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            (id, project_id, name, questions, duration_minutes, difficulty_level, topics_covered, created_at)
+            VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, NOW())
             RETURNING id
             """,
             input_data.projectId,
             f"Sample Exam - {result['generated_at'][:10]}",
-            result['questions'],
+            json.dumps(result['questions']),
             result['duration_minutes'],
             result['difficulty_level'],
             result['topics_covered'],
@@ -796,6 +1107,9 @@ async def generate_exam_job(payload: JobPayload):
             """
             UPDATE processing_jobs
             SET status = 'completed',
+                error_code = NULL,
+                error_message = NULL,
+                retryable = TRUE,
                 progress_percent = 100,
                 result_data = $1,
                 completed_at = NOW()
@@ -819,20 +1133,27 @@ async def generate_exam_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in exam generation job {payload.jobId}: {e}")
+        retryable = not _is_permanent_llm_error(e)
+        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'EXAM_GENERATION_FAILED'
+        status_code = 400 if not retryable else 500
 
         await execute_update(
             """
             UPDATE processing_jobs
             SET status = 'failed',
-                error_message = $1,
+                error_code = $1,
+                retryable = $2,
+                error_message = $3,
                 completed_at = NOW()
-            WHERE id = $2
+            WHERE id = $4
             """,
+            error_code,
+            retryable,
             str(e),
             payload.jobId,
         )
 
-        raise HTTPException(status_code=500, detail=f"Exam generation failed: {str(e)}")
+        raise HTTPException(status_code=status_code, detail=f"Exam generation failed: {str(e)}")
 
 
 @router.post("/jobs/grade-exam")
@@ -848,14 +1169,22 @@ async def grade_exam_job(payload: JobPayload):
         questions = payload.data.get("questions")
         answers = payload.data.get("answers")
 
-        if not submission_id or not questions or not answers:
-            raise HTTPException(status_code=400, detail="Missing required data")
+        if not isinstance(submission_id, str) or not submission_id:
+            raise HTTPException(status_code=400, detail="Missing submissionId")
+        if not isinstance(questions, list) or len(questions) == 0:
+            raise HTTPException(status_code=400, detail="Missing questions")
+        if not isinstance(answers, dict):
+            raise HTTPException(status_code=400, detail="Missing answers")
 
         # Update job status
         await execute_update(
             """
             UPDATE processing_jobs
-            SET status = 'processing', started_at = NOW(), progress_percent = 10
+            SET status = 'processing',
+                stage = 'grading',
+                started_at = NOW(),
+                progress_percent = 10,
+                attempt_count = attempt_count + 1
             WHERE id = $1
             """,
             payload.jobId,
@@ -888,20 +1217,72 @@ async def grade_exam_job(payload: JobPayload):
                 graded_at = NOW()
             WHERE id = $3
             """,
-            grading_result,
-            {
-                "overall_score": grading_result["overall_score"],
-                "earned_points": grading_result["earned_points"],
-                "total_points": grading_result["total_points"],
-            },
+            json.dumps(grading_result),
+            json.dumps(
+                {
+                    "overall_score": grading_result["overall_score"],
+                    "earned_points": grading_result["earned_points"],
+                    "total_points": grading_result["total_points"],
+                }
+            ),
             submission_id,
         )
+
+        submission_context = await execute_one(
+            """
+            SELECT es.user_id, se.project_id
+            FROM exam_submissions es
+            JOIN sample_exams se ON se.id = es.sample_exam_id
+            WHERE es.id = $1
+            """,
+            submission_id,
+        )
+
+        if submission_context:
+            user_id = submission_context["user_id"]
+            project_id = submission_context["project_id"]
+            for graded_question in grading_result.get("graded_questions", []):
+                topic_id = None
+                question_index = graded_question.get("question_index")
+                if isinstance(question_index, int) and 0 <= question_index < len(questions):
+                    question_payload = questions[question_index]
+                    if isinstance(question_payload, dict):
+                        topic_id = question_payload.get("topic_id")
+
+                points_possible = graded_question.get("points_possible", 0) or 0
+                points_earned = graded_question.get("points_earned", 0) or 0
+                score = 0.0
+                if points_possible and isinstance(points_possible, (int, float)):
+                    score = float(points_earned) / float(points_possible)
+
+                await execute_update(
+                    """
+                    INSERT INTO learning_signals
+                    (id, user_id, project_id, topic_id, source, score, metadata, created_at)
+                    VALUES (gen_random_uuid()::text, $1, $2, $3, 'exam', $4, $5, NOW())
+                    """,
+                    user_id,
+                    project_id,
+                    topic_id,
+                    score,
+                    json.dumps(
+                        {
+                            "submission_id": submission_id,
+                            "question_index": question_index,
+                            "points_possible": points_possible,
+                            "points_earned": points_earned,
+                        }
+                    ),
+                )
 
         # Mark job complete
         await execute_update(
             """
             UPDATE processing_jobs
             SET status = 'completed',
+                error_code = NULL,
+                error_message = NULL,
+                retryable = TRUE,
                 progress_percent = 100,
                 result_data = $1,
                 completed_at = NOW()
@@ -925,17 +1306,24 @@ async def grade_exam_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in exam grading job {payload.jobId}: {e}")
+        retryable = not _is_permanent_llm_error(e)
+        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'EXAM_GRADING_FAILED'
+        status_code = 400 if not retryable else 500
 
         await execute_update(
             """
             UPDATE processing_jobs
             SET status = 'failed',
-                error_message = $1,
+                error_code = $1,
+                retryable = $2,
+                error_message = $3,
                 completed_at = NOW()
-            WHERE id = $2
+            WHERE id = $4
             """,
+            error_code,
+            retryable,
             str(e),
             payload.jobId,
         )
 
-        raise HTTPException(status_code=500, detail=f"Exam grading failed: {str(e)}")
+        raise HTTPException(status_code=status_code, detail=f"Exam grading failed: {str(e)}")

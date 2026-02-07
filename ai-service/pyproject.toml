@@ -2,7 +2,7 @@
 name = "studybuddy-ai-service"
 version = "0.1.0"
 description = "AI microservice for StudyBuddy platform"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.13"
 
 [tool.black]
 line-length = 100
@@ -16,3 +16,5 @@ line_length = 100
 testpaths = ["tests"]
 python_files = "test_*.py"
 python_functions = "test_*"
+pythonpath = ["."]
+asyncio_mode = "auto"

@@ -15,9 +15,12 @@ class Settings(BaseSettings):
 
     # OpenAI
     OPENAI_API_KEY: str
-    OPENAI_MODEL: str = "gpt-4o"
-    OPENAI_MINI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MODEL: str = "gpt-5-mini"
+    OPENAI_MINI_MODEL: str = "gpt-5-mini"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_REALTIME_MODEL: str = "gpt-realtime-mini"
+    OPENAI_REALTIME_VOICE: str = "marin"
+    OPENAI_TRANSCRIPTION_MODEL: str = "gpt-4o-mini-transcribe"
 
     # Anthropic (optional)
     ANTHROPIC_API_KEY: str = ""
@@ -26,6 +29,7 @@ class Settings(BaseSettings):
 
     # Processing control
     ENABLE_PROCESSING: bool = True
+    AUTO_EXTRACT_TOPICS_ON_CHUNK: bool = False
 
     # GCP (optional, can use local storage)
     GCS_BUCKET: str = ""
@@ -36,6 +40,7 @@ class Settings(BaseSettings):
     AI_SERVICE_URL: str = "http://localhost:8000"
     FRONTEND_URL: str = "http://localhost:3000"  # Frontend URL for CORS
     ENVIRONMENT: str = "development"
+    AI_INTERNAL_TOKEN: str = ""
 
     @property
     def is_production(self) -> bool:
