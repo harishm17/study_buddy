@@ -6,7 +6,7 @@
 
 Turn lecture slides, books, and past papers into structured notes, quizzes, and practice exams with an evaluation-ready RAG pipeline.
 
-[Why this exists](#-overview) • [Demo](#-demo) • [Docs](#-docs) • [Evaluation](#-evaluation) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
+[Why this exists](#-overview) • [Demo](#-demo) • [Evaluation](#-evaluation) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
 
 </div>
 
@@ -83,32 +83,9 @@ StudyBuddy uses AI to:
 
 ## Demo
 
-### Screenshots
-
-**Material Upload & Processing**
-![Upload Interface](./docs/screenshots/upload.png)
-*Upload files, validate them, then extract topics in one guided step*
-
-**Quiz Generation & Taking**
-![Quiz Interface](./docs/screenshots/quiz.png)
-*AI-generated quizzes with multiple question types*
-
-**Exam Grading with Feedback**
-![Grading Results](./docs/screenshots/grading.png)
-*Instant grading with detailed explanations*
-
 ### Try It Locally
 
 Want to run it yourself? Follow the [Quick Start](#-quick-start) guide below.
-
----
-
-## Docs
-
-- [System Guide (Comprehensive)](./docs/studybuddy-system-guide.md) — full architecture, data model, APIs, jobs, recommendations, quiz sets, and voice runtime
-- [Voice Coach guide](./docs/voice-coach.md) — architecture, endpoints, and conceptual enforcement
-- [Learning Engine](./docs/learning-engine.md) — mastery scoring, review scheduling, and recommendation endpoints
-- [UX Principles](./docs/ux-principles.md) — async reliability, actionability, and voice UX standards
 
 ---
 
