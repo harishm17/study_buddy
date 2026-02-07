@@ -6,7 +6,7 @@
 
 Turn lecture slides, books, and past papers into structured notes, quizzes, and practice exams with an evaluation-ready RAG pipeline.
 
-[Why this exists](#-overview) • [Demo](#-demo) • [Evaluation](#-evaluation) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
+[Why this exists](#-overview) • [Demo](#-demo) • [Docs](#-docs) • [Evaluation](#-evaluation) • [Quick Start](#-quick-start) • [Architecture](#-architecture)
 
 </div>
 
@@ -35,17 +35,17 @@ StudyBuddy uses AI to:
 ## Key Features
 
 ### Smart Material Processing
-- **Upload PDFs**: Lecture notes, textbook chapters, sample exams
+- **Upload Documents**: PDF, DOCX, PPTX, and DOC lecture notes, textbook chapters, and sample exams
 - **Automatic Validation**: AI checks content quality and relevance
 - **Intelligent Chunking**: Breaks down materials into semantic sections
 - **Vector Search**: pgvector-powered semantic search for relevant content retrieval
 
 ### AI-Powered Content Generation
-- **Study Notes**: Comprehensive markdown notes synthesized from all materials
-- **Solved Examples**: Step-by-step problem walkthroughs with explanations
+- **Study Notes**: Comprehensive markdown notes with LaTeX math and code highlighting
+- **Solved Examples**: Step-by-step problem walkthroughs with formatted work sections
 - **Interactive Practice**: Multi-step problems with hints and real-time validation
-- **Topic Quizzes**: MCQ, short answer, numerical, and true/false questions
-- **Sample Exams**: Full-length timed exams combining multiple topics
+- **Topic Quizzes**: MCQ, short answer, numerical, and true/false questions with markdown support
+- **Sample Exams**: Full-length timed exams with proper rendering of code and equations
 
 ### Unlimited Practice with Regeneration
 - Click **"Practice More"** to generate completely different problems
@@ -65,11 +65,19 @@ StudyBuddy uses AI to:
 - Exam performance tracking
 - No overwhelming dashboards—just inline, actionable data
 
+### Voice Coach (Concept-Only)
+- **Oral exam drills** for each topic with real-time voice interaction
+- **Concept-only enforcement**: no equations or calculations, just intuition and reasoning
+- **Instant feedback** with key-point grading and hints
+- **Voice sprint** mode for weakest topics (project-level)
+
 ### Modern User Experience
 - Responsive design optimized for desktop and mobile
 - Real-time content generation with loading states
 - Countdown timers for timed exams with auto-submit
 - Question navigator with completion indicators
+- Rich content rendering with LaTeX math, code syntax highlighting, and markdown
+- Proper formatting for STEM content (equations, chemical formulas, code snippets)
 
 ---
 
@@ -79,7 +87,7 @@ StudyBuddy uses AI to:
 
 **Material Upload & Processing**
 ![Upload Interface](./docs/screenshots/upload.png)
-*Upload PDFs and see automatic topic extraction*
+*Upload files, validate them, then extract topics in one guided step*
 
 **Quiz Generation & Taking**
 ![Quiz Interface](./docs/screenshots/quiz.png)
@@ -92,6 +100,15 @@ StudyBuddy uses AI to:
 ### Try It Locally
 
 Want to run it yourself? Follow the [Quick Start](#-quick-start) guide below.
+
+---
+
+## Docs
+
+- [System Guide (Comprehensive)](./docs/studybuddy-system-guide.md) — full architecture, data model, APIs, jobs, recommendations, quiz sets, and voice runtime
+- [Voice Coach guide](./docs/voice-coach.md) — architecture, endpoints, and conceptual enforcement
+- [Learning Engine](./docs/learning-engine.md) — mastery scoring, review scheduling, and recommendation endpoints
+- [UX Principles](./docs/ux-principles.md) — async reliability, actionability, and voice UX standards
 
 ---
 
@@ -112,11 +129,19 @@ This repo includes an **evaluation harness** to prevent regressions and track an
 
 ---
 
+## Quality Gates
+
+- Frontend CI: Prisma validation + lint + production build
+- AI service CI: Python compile checks + pytest suite
+- Workflow file: `.github/workflows/ci.yml`
+
+---
+
 ## Quick Start
 
 ### Prerequisites
 - **Node.js** 20+ and **npm**
-- **Python** 3.11+
+- **Python** 3.11 or 3.12 (3.13 is not supported yet)
 - **PostgreSQL** 15+ with **pgvector** extension
 - **OpenAI API Key** ([Get one here](https://platform.openai.com/api-keys))
 
@@ -130,26 +155,55 @@ This repo includes an **evaluation harness** to prevent regressions and track an
 
 2. **Set up environment variables**
    ```bash
-   # Frontend
-   cd frontend
+   # Root env used by docker compose variable substitution
    cp .env.example .env
-   # Edit .env and add your keys
 
-   # AI Service
-   cd ../ai-service
-   cp .env.example .env
-   # Edit .env and add your OpenAI API key
+   # Service-local envs (used by manual, non-docker runs)
+   cp frontend/.env.example frontend/.env
+   cp ai-service/.env.example ai-service/.env
    ```
+
+   Voice Coach requires a shared internal token for minting Realtime secrets:
+   - Set one shared `AI_INTERNAL_TOKEN` across `.env`, `frontend/.env`, and `ai-service/.env`
+   - Ensure `OPENAI_REALTIME_MODEL`, `OPENAI_REALTIME_VOICE`, and `OPENAI_TRANSCRIPTION_MODEL` are set in `ai-service/.env`
+
+   Docker note:
+   - For `docker compose` runs, root `.env` is sufficient for most setups.
+   - `frontend/.env` and `ai-service/.env` are mainly for manual non-docker runs, or if you want per-service overrides.
 
 3. **Start with Docker Compose** (Easiest)
    ```bash
-   docker-compose up --build
+   # Compose reads root ./.env for variable substitution.
+   # Ensure OPENAI_API_KEY and AI_INTERNAL_TOKEN are set in ./.env
+   # First run (or after Dockerfile/dependency changes):
+   COMPOSE_BAKE=true docker compose up --build
+
+   # Subsequent runs (fast path, reuses built images):
+   docker compose up
    ```
+
+   Build-time speed tips:
+   - Avoid `--build` unless dependencies or Dockerfiles changed.
+   - The Dockerfiles use BuildKit cache mounts for `npm`, `pip`, and Next.js build cache.
+   - Keep `COMPOSE_BAKE=true` for faster parallelized builds.
 
    Services will be available at:
    - Frontend: http://localhost:3000
    - AI Service: http://localhost:8000
    - API Docs: http://localhost:8000/docs
+
+   If uploads validate but extraction fails with authentication errors, check:
+   - `OPENAI_API_KEY` exists in root `.env`
+   - `AI_INTERNAL_TOKEN` exists in root `.env` (and matches service-local envs if you run services manually)
+   - For `gpt-5-mini` on the Responses API, avoid legacy sampling knobs (`temperature`, `top_p`, `logprobs`).
+     The AI service strips these automatically for GPT-5/reasoning models.
+
+   Secret-safe debugging tip:
+   - Avoid printing full compose-resolved config directly, because it includes environment values.
+   - Use redacted output if needed:
+   ```bash
+   docker compose config | sed -E 's/sk-[A-Za-z0-9_-]+/sk-[REDACTED]/g'
+   ```
 
 4. **Run database migrations**
    ```bash
@@ -157,6 +211,7 @@ This repo includes an **evaluation harness** to prevent regressions and track an
    npm install
    npx prisma db push
    ```
+   - If you pull updates, re-run `npx prisma db push` to apply any new constraints (Voice Coach uses a unique index on `(sessionId, questionIndex)`).
 
 5. **Open your browser** and go to http://localhost:3000
 
@@ -176,7 +231,7 @@ npm run dev
 **AI Service:**
 ```bash
 cd ai-service
-python -m venv venv
+   python3.11 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload
@@ -202,12 +257,16 @@ CREATE EXTENSION vector;
 - **[NextAuth.js](https://next-auth.js.org/)** - Authentication with Google OAuth
 - **[TailwindCSS](https://tailwindcss.com/)** - Utility-first CSS framework
 - **[Shadcn/ui](https://ui.shadcn.com/)** - Beautifully designed components
-- **[React-markdown](https://github.com/remarkjs/react-markdown)** - Markdown rendering with syntax highlighting
+- **[React-markdown](https://github.com/remarkjs/react-markdown)** - Markdown rendering with GFM support
+- **[KaTeX](https://katex.org/)** - Fast LaTeX math rendering (via remark-math/rehype-katex)
+- **[Prism](https://prismjs.com/)** - Syntax highlighting for code blocks
+- **WebRTC** - Low-latency audio for Voice Coach
 
 ### Backend (AI Service)
 - **[FastAPI](https://fastapi.tiangolo.com/)** - Modern Python web framework
 - **[PyMuPDF](https://pymupdf.readthedocs.io/)** - PDF text extraction
-- **[OpenAI API](https://platform.openai.com/)** - GPT-4 for content generation
+- **[OpenAI API](https://platform.openai.com/)** - Responses API (`gpt-5-mini`) for content generation
+- **OpenAI Realtime** - WebRTC audio/text for Voice Coach
 - **[pgvector](https://github.com/pgvector/pgvector)** - Vector similarity search
 - **[Pydantic v2](https://docs.pydantic.dev/)** - Data validation
 
@@ -242,8 +301,9 @@ CREATE EXTENSION vector;
               ┌────────────────┐
               │   OpenAI API   │
               │                │
-              │ • GPT-4o       │
+              │ • GPT-5-mini   │
               │ • Embeddings   │
+              │ • Realtime     │
               └────────────────┘
 ```
 
@@ -277,6 +337,8 @@ Savings: 85% ↓
 **Async Job Processing:**
 - Long-running tasks (PDF processing, content generation) run async
 - Frontend polls job status for real-time updates
+- Polling has bounded timeouts so the UI does not stay in indefinite "processing" states
+- Duplicate extraction requests are deduplicated while a job is already in flight
 - No HTTP timeout issues
 
 ---
@@ -284,10 +346,10 @@ Savings: 85% ↓
 ## How It Works
 
 ### 1. Upload Materials
-Upload your PDFs (lecture notes, textbooks, past exams). AI validates and chunks them into searchable sections with embeddings.
+Upload your files (PDF/DOCX/PPTX/DOC lecture notes, textbooks, past exams). The upload API verifies extension, MIME type, and file signature before storage. Valid materials are then chunked into searchable sections with embeddings.
 
 ### 2. Extract Topics
-AI analyzes all materials and automatically identifies key learning topics. Review and confirm the topics extracted.
+AI analyzes validated materials when you trigger extraction, then proposes key learning topics for review. Confirm the topic list before generating study content.
 
 ### 3. Generate Study Content
 For each topic, generate:
@@ -306,6 +368,40 @@ For each topic, generate:
 - Configure question count, duration, and difficulty
 - Take timed exams with countdown timer
 - Get AI-graded results with detailed feedback
+
+### 6. Voice Coach (Concept-Only)
+- Launch a topic **Voice Drill** for oral exam prep
+- Use **Voice Sprint** to drill weak topics across a project
+- Concept-only by design (definitions, intuition, relationships, reasoning)
+
+---
+
+## Content Formatting & Rendering
+
+StudyBuddy intelligently renders all learning content with proper formatting for STEM subjects:
+
+### Math & Equations
+- **LaTeX support** via KaTeX for fast, beautiful math typesetting
+- Inline math: `$E = mc^2$` → $E = mc^2$
+- Display math: `$$\int_0^1 f(x)\,dx$$` → $$\int_0^1 f(x)\,dx$$
+- Chemistry: `$2H_2 + O_2 \to 2H_2O$` → $2H_2 + O_2 \to 2H_2O$
+
+### Code Highlighting
+- **Syntax highlighting** via Prism for all major languages
+- Fenced code blocks with language detection: \`\`\`python, \`\`\`c, \`\`\`javascript
+- Inline code formatting for identifiers and short expressions
+
+### Smart Content Normalization
+- Automatic paragraph breaks in dense prose
+- Escaped newline conversion for proper line breaks
+- Consistent rendering across notes, examples, quizzes, and exams
+- LLM prompts explicitly enforce proper markdown formatting
+
+**All content fields** (questions, explanations, solutions, notes) support:
+- Full markdown (headings, lists, tables, blockquotes)
+- LaTeX math expressions (inline and display)
+- Fenced code blocks with syntax highlighting
+- Proper line breaks and paragraph spacing
 
 ---
 
@@ -365,6 +461,7 @@ NEXTAUTH_URL=http://localhost:3000
 
 # Services
 AI_SERVICE_URL=http://localhost:8000
+AI_INTERNAL_TOKEN=replace-with-shared-secret
 ```
 
 ### Optional
@@ -377,8 +474,17 @@ GOOGLE_OAUTH_CLIENT_SECRET=...
 ANTHROPIC_API_KEY=sk-ant-...
 
 # GCP (for production deployment)
-GCS_BUCKET_NAME=studybuddy-materials
-GCP_PROJECT_ID=your-project-id
+GCS_BUCKET=studybuddy-materials
+GCS_PROJECT_ID=your-project-id
+ENABLE_GCS_STORAGE=true
+ENABLE_CLOUD_TASKS=true
+
+# Voice Coach (AI service)
+OPENAI_MODEL=gpt-5-mini
+OPENAI_MINI_MODEL=gpt-5-mini
+OPENAI_REALTIME_MODEL=gpt-realtime-mini
+OPENAI_REALTIME_VOICE=marin
+OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 ```
 
 ---
@@ -386,9 +492,10 @@ GCP_PROJECT_ID=your-project-id
 ## Testing
 
 ```bash
-# Frontend tests
+# Frontend checks
 cd frontend
-npm test
+npm run lint
+npm run build
 
 # AI Service tests
 cd ai-service
@@ -463,6 +570,20 @@ vercel
 
 Config file: `frontend/vercel.json`
 
+#### 4. Run deployment preflight checks
+
+After both services are live, verify runtime dependencies:
+
+```bash
+# Frontend runtime checks (storage mode, AI reachability, auth secret, task mode)
+curl -s https://<frontend-domain>/api/health/runtime | jq
+
+# AI dependency checks (db, OpenAI key, internal token, gcs config)
+curl -s https://<ai-service-domain>/health/dependencies | jq
+```
+
+Treat `status: "unhealthy"` as a release blocker.
+
 **Total Cost**: ~$5-25/month (free tiers available)
 
 ---
@@ -491,6 +612,10 @@ Config file: `frontend/vercel.json`
 4. **Access your deployed app**
    - Frontend: `https://studybuddy-frontend-xxx.run.app`
    - AI Service: `https://studybuddy-ai-service-xxx.run.app`
+
+5. **Verify deployment health**
+   - `GET /api/health/runtime` on frontend
+   - `GET /health/dependencies` on AI service
 
 ---
 
