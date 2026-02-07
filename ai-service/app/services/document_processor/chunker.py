@@ -1,15 +1,19 @@
-"""PDF chunking service with semantic section detection."""
+"""Document chunking service with semantic section detection."""
 import logging
 import re
 from typing import List, Optional
 from pydantic import BaseModel
 import pymupdf  # PyMuPDF
+from app.services.document_processor.extractors import (
+    extract_document_text,
+    infer_extension,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class Chunk(BaseModel):
-    """Represents a semantic chunk of text from a PDF."""
+    """Represents a semantic chunk of text from a material."""
 
     chunk_text: str
     section_hierarchy: Optional[str] = None  # e.g., "Chapter 3 > Section 3.2 > Photosynthesis"
@@ -208,6 +212,30 @@ def chunk_pdf(pdf_path: str, target_chunk_size: int = 800) -> List[Chunk]:
         raise
 
 
+def chunk_document(file_path: str, filename: str, target_chunk_size: int = 800) -> List[Chunk]:
+    """Chunk any supported material format.
+
+    PDFs use layout-aware heading parsing. Other formats use extracted text chunks.
+    """
+    extension = infer_extension(filename)
+    if extension == ".pdf":
+        return chunk_pdf(file_path, target_chunk_size=target_chunk_size)
+
+    extracted = extract_document_text(file_path, filename)
+    if not extracted.text.strip():
+        return []
+
+    section = f"{filename}"
+    return split_into_chunks(
+        text=extracted.text,
+        section_hierarchy=section,
+        page_start=0,
+        page_end=max(extracted.page_count - 1, 0),
+        start_index=0,
+        target_size=target_chunk_size,
+    )
+
+
 def split_into_chunks(
     text: str,
     section_hierarchy: str,
@@ -251,12 +279,71 @@ def split_into_chunks(
     # Split by paragraphs (double newline)
     paragraphs = text.split("\n\n")
 
+    def split_long_paragraph(paragraph: str) -> List[str]:
+        para = paragraph.strip()
+        if not para:
+            return []
+        if estimate_tokens(para) <= target_size:
+            return [para]
+
+        # First try sentence boundaries.
+        sentence_segments = re.split(r'(?<=[.!?])\s+', para)
+        sentence_segments = [segment.strip() for segment in sentence_segments if segment.strip()]
+        if not sentence_segments:
+            sentence_segments = [para]
+
+        chunks_local: List[str] = []
+        current_parts: List[str] = []
+        current_tokens_local = 0
+
+        def flush_current() -> None:
+            nonlocal current_parts, current_tokens_local
+            if current_parts:
+                chunks_local.append(" ".join(current_parts).strip())
+                current_parts = []
+                current_tokens_local = 0
+
+        for sentence in sentence_segments:
+            sentence_tokens = estimate_tokens(sentence)
+
+            # If a single sentence is too long, split by words.
+            if sentence_tokens > target_size:
+                flush_current()
+                words = sentence.split()
+                word_parts: List[str] = []
+                word_tokens = 0
+                for word in words:
+                    token_len = estimate_tokens(word) + 1
+                    if word_parts and word_tokens + token_len > target_size:
+                        chunks_local.append(" ".join(word_parts).strip())
+                        word_parts = [word]
+                        word_tokens = token_len
+                    else:
+                        word_parts.append(word)
+                        word_tokens += token_len
+                if word_parts:
+                    chunks_local.append(" ".join(word_parts).strip())
+                continue
+
+            if current_parts and current_tokens_local + sentence_tokens > target_size:
+                flush_current()
+
+            current_parts.append(sentence)
+            current_tokens_local += sentence_tokens
+
+        flush_current()
+        return chunks_local
+
+    segments: List[str] = []
+    for paragraph in paragraphs:
+        segments.extend(split_long_paragraph(paragraph))
+
     current_chunk = []
     current_tokens = 0
     chunk_idx = start_index
     overlap_size = int(target_size * overlap_ratio)
 
-    for para in paragraphs:
+    for para in segments:
         para_tokens = estimate_tokens(para)
 
         # If adding this paragraph exceeds target, save current chunk

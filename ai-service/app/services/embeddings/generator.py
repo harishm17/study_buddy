@@ -79,3 +79,13 @@ async def generate_single_embedding(text: str) -> List[float]:
     """
     llm = LLMFactory.get_provider()
     return await llm.generate_embedding(text)
+
+
+async def generate_embedding(text: str) -> List[float]:
+    """Backward-compatible single-text embedding helper."""
+    return await generate_single_embedding(text)
+
+
+async def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
+    """Backward-compatible batch embedding helper."""
+    return await generate_embeddings(texts)

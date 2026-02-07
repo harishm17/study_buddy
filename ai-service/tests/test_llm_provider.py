@@ -1,282 +1,251 @@
 """Tests for LLM provider abstraction."""
-import pytest
+from __future__ import annotations
+
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
-class TestLLMProviderInterface:
-    """Test LLM provider interface and factory."""
+from app.services.llm.base import LLMMessage
 
-    def test_factory_returns_provider(self):
-        """LLM factory should return a provider instance."""
-        with patch('app.services.llm.factory.settings') as mock_settings:
-            mock_settings.llm_provider = 'openai'
-            mock_settings.openai_api_key = 'test-key'
+
+class TestLLMProviderFactory:
+    """Factory coverage for provider wiring."""
+
+    def test_factory_returns_openai_provider(self):
+        with patch("app.services.llm.factory.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "openai"
+            mock_settings.OPENAI_API_KEY = "test-key"
+            mock_settings.OPENAI_MODEL = "gpt-5-mini"
+            mock_settings.OPENAI_MINI_MODEL = "gpt-5-mini"
+            mock_settings.OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
             from app.services.llm.factory import LLMFactory
 
+            LLMFactory.reset()
             provider = LLMFactory.get_provider()
             assert provider is not None
 
     def test_provider_has_required_methods(self):
-        """Provider should have all required methods."""
-        with patch('app.services.llm.factory.settings') as mock_settings:
-            mock_settings.llm_provider = 'openai'
-            mock_settings.openai_api_key = 'test-key'
+        with patch("app.services.llm.factory.settings") as mock_settings:
+            mock_settings.LLM_PROVIDER = "openai"
+            mock_settings.OPENAI_API_KEY = "test-key"
+            mock_settings.OPENAI_MODEL = "gpt-5-mini"
+            mock_settings.OPENAI_MINI_MODEL = "gpt-5-mini"
+            mock_settings.OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
             from app.services.llm.factory import LLMFactory
 
+            LLMFactory.reset()
             provider = LLMFactory.get_provider()
-
-            # Check for required methods
-            assert hasattr(provider, 'generate_text')
-            assert hasattr(provider, 'generate_structured')
-            assert hasattr(provider, 'generate_embedding')
+            assert hasattr(provider, "generate_text")
+            assert hasattr(provider, "generate_structured")
+            assert hasattr(provider, "generate_embedding")
 
 
-class TestOpenAIProvider:
-    """Test OpenAI provider implementation."""
+class TestOpenAIProviderResponses:
+    """Behavior coverage for Responses API request construction."""
 
     @pytest.mark.asyncio
-    async def test_generate_text_basic(self):
-        """Should generate text from messages."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            # Create mock completion
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "Test response"
-            mock_completion.usage.total_tokens = 50
+    async def test_generate_text_strips_temperature_for_gpt5_models(self):
+        mock_client = MagicMock()
+        mock_responses = MagicMock()
+        mock_create = AsyncMock(
+            return_value={
+                "output_text": "hello",
+                "usage": {"input_tokens": 2, "output_tokens": 3},
+                "status": "completed",
+            }
+        )
+        mock_responses.create = mock_create
+        mock_client.responses = mock_responses
 
-            # Mock the API call
-            mock_client = MagicMock()
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
-            mock_client_class.return_value = mock_client
-
+        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
             from app.services.llm.openai_provider import OpenAIProvider
 
-            provider = OpenAIProvider(api_key="test-key")
-            messages = [{"role": "user", "content": "Hello"}]
-
-            response = await provider.generate_text(messages)
-
-            assert response.content == "Test response"
-            assert response.tokens_used == 50
-
-    @pytest.mark.asyncio
-    async def test_uses_mini_model_when_specified(self):
-        """Should use mini model for simple tasks."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "Response"
-            mock_completion.usage.total_tokens = 20
-
-            mock_client = MagicMock()
-            mock_create = AsyncMock(return_value=mock_completion)
-            mock_client.chat.completions.create = mock_create
-            mock_client_class.return_value = mock_client
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(
-                api_key="test-key",
-                default_model="gpt-4o",
-                mini_model="gpt-4o-mini"
+            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
+            response = await provider.generate_text(
+                messages=[LLMMessage(role="user", content="Hello")],
+                temperature=0.7,
+                max_tokens=256,
+                top_p=0.4,
+                logprobs=True,
             )
 
-            messages = [{"role": "user", "content": "Hi"}]
-            await provider.generate_text(messages, use_mini=True)
+            assert response.content == "hello"
+            assert response.tokens_used == 5
 
-            # Verify mini model was used
-            call_args = mock_create.call_args
-            assert call_args.kwargs.get('model') == "gpt-4o-mini"
+            call_kwargs = mock_create.call_args.kwargs
+            assert "temperature" not in call_kwargs
+            assert "top_p" not in call_kwargs
+            assert "logprobs" not in call_kwargs
+            assert call_kwargs["max_output_tokens"] == 256
+            assert call_kwargs["model"] == "gpt-5-mini"
 
     @pytest.mark.asyncio
-    async def test_structured_output_parsing(self):
-        """Structured output should parse JSON correctly."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = '{"key": "value", "number": 42}'
-            mock_completion.usage.total_tokens = 30
+    async def test_generate_text_keeps_temperature_for_non_reasoning_models(self):
+        mock_client = MagicMock()
+        mock_responses = MagicMock()
+        mock_create = AsyncMock(
+            return_value={
+                "output_text": "ok",
+                "usage": {"total_tokens": 11},
+                "status": "completed",
+            }
+        )
+        mock_responses.create = mock_create
+        mock_client.responses = mock_responses
 
-            mock_client = MagicMock()
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
-            mock_client_class.return_value = mock_client
+        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
+            from app.services.llm.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(api_key="test-key", default_model="gpt-4o-mini")
+            await provider.generate_text(
+                messages=[LLMMessage(role="user", content="Hello")],
+                temperature=0.4,
+                top_p=0.9,
+            )
+
+            call_kwargs = mock_create.call_args.kwargs
+            assert call_kwargs["temperature"] == 0.4
+            assert call_kwargs["top_p"] == 0.9
+            assert call_kwargs["model"] == "gpt-4o-mini"
+
+    @pytest.mark.asyncio
+    async def test_generate_structured_uses_json_schema_format(self):
+        mock_client = MagicMock()
+        mock_responses = MagicMock()
+        mock_create = AsyncMock(
+            return_value={
+                "output_text": '{"title":"Safe C Strings","difficulty":"medium"}',
+                "usage": {"total_tokens": 15},
+                "status": "completed",
+            }
+        )
+        mock_responses.create = mock_create
+        mock_client.responses = mock_responses
+
+        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
+            from app.services.llm.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
+            schema = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "study_note",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "difficulty": {"type": "string"},
+                        },
+                        "required": ["title", "difficulty"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+            result = await provider.generate_structured(
+                messages=[LLMMessage(role="user", content="Generate JSON")],
+                response_format=schema,
+                temperature=0.8,
+            )
+
+            assert result["title"] == "Safe C Strings"
+            call_kwargs = mock_create.call_args.kwargs
+            assert "temperature" not in call_kwargs
+            assert call_kwargs["text"]["format"]["type"] == "json_schema"
+            assert call_kwargs["text"]["format"]["name"] == "study_note"
+
+    @pytest.mark.asyncio
+    async def test_structured_fallback_parses_json_from_non_schema_response(self):
+        mock_client = MagicMock()
+        mock_responses = MagicMock()
+
+        from openai import BadRequestError
+
+        request_obj = MagicMock()
+        request_obj.method = "POST"
+        request_obj.url = "https://api.openai.com/v1/responses"
+        bad_response = MagicMock()
+        bad_response.status_code = 400
+        bad_response.request = request_obj
+        bad_response.headers = {}
+
+        first_call = BadRequestError(
+            message="Schema not supported",
+            response=bad_response,
+            body={"error": {"message": "Schema not supported"}},
+        )
+        second_call = {
+            "output_text": "```json\n{\"score\": 0.9}\n```",
+            "status": "completed",
+            "usage": {"total_tokens": 9},
+        }
+        mock_responses.create = AsyncMock(side_effect=[first_call, second_call])
+        mock_client.responses = mock_responses
+
+        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
+            from app.services.llm.openai_provider import OpenAIProvider
+
+            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
+            result = await provider.generate_structured(
+                messages=[LLMMessage(role="user", content="Generate JSON")],
+                response_format={
+                    "type": "json_schema",
+                    "name": "score_obj",
+                    "schema": {"type": "object"},
+                    "strict": True,
+                },
+            )
+
+            assert result["score"] == 0.9
+            assert mock_responses.create.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_http_fallback_when_sdk_has_no_responses_attribute(self):
+        mock_client = MagicMock()
+        mock_client.responses = None
+
+        http_response = MagicMock()
+        http_response.status_code = 200
+        http_response.json.return_value = {
+            "output_text": "fallback works",
+            "status": "completed",
+            "usage": {"total_tokens": 4},
+        }
+
+        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client), patch(
+            "app.services.llm.openai_provider.httpx.AsyncClient"
+        ) as mock_http_client:
+            http_client_ctx = mock_http_client.return_value
+            http_client_ctx.__aenter__.return_value.post = AsyncMock(return_value=http_response)
 
             from app.services.llm.openai_provider import OpenAIProvider
 
-            provider = OpenAIProvider(api_key="test-key")
-            messages = [{"role": "user", "content": "Generate JSON"}]
+            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
+            response = await provider.generate_text([LLMMessage(role="user", content="Hi")])
 
-            result = await provider.generate_structured(messages)
-
-            assert isinstance(result, dict)
-            assert result["key"] == "value"
-            assert result["number"] == 42
-
-    @pytest.mark.asyncio
-    async def test_temperature_parameter(self):
-        """Should respect temperature parameter."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "Response"
-            mock_completion.usage.total_tokens = 20
-
-            mock_client = MagicMock()
-            mock_create = AsyncMock(return_value=mock_completion)
-            mock_client.chat.completions.create = mock_create
-            mock_client_class.return_value = mock_client
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key")
-            messages = [{"role": "user", "content": "Hi"}]
-
-            await provider.generate_text(messages, temperature=0.7)
-
-            call_args = mock_create.call_args
-            assert call_args.kwargs.get('temperature') == 0.7
-
-    @pytest.mark.asyncio
-    async def test_max_tokens_parameter(self):
-        """Should respect max_tokens parameter."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "Response"
-            mock_completion.usage.total_tokens = 20
-
-            mock_client = MagicMock()
-            mock_create = AsyncMock(return_value=mock_completion)
-            mock_client.chat.completions.create = mock_create
-            mock_client_class.return_value = mock_client
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key")
-            messages = [{"role": "user", "content": "Hi"}]
-
-            await provider.generate_text(messages, max_tokens=100)
-
-            call_args = mock_create.call_args
-            assert call_args.kwargs.get('max_tokens') == 100
+            assert response.content == "fallback works"
+            post_kwargs = http_client_ctx.__aenter__.return_value.post.call_args.kwargs
+            assert post_kwargs["headers"]["Authorization"] == "Bearer test-key"
+            assert post_kwargs["json"]["model"] == "gpt-5-mini"
 
 
 class TestEmbeddingGeneration:
-    """Test embedding generation via LLM provider."""
-
     @pytest.mark.asyncio
     async def test_generate_embedding(self):
-        """Should generate embedding vector."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_response = MagicMock()
-            mock_response.data = [MagicMock()]
-            mock_response.data[0].embedding = [0.1] * 1536
+        mock_client = MagicMock()
+        mock_response = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1] * 3)])
+        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+        mock_client.responses = MagicMock()
 
-            mock_client = MagicMock()
-            mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-            mock_client_class.return_value = mock_client
-
+        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
             from app.services.llm.openai_provider import OpenAIProvider
 
-            provider = OpenAIProvider(api_key="test-key")
+            provider = OpenAIProvider(api_key="test-key", embedding_model="text-embedding-3-small")
             embedding = await provider.generate_embedding("Test text")
 
-            assert len(embedding) == 1536
-            assert all(isinstance(x, float) for x in embedding)
-
-    @pytest.mark.asyncio
-    async def test_embedding_model_selection(self):
-        """Should use correct embedding model."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_response = MagicMock()
-            mock_response.data = [MagicMock()]
-            mock_response.data[0].embedding = [0.1] * 1536
-
-            mock_client = MagicMock()
-            mock_create = AsyncMock(return_value=mock_response)
-            mock_client.embeddings.create = mock_create
-            mock_client_class.return_value = mock_client
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(
-                api_key="test-key",
-                embedding_model="text-embedding-3-small"
-            )
-            await provider.generate_embedding("Test")
-
-            call_args = mock_create.call_args
-            assert call_args.kwargs.get('model') == "text-embedding-3-small"
-
-
-class TestErrorHandling:
-    """Test error handling in LLM provider."""
-
-    @pytest.mark.asyncio
-    async def test_api_error_handling(self):
-        """Should handle API errors gracefully."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_client = MagicMock()
-            mock_client.chat.completions.create = AsyncMock(
-                side_effect=Exception("API Error")
-            )
-            mock_client_class.return_value = mock_client
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key")
-            messages = [{"role": "user", "content": "Hi"}]
-
-            with pytest.raises(Exception):
-                await provider.generate_text(messages)
-
-    @pytest.mark.asyncio
-    async def test_invalid_json_handling(self):
-        """Should handle invalid JSON in structured output."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "Not valid JSON"
-            mock_completion.usage.total_tokens = 10
-
-            mock_client = MagicMock()
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
-            mock_client_class.return_value = mock_client
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key")
-            messages = [{"role": "user", "content": "Generate JSON"}]
-
-            with pytest.raises(Exception):
-                await provider.generate_structured(messages)
-
-
-class TestTokenCounting:
-    """Test token usage tracking."""
-
-    @pytest.mark.asyncio
-    async def test_tracks_token_usage(self):
-        """Should track token usage from API responses."""
-        with patch('app.services.llm.openai_provider.AsyncOpenAI') as mock_client_class:
-            mock_completion = MagicMock()
-            mock_completion.choices = [MagicMock()]
-            mock_completion.choices[0].message.content = "Response"
-            mock_completion.usage.total_tokens = 150
-            mock_completion.usage.prompt_tokens = 50
-            mock_completion.usage.completion_tokens = 100
-
-            mock_client = MagicMock()
-            mock_client.chat.completions.create = AsyncMock(return_value=mock_completion)
-            mock_client_class.return_value = mock_client
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key")
-            messages = [{"role": "user", "content": "Hi"}]
-
-            response = await provider.generate_text(messages)
-
-            assert response.tokens_used == 150
+            assert embedding == [0.1, 0.1, 0.1]
+            kwargs = mock_client.embeddings.create.call_args.kwargs
+            assert kwargs["model"] == "text-embedding-3-small"

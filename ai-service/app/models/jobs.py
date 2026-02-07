@@ -1,7 +1,7 @@
 """Pydantic models for job processing."""
 from datetime import datetime
 from typing import Any, Dict, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class JobPayload(BaseModel):
@@ -23,7 +23,7 @@ class ContentGenerationInput(BaseModel):
 
     topicId: str
     contentType: str  # section_notes, solved_examples, interactive_examples, topic_quiz
-    preferences: Dict[str, Any] = {}
+    preferences: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ExamGenerationInput(BaseModel):

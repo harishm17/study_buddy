@@ -1,6 +1,6 @@
 """Vector similarity search using pgvector."""
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 from app.db.connection import execute_query
 from app.services.embeddings.generator import generate_single_embedding
 
@@ -40,10 +40,20 @@ async def hybrid_search_chunks(
         keyword_chunks = await keyword_search(project_id, keywords, limit * 2)
         logger.debug(f"Found {len(keyword_chunks)} chunks via keyword search")
 
-        # 2. Semantic search
+        # 2. Semantic search (best-effort)
         topic_text = f"{topic_name}: {topic_description}"
-        semantic_chunks = await semantic_search(project_id, topic_text, limit * 2)
-        logger.debug(f"Found {len(semantic_chunks)} chunks via semantic search")
+        semantic_chunks: List[Dict] = []
+        try:
+            semantic_chunks = await semantic_search(project_id, topic_text, limit * 2)
+            logger.debug(f"Found {len(semantic_chunks)} chunks via semantic search")
+        except Exception as semantic_error:
+            logger.warning(
+                "Semantic search unavailable for topic '%s' in project %s: %s. "
+                "Falling back to keyword-only retrieval.",
+                topic_name,
+                project_id,
+                semantic_error,
+            )
 
         # 3. Combine and deduplicate
         chunks_by_id = {}
@@ -207,3 +217,53 @@ async def semantic_search(
 
     chunks = await execute_query(query, embedding_str, project_id, limit)
     return [dict(chunk) for chunk in chunks]
+
+
+async def search_similar_chunks(
+    embedding: List[float],
+    top_k: int = 5,
+    material_id: Optional[str] = None,
+    min_similarity: float = 0.0,
+) -> List[Dict]:
+    """
+    Backward-compatible vector search helper used by tests and legacy callers.
+    """
+    if not embedding:
+        return []
+
+    embedding_str = f"[{','.join(map(str, embedding))}]"
+
+    if material_id:
+        query = """
+            SELECT
+                mc.id AS chunk_id,
+                mc.chunk_text,
+                1 - (mc.chunk_embedding <=> $1::vector) AS similarity_score
+            FROM material_chunks mc
+            WHERE mc.material_id = $2
+            ORDER BY mc.chunk_embedding <=> $1::vector
+            LIMIT $3
+        """
+        rows = await execute_query(query, embedding_str, material_id, top_k)
+    else:
+        query = """
+            SELECT
+                mc.id AS chunk_id,
+                mc.chunk_text,
+                1 - (mc.chunk_embedding <=> $1::vector) AS similarity_score
+            FROM material_chunks mc
+            ORDER BY mc.chunk_embedding <=> $1::vector
+            LIMIT $2
+        """
+        rows = await execute_query(query, embedding_str, top_k)
+
+    normalized = [dict(row) for row in rows]
+    filtered = []
+    for row in normalized:
+        similarity = row.get("similarity_score", row.get("similarity", 0))
+        if isinstance(similarity, (int, float)) and similarity >= min_similarity:
+            row["similarity_score"] = float(similarity)
+            filtered.append(row)
+
+    filtered.sort(key=lambda entry: entry.get("similarity_score", 0), reverse=True)
+    return filtered[:top_k]
