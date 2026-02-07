@@ -31,19 +31,28 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      # Enable BuildKit caching for faster rebuilds
-      cache_from:
-        - studybuddy-frontend:latest
     container_name: studybuddy-frontend
+    # Local docker volume writes for uploaded files require write access on /data/uploads.
+    # Run frontend as root in compose to avoid EACCES on named volumes across host setups.
+    user: "0:0"
     ports:
       - "3000:3000"
     environment:
+      - PORT=3000
       - DATABASE_URL=postgresql://dev:devpass@postgres:5432/studybuddy
-      - NEXTAUTH_SECRET=dev-secret-change-in-production
-      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-dev-secret-change-in-production}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
       - AI_SERVICE_URL=http://ai-service:8000
-      - GCS_BUCKET=local-materials
-      - NODE_ENV=development
+      - AI_INTERNAL_TOKEN=${AI_INTERNAL_TOKEN:-dev-internal-token}
+      - GCS_BUCKET=${GCS_BUCKET:-local-materials}
+      - GCS_PROJECT_ID=${GCS_PROJECT_ID:-}
+      - CLOUD_TASKS_QUEUE=${CLOUD_TASKS_QUEUE:-studybuddy-jobs}
+      - CLOUD_TASKS_LOCATION=${CLOUD_TASKS_LOCATION:-us-central1}
+      - ENABLE_GCS_STORAGE=${ENABLE_GCS_STORAGE:-false}
+      - ALLOW_GCS_LOCAL_FALLBACK=${ALLOW_GCS_LOCAL_FALLBACK:-true}
+      - ENABLE_CLOUD_TASKS=${ENABLE_CLOUD_TASKS:-false}
+      - NODE_ENV=production
+      - ENVIRONMENT=${ENVIRONMENT:-development}
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,23 +67,29 @@ services:
     build:
       context: ./ai-service
       dockerfile: Dockerfile
-      # Enable BuildKit caching for faster rebuilds
-      cache_from:
-        - studybuddy-ai-service:latest
     container_name: studybuddy-ai
     ports:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://dev:devpass@postgres:5432/studybuddy
-      - LLM_PROVIDER=openai
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=gpt-4o
-      - OPENAI_MINI_MODEL=gpt-4o-mini
-      - ENABLE_PROCESSING=true
-      - GCS_BUCKET=local-materials
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5-mini}
+      - OPENAI_MINI_MODEL=${OPENAI_MINI_MODEL:-gpt-5-mini}
+      - OPENAI_EMBEDDING_MODEL=${OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      - OPENAI_REALTIME_MODEL=${OPENAI_REALTIME_MODEL:-gpt-realtime-mini}
+      - OPENAI_REALTIME_VOICE=${OPENAI_REALTIME_VOICE:-marin}
+      - OPENAI_TRANSCRIPTION_MODEL=${OPENAI_TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}
+      - ENABLE_PROCESSING=${ENABLE_PROCESSING:-true}
+      - AUTO_EXTRACT_TOPICS_ON_CHUNK=${AUTO_EXTRACT_TOPICS_ON_CHUNK:-false}
+      - GCS_BUCKET=${GCS_BUCKET:-local-materials}
+      - GCS_PROJECT_ID=${GCS_PROJECT_ID:-}
       - AI_SERVICE_URL=http://localhost:8000
-      - FRONTEND_URL=http://localhost:3000
-      - ENVIRONMENT=development
+      - FRONTEND_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - AI_INTERNAL_TOKEN=${AI_INTERNAL_TOKEN:-dev-internal-token}
+      - PORT=8000
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
     depends_on:
       postgres:
         condition: service_healthy

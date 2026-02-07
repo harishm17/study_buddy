@@ -32,6 +32,10 @@ model User {
   quizAttempts        QuizAttempt[]
   overallQuizAttempts OverallQuizAttempt[]
   examSubmissions     ExamSubmission[]
+  voiceDrillSessions  VoiceDrillSession[]
+  voiceDrillAttempts  VoiceDrillAttempt[]
+  learningSignals     LearningSignal[]
+  reviewSchedules     ReviewSchedule[]
 
   @@index([email])
   @@index([oauthProvider, oauthId])
@@ -58,6 +62,9 @@ model Project {
   overallQuizzes OverallQuiz[]
   sampleExams    SampleExam[]
   processingJobs ProcessingJob[]
+  voiceDrillSessions VoiceDrillSession[]
+  learningSignals LearningSignal[]
+  reviewSchedules ReviewSchedule[]
 
   @@index([userId])
   @@index([status])
@@ -139,6 +146,10 @@ model Topic {
   topicQuizzes       TopicQuiz[]
   progress           TopicProgress[]
   quizAttempts       QuizAttempt[]
+  voiceDrillSessions VoiceDrillSession[]
+  voiceDrillAttempts VoiceDrillAttempt[]
+  learningSignals    LearningSignal[]
+  reviewSchedules    ReviewSchedule[]
 
   @@index([projectId])
   @@index([projectId, orderIndex])
@@ -235,6 +246,7 @@ model QuizAttempt {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
   topicId    String   @map("topic_id")
+  quizSetId  String?  @map("quiz_set_id")
   answers    Json     // User's answers
   results    Json     // Grading results (correct/incorrect per question)
   score      Float    // Percentage score
@@ -245,8 +257,115 @@ model QuizAttempt {
   topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
   @@index([userId, topicId])
+  @@index([quizSetId])
   @@index([topicId])
   @@map("quiz_attempts")
+}
+
+// ============================================
+// Voice Drill Sessions (Conceptual Oral Prep)
+// ============================================
+
+model VoiceDrillSession {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  projectId   String   @map("project_id")
+  topicId     String?  @map("topic_id")
+  mode        String   @default("topic_drill") // topic_drill|sprint|teach_back
+  language    String   @default("en")
+  voice       String   @default("marin")
+  status      String   @default("active") @map("status") // active|ended|aborted
+  interruptCount Int   @default(0) @map("interrupt_count")
+  lastDetectedLanguage String? @map("last_detected_language")
+  questionSet Json     @map("question_set")
+  metrics     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+  endedAt     DateTime? @map("ended_at")
+
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topic    Topic?             @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  attempts VoiceDrillAttempt[]
+
+  @@index([userId, projectId])
+  @@index([topicId])
+  @@map("voice_drill_sessions")
+}
+
+model VoiceDrillAttempt {
+  id            String   @id @default(uuid())
+  sessionId     String   @map("session_id")
+  userId        String   @map("user_id")
+  topicId       String?  @map("topic_id")
+  questionIndex Int      @map("question_index")
+  questionType  String   @map("question_type")
+  questionText  String   @map("question_text")
+  expectedAnswer Json?   @map("expected_answer")
+  userAnswer    String   @map("user_answer")
+  isCorrect     Boolean  @map("is_correct")
+  score         Float    @default(0)
+  feedback      Json?
+  timing        Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  session VoiceDrillSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic   Topic?            @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@index([sessionId])
+  @@unique([sessionId, questionIndex])
+  @@index([userId])
+  @@index([topicId])
+  @@map("voice_drill_attempts")
+}
+
+// ============================================
+// Learning Signals (Cross-surface performance events)
+// ============================================
+
+model LearningSignal {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  projectId  String   @map("project_id")
+  topicId    String?  @map("topic_id")
+  source     String   // quiz|voice|exam
+  score      Float
+  confidence Int?
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
+
+  @@index([userId, projectId, topicId])
+  @@index([source, createdAt])
+  @@map("learning_signals")
+}
+
+// ============================================
+// Review Schedules (Spaced review planning)
+// ============================================
+
+model ReviewSchedule {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  projectId      String   @map("project_id")
+  topicId        String   @map("topic_id")
+  mastery        Float    @default(0)
+  dueAt          DateTime @map("due_at")
+  intervalDays   Int      @default(1) @map("interval_days")
+  streak         Int      @default(0)
+  lastReviewedAt DateTime? @map("last_reviewed_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topic   Topic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+  @@index([userId, projectId, dueAt])
+  @@map("review_schedules")
 }
 
 // ============================================
@@ -334,6 +453,10 @@ model ProcessingJob {
   projectId       String?   @map("project_id")
   jobType         String    @map("job_type")
   status          String    @default("pending") // pending|processing|completed|failed
+  stage           String?   @map("stage") // validating|chunking|extracting|generating|grading
+  errorCode       String?   @map("error_code")
+  retryable       Boolean   @default(true)
+  attemptCount    Int       @default(0) @map("attempt_count")
   inputData       Json?     @map("input_data")
   resultData      Json?     @map("result_data")
   progressPercent Int       @default(0) @map("progress_percent")

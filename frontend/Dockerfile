@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Multi-stage build for Next.js frontend
 
 # Stage 1: Dependencies
@@ -8,16 +9,17 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 
 # Install dependencies
-# Note: Using npm install instead of npm ci because package-lock.json may be out of sync
-# After regenerating package-lock.json locally, this can be changed back to npm ci
-RUN npm install --legacy-peer-deps
+# Note: keep npm install for compatibility when lockfile can drift.
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --legacy-peer-deps --prefer-offline --no-audit --progress=false
 
 # Stage 2: Builder
 FROM node:20-slim AS builder
 WORKDIR /app
 
-# Install OpenSSL for Prisma (only once, cached)
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# Install OpenSSL for Prisma (cached between builds)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -32,16 +34,19 @@ RUN npx prisma generate
 # Copy source code (this invalidates cache when code changes)
 COPY . .
 
-# Build Next.js application (cached if source unchanged)
+# Build Next.js application.
+# Cache .next build artifacts across docker builds for faster rebuilds.
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+RUN --mount=type=cache,target=/app/.next/cache \
+    npm run build
 
 # Stage 3: Runner
 FROM node:20-slim AS runner
 WORKDIR /app
 
 # Install OpenSSL for Prisma (cached layer)
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
