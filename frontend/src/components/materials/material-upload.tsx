@@ -21,10 +21,11 @@ interface UploadingFile {
   file: File
   category: MaterialCategory
   progress: number
-  status: 'uploading' | 'validating' | 'completed' | 'invalid' | 'error'
+  status: 'uploading' | 'validating' | 'processing' | 'completed' | 'invalid' | 'error'
   error?: string
   materialId?: string
   jobId?: string
+  chunkingJobId?: string
 }
 
 const CATEGORIES = [
@@ -44,7 +45,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
   const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 90_000 })
 
   const hasInFlightUploads = uploadingFiles.some(
-    (file) => file.status === 'uploading' || file.status === 'validating'
+    (file) => file.status === 'uploading' || file.status === 'validating' || file.status === 'processing'
   )
   const validCount = uploadingFiles.filter((file) => file.status === 'completed').length
   const invalidCount = uploadingFiles.filter((file) => file.status === 'invalid').length
@@ -157,20 +158,108 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
         const validationNotes =
           typeof resultData?.notes === 'string' ? resultData.notes : null
 
-        setUploadingFiles(prev =>
-          prev.map(f =>
-            f.id === uploadingFile.id
-              ? validationStatus === 'invalid'
+        if (validationStatus === 'invalid') {
+          setUploadingFiles(prev =>
+            prev.map(f =>
+              f.id === uploadingFile.id
                 ? {
                     ...f,
                     status: 'invalid',
                     progress: 100,
                     error: validationNotes || 'Validation rejected this file.',
                   }
-                : { ...f, status: 'completed', progress: 100 }
-              : f
+                : f
+            )
           )
-        )
+        } else {
+          // Validation succeeded - now poll chunking job
+          setUploadingFiles(prev =>
+            prev.map(f =>
+              f.id === uploadingFile.id
+                ? { ...f, status: 'processing', progress: 50 }
+                : f
+            )
+          )
+
+          // Get chunking job for this material
+          try {
+            const chunkingResponse = await fetch(`/api/materials/${data.material.id}/chunking-job`)
+            if (chunkingResponse.ok) {
+              const chunkingData = await chunkingResponse.json()
+              if (chunkingData.chunkingJob) {
+                const chunkingJobId = chunkingData.chunkingJob.id
+
+                // Poll chunking job
+                const chunkingPollResult = await pollJob(chunkingJobId, (job) => {
+                  if (!isMountedRef.current) return
+                  setUploadingFiles(prev =>
+                    prev.map(f =>
+                      f.id === uploadingFile.id
+                        ? {
+                            ...f,
+                            chunkingJobId,
+                            progress: 50 + (Math.max(0, Math.min(100, job.progressPercent)) / 2)
+                          }
+                        : f
+                    )
+                  )
+                })
+
+                if (!isMountedRef.current) return
+                if (chunkingPollResult.state === 'completed') {
+                  setUploadingFiles(prev =>
+                    prev.map(f =>
+                      f.id === uploadingFile.id
+                        ? { ...f, status: 'completed', progress: 100 }
+                        : f
+                    )
+                  )
+                } else {
+                  setUploadingFiles(prev =>
+                    prev.map(f =>
+                      f.id === uploadingFile.id
+                        ? {
+                            ...f,
+                            status: 'error',
+                            error: chunkingPollResult.error || 'Processing failed. Please retry.'
+                          }
+                        : f
+                    )
+                  )
+                }
+              } else {
+                // No chunking job found yet - mark as completed anyway (chunking may not have started yet)
+                setUploadingFiles(prev =>
+                  prev.map(f =>
+                    f.id === uploadingFile.id
+                      ? { ...f, status: 'completed', progress: 100 }
+                      : f
+                  )
+                )
+              }
+            } else {
+              // Couldn't get chunking job - mark as completed anyway
+              setUploadingFiles(prev =>
+                prev.map(f =>
+                  f.id === uploadingFile.id
+                    ? { ...f, status: 'completed', progress: 100 }
+                    : f
+                )
+              )
+            }
+          } catch (error) {
+            console.error('Error getting chunking job:', error)
+            // Mark as completed anyway - chunking may happen in background
+            if (!isMountedRef.current) return
+            setUploadingFiles(prev =>
+              prev.map(f =>
+                f.id === uploadingFile.id
+                  ? { ...f, status: 'completed', progress: 100 }
+                  : f
+              )
+            )
+          }
+        }
       } else {
         setUploadingFiles(prev =>
           prev.map(f =>
@@ -366,7 +455,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
                           variant="ghost"
                           size="icon"
                           onClick={() => removeFile(upload.id)}
-                          disabled={upload.status === 'uploading' || upload.status === 'validating'}
+                          disabled={upload.status === 'uploading' || upload.status === 'validating' || upload.status === 'processing'}
                         >
                           <X className="h-4 w-4" />
                         </Button>
@@ -386,14 +475,18 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
                         </p>
                       ) : upload.status === 'completed' ? (
                         <p className="text-sm text-green-600 dark:text-green-400">
-                          ✓ Validation complete
+                          ✓ Ready for topic extraction
                         </p>
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm">
                             <Loader2 className="h-4 w-4 animate-spin" />
                             <span>
-                              {upload.status === 'uploading' ? 'Uploading...' : 'Validating...'}
+                              {upload.status === 'uploading'
+                                ? 'Uploading...'
+                                : upload.status === 'validating'
+                                ? 'Validating...'
+                                : 'Processing chunks...'}
                             </span>
                           </div>
                           <Progress value={upload.progress} />
