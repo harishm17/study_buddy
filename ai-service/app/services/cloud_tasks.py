@@ -60,6 +60,7 @@ async def enqueue_task(
         return f"dev-task-{payload['jobId']}"
 
     # Production mode - use Cloud Tasks
+    logger.info(f"Production mode: _client={'available' if _client else 'None'}, attempting task enqueue")
     if not _client:
         logger.warning("Cloud Tasks client not available, falling back to direct HTTP call")
         try:
@@ -70,9 +71,9 @@ async def enqueue_task(
                     timeout=30.0
                 )
                 if response.status_code != 200:
-                    logger.error(f"Direct HTTP call failed: {response.text}")
+                    logger.error(f"Direct HTTP fallback failed ({response.status_code}): {response.text}")
                 else:
-                    logger.info(f"Direct HTTP call succeeded")
+                    logger.info(f"Direct HTTP fallback succeeded for {endpoint}")
         except Exception as e:
             logger.error(f"Failed to call AI service directly: {e}")
         return f"direct-task-{payload['jobId']}"
