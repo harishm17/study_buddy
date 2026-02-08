@@ -175,11 +175,11 @@ class ExamplesGenerator:
 - Keep titles and step descriptions concise (one line). Put longer content, code, or layouts in work/explanation fields.
 - **MATHEMATICAL NOTATION (MANDATORY):** ALL mathematical expressions, variables, equations, subscripts, sets, and formulas MUST use LaTeX syntax:
   * Variables: `$x$`, `$a_1$`, `$p_2$` (NOT plain a1, p2)
-  * Sets: `$A = \\{a_1, a_2, a_3\\}$` (NOT A = {a1, a2, a3})
+  * Sets: `$A = \\{{a_1, a_2, a_3\\}}$` (NOT plain text sets)
   * Functions: `$q(p_1) = 3$`, `$f(x)$` (NOT q(p1) = 3)
-  * Subscripts: `$C_{p_1}$`, `$x_i$` (NOT C_p1, x_i)
+  * Subscripts: `$C_{{p_1}}$`, `$x_i$` (NOT C_p1, x_i)
   * Inline: `$E = mc^2$`, `$\\sigma$`
-  * Display: `$$\\int_0^1 f(x)\\,dx$$`, `$$\\sum_{i=1}^n x_i$$`
+  * Display: `$$\\int_0^1 f(x)\\,dx$$`, `$$\\sum_{{i=1}}^n x_i$$`
   * Chemistry: `$2H_2 + O_2 \\to 2H_2O$`
   * NEVER use plain text for variables, equations, or mathematical notation
 - Separate distinct ideas into short paragraphs rather than one dense block of text.
@@ -265,11 +265,11 @@ Return a JSON array of {count} example objects:"""
 - Keep step questions concise (one or two lines). Put code, layouts, and longer explanations in problem_statement, hint, or explanation fields.
 - **MATHEMATICAL NOTATION (MANDATORY):** ALL mathematical expressions, variables, equations, subscripts, sets, and formulas MUST use LaTeX syntax:
   * Variables: `$x$`, `$a_1$`, `$p_2$` (NOT plain a1, p2)
-  * Sets: `$A = \\{a_1, a_2, a_3\\}$` (NOT A = {a1, a2, a3})
+  * Sets: `$A = \\{{a_1, a_2, a_3\\}}$` (NOT plain text sets)
   * Functions: `$q(p_1) = 3$`, `$f(x)$` (NOT q(p1) = 3)
-  * Subscripts: `$C_{p_1}$`, `$x_i$` (NOT C_p1, x_i)
+  * Subscripts: `$C_{{p_1}}$`, `$x_i$` (NOT C_p1, x_i)
   * Inline: `$E = mc^2$`, `$\\sigma$`
-  * Display: `$$\\int_0^1 f(x)\\,dx$$`, `$$\\sum_{i=1}^n x_i$$`
+  * Display: `$$\\int_0^1 f(x)\\,dx$$`, `$$\\sum_{{i=1}}^n x_i$$`
   * Chemistry: `$2H_2 + O_2 \\to 2H_2O$`
   * NEVER use plain text for variables, equations, or mathematical notation
 - Separate distinct ideas into short paragraphs rather than one dense block of text.
