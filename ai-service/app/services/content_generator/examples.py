@@ -173,7 +173,7 @@ class ExamplesGenerator:
 - Use real line breaks (`\n`) inside JSON strings to separate paragraphs and before/after code fences. Do NOT put everything on one line.
 - Use `inline code` only for short identifiers, function names, or single expressions (e.g. `buf`, `strlen()`).
 - Keep titles and step descriptions concise (one line). Put longer content, code, or layouts in work/explanation fields.
-- **MATHEMATICAL NOTATION (MANDATORY):** ALL mathematical expressions, variables, equations, subscripts, sets, and formulas MUST use LaTeX syntax:
+- **MATHEMATICAL NOTATION (MANDATORY):** ALL mathematical expressions, variables, equations, subscripts, sets, and formulas MUST use LaTeX syntax **in prose/explanations**:
   * Variables: `$x$`, `$a_1$`, `$p_2$` (NOT plain a1, p2)
   * Sets: `$A = \\{{a_1, a_2, a_3\\}}$` (NOT plain text sets)
   * Functions: `$q(p_1) = 3$`, `$f(x)$` (NOT q(p1) = 3)
@@ -181,7 +181,8 @@ class ExamplesGenerator:
   * Inline: `$E = mc^2$`, `$\\sigma$`
   * Display: `$$\\int_0^1 f(x)\\,dx$$`, `$$\\sum_{{i=1}}^n x_i$$`
   * Chemistry: `$2H_2 + O_2 \\to 2H_2O$`
-  * NEVER use plain text for variables, equations, or mathematical notation
+  * **EXCEPTION:** Inside fenced code blocks (```), use PLAIN TEXT without LaTeX (e.g., a_1, p_2, not $a_1$, $p_2$)
+  * NEVER use plain text for math in prose, NEVER use LaTeX inside code blocks
 - Separate distinct ideas into short paragraphs rather than one dense block of text.
 
 **Format each example as a JSON object (markdown allowed inside string fields):**
