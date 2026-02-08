@@ -331,6 +331,10 @@ async def chunk_material_job(payload: JobPayload):
                         else None
                     )
 
+                    # Sanitize chunk text - remove null bytes that PostgreSQL can't handle
+                    sanitized_text = chunk.chunk_text.replace('\x00', '')
+                    sanitized_hierarchy = chunk.section_hierarchy.replace('\x00', '') if chunk.section_hierarchy else None
+
                     await conn.execute(
                         """
                         INSERT INTO material_chunks
@@ -339,9 +343,9 @@ async def chunk_material_job(payload: JobPayload):
                         VALUES (gen_random_uuid()::text, $1, $2, $3::vector, $4, $5, $6, $7, $8, NOW())
                         """,
                         input_data.materialId,
-                        chunk.chunk_text,
+                        sanitized_text,
                         embedding_str,
-                        chunk.section_hierarchy,
+                        sanitized_hierarchy,
                         chunk.page_start,
                         chunk.page_end,
                         chunk.chunk_index,
