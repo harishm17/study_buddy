@@ -119,7 +119,7 @@ async def validate_material_job(payload: JobPayload):
 
         # If validation succeeded, automatically trigger chunking
         if validation_result.status == "valid":
-            logger.info(f"Material validated successfully, triggering chunking for {input_data.materialId}")
+            logger.warning(f"***** Material validated successfully, triggering chunking for {input_data.materialId} *****")
             
             # Get user_id and project_id from the current job
             current_job = await execute_one(
@@ -146,15 +146,19 @@ async def validate_material_job(payload: JobPayload):
                 )
                 
                 # Trigger the chunking job via Cloud Tasks
-                logger.info(f"Created chunking job {chunking_job['id']} for material {input_data.materialId}")
+                logger.warning(f"***** Created chunking job {chunking_job['id']} for material {input_data.materialId} *****")
 
                 # Enqueue the chunking job
-                await enqueue_chunking_job(
-                    job_id=chunking_job['id'],
-                    material_id=input_data.materialId
-                )
-
-                logger.info(f"Enqueued chunking job {chunking_job['id']}")
+                try:
+                    await enqueue_chunking_job(
+                        job_id=chunking_job['id'],
+                        material_id=input_data.materialId
+                    )
+                    logger.warning(f"***** Enqueued chunking job {chunking_job['id']} successfully *****")
+                except Exception as enqueue_error:
+                    logger.error(f"***** ENQUEUE FAILED: {type(enqueue_error).__name__}: {str(enqueue_error)} *****")
+                    import traceback
+                    logger.error(f"***** TRACEBACK: {traceback.format_exc()} *****")
 
         logger.info(f"Completed material validation job: {payload.jobId}")
 
