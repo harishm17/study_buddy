@@ -120,14 +120,14 @@ def _merge_topics(existing: ExtractedTopic, candidate: ExtractedTopic) -> Extrac
 
 
 def _topic_targets(material_count: int) -> tuple[int, int, int]:
-    # Keep small projects intentionally coarse.
-    if material_count <= 1:
-        return (3, 4, 4)
-    if material_count <= 3:
-        return (3, 5, 5)
-    if material_count <= 6:
-        return (4, 6, 6)
-    return (6, 8, 8)
+    """
+    Return topic count guidance: (suggested_min, suggested_max, hard_cap).
+
+    We give broad guidance but trust the LLM to determine the right count
+    based on content rather than enforcing material-count-based brackets.
+    The hard cap prevents extreme cases while allowing flexibility.
+    """
+    return (3, 10, 12)
 
 
 def _postprocess_topics(topics: List[ExtractedTopic], material_count: int) -> List[ExtractedTopic]:
@@ -236,7 +236,7 @@ async def extract_topics_from_materials(project_id: str) -> List[ExtractedTopic]
         # 4. Build prompt for LLM
         material_summary = build_material_summary(materials, section_chunks, sample_chunks)
 
-        target_min_topics, target_max_topics, _ = _topic_targets(len(materials))
+        _, _, max_topics = _topic_targets(len(materials))
 
         prompt = f"""You are analyzing educational materials to extract key topics for a study guide.
 
@@ -245,11 +245,11 @@ async def extract_topics_from_materials(project_id: str) -> List[ExtractedTopic]
 Based on these materials, extract a comprehensive list of topics that a student should study.
 
 Requirements:
-- Each topic should be a distinct concept or subject area
-- Topics should cover all major themes in the materials
-- Include {target_min_topics}-{target_max_topics} topics (adjust based on material volume)
-- Keep topics broad and practical. Prefer one strong umbrella topic over multiple narrow variants.
-- Avoid near-duplicates and wording variants (for example, do not return both "X Vulnerabilities" and "X Errors" if they are the same concept)
+- Identify all major distinct concepts or subject areas that warrant separate study
+- Extract as many topics as needed to cover the material comprehensively (typically 3-10, but use your judgment)
+- Each topic should be meaningfully different - keep topics broad and practical
+- Prefer one strong umbrella topic over multiple narrow variants
+- Avoid near-duplicates and wording variants (e.g., don't return both "X Vulnerabilities" and "X Errors" if they cover the same concept)
 - For each topic, provide:
   - name: Clear, concise topic name (2-5 words)
   - description: Brief explanation (1-2 sentences)

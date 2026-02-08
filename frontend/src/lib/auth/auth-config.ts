@@ -4,6 +4,7 @@
 
 import type { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
+import GoogleProvider from 'next-auth/providers/google'
 import { compare } from 'bcryptjs'
 import { prisma } from '@/lib/db/prisma'
 
@@ -14,6 +15,10 @@ const nextAuthSecret =
 
 export const authOptions: NextAuthOptions = {
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+    }),
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
@@ -61,7 +66,47 @@ export const authOptions: NextAuthOptions = {
     signIn: '/login',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account, profile }) {
+      // Handle OAuth sign-in (Google)
+      if (account?.provider === 'google') {
+        const email = user.email?.toLowerCase()
+        if (!email) return false
+
+        // Check if user exists
+        let existingUser = await prisma.user.findUnique({
+          where: { email },
+        })
+
+        if (existingUser) {
+          // Update OAuth info if user signed up with credentials before
+          if (!existingUser.oauthProvider) {
+            await prisma.user.update({
+              where: { id: existingUser.id },
+              data: {
+                oauthProvider: account.provider,
+                oauthId: account.providerAccountId,
+                name: user.name || existingUser.name,
+              },
+            })
+          }
+        } else {
+          // Create new user for OAuth sign-in
+          existingUser = await prisma.user.create({
+            data: {
+              email,
+              name: user.name,
+              oauthProvider: account.provider,
+              oauthId: account.providerAccountId,
+            },
+          })
+        }
+
+        // Set user.id for JWT callback
+        user.id = existingUser.id
+      }
+      return true
+    },
+    async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id
         token.email = user.email
