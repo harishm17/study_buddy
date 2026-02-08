@@ -18,9 +18,14 @@ if settings.is_production:
     try:
         from google.cloud import tasks_v2
         _client = tasks_v2.CloudTasksClient()
+        logger.warning(f"***** Cloud Tasks client initialized successfully *****")
     except Exception as e:
-        logger.warning(f"Failed to initialize Cloud Tasks client: {e}")
+        logger.warning(f"***** Failed to initialize Cloud Tasks client: {e} *****")
         _client = None
+
+# TEMPORARY: Force direct HTTP fallback for debugging
+logger.warning(f"***** Forcing _client to None for debugging (was: {type(_client).__name__ if _client else 'None'}) *****")
+_client = None
 
 
 async def enqueue_task(
