@@ -68,10 +68,13 @@ async def enqueue_task(
     logger.info(f"Production mode: _client={'available' if _client else 'None'}, attempting task enqueue")
     if not _client:
         logger.warning("Cloud Tasks client not available, falling back to direct HTTP call")
+        # Use localhost when calling same service to avoid DNS resolution issues
+        service_url = "http://localhost:8080" if settings.is_production else settings.AI_SERVICE_URL
+        logger.warning(f"***** Using service URL: {service_url}{endpoint} *****")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{settings.AI_SERVICE_URL}{endpoint}",
+                    f"{service_url}{endpoint}",
                     json=payload,
                     timeout=30.0
                 )
@@ -112,10 +115,13 @@ async def enqueue_task(
 
     except Exception as e:
         logger.error(f"Failed to create Cloud Task: {e}, falling back to direct HTTP call")
+        # Use localhost when calling same service to avoid DNS resolution issues
+        service_url = "http://localhost:8080" if settings.is_production else settings.AI_SERVICE_URL
+        logger.warning(f"***** Exception fallback using service URL: {service_url}{endpoint} *****")
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{settings.AI_SERVICE_URL}{endpoint}",
+                    f"{service_url}{endpoint}",
                     json=payload,
                     timeout=30.0
                 )
