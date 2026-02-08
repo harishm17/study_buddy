@@ -61,8 +61,21 @@ async def enqueue_task(
 
     # Production mode - use Cloud Tasks
     if not _client:
-        logger.error("Cloud Tasks client not available in production")
-        return f"error-task-{payload['jobId']}"
+        logger.warning("Cloud Tasks client not available, falling back to direct HTTP call")
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{settings.AI_SERVICE_URL}{endpoint}",
+                    json=payload,
+                    timeout=30.0
+                )
+                if response.status_code != 200:
+                    logger.error(f"Direct HTTP call failed: {response.text}")
+                else:
+                    logger.info(f"Direct HTTP call succeeded")
+        except Exception as e:
+            logger.error(f"Failed to call AI service directly: {e}")
+        return f"direct-task-{payload['jobId']}"
 
     try:
         # Build the task
@@ -92,8 +105,21 @@ async def enqueue_task(
         return response.name
 
     except Exception as e:
-        logger.error(f"Failed to create Cloud Task: {e}")
-        return f"error-task-{payload['jobId']}"
+        logger.error(f"Failed to create Cloud Task: {e}, falling back to direct HTTP call")
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{settings.AI_SERVICE_URL}{endpoint}",
+                    json=payload,
+                    timeout=30.0
+                )
+                if response.status_code != 200:
+                    logger.error(f"Direct HTTP fallback failed: {response.text}")
+                else:
+                    logger.info(f"Direct HTTP fallback succeeded")
+        except Exception as fallback_error:
+            logger.error(f"Direct HTTP fallback also failed: {fallback_error}")
+        return f"fallback-task-{payload['jobId']}"
 
 
 async def enqueue_chunking_job(job_id: str, material_id: str) -> str:
