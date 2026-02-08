@@ -167,13 +167,21 @@ class ExamplesGenerator:
 6. Vary the problem types to cover different aspects of the topic
 7. Make `final_answer` concise markdown (prefer 2-5 bullet points over one long paragraph)
 
-**Formatting rules (IMPORTANT — follow these exactly):**
+**Formatting rules (CRITICAL — you MUST follow these exactly):**
 - All string fields support full markdown. Use it.
 - Any code snippet, memory layout, or command MUST be in a fenced code block with a language tag, e.g. ```c, ```python, ```text. NEVER dump code inline as plain text.
 - Use real line breaks (`\n`) inside JSON strings to separate paragraphs and before/after code fences. Do NOT put everything on one line.
 - Use `inline code` only for short identifiers, function names, or single expressions (e.g. `buf`, `strlen()`).
 - Keep titles and step descriptions concise (one line). Put longer content, code, or layouts in work/explanation fields.
-- For math expressions use LaTeX: inline `$E = mc^2$` or display `$$\\int_0^1 f(x)\\,dx$$`. For chemistry use `$2H_2 + O_2 \\to 2H_2O$`. Do NOT use plain-text math when LaTeX is clearer.
+- **MATHEMATICAL NOTATION (MANDATORY):** ALL mathematical expressions, variables, equations, subscripts, sets, and formulas MUST use LaTeX syntax:
+  * Variables: `$x$`, `$a_1$`, `$p_2$` (NOT plain a1, p2)
+  * Sets: `$A = \\{a_1, a_2, a_3\\}$` (NOT A = {a1, a2, a3})
+  * Functions: `$q(p_1) = 3$`, `$f(x)$` (NOT q(p1) = 3)
+  * Subscripts: `$C_{p_1}$`, `$x_i$` (NOT C_p1, x_i)
+  * Inline: `$E = mc^2$`, `$\\sigma$`
+  * Display: `$$\\int_0^1 f(x)\\,dx$$`, `$$\\sum_{i=1}^n x_i$$`
+  * Chemistry: `$2H_2 + O_2 \\to 2H_2O$`
+  * NEVER use plain text for variables, equations, or mathematical notation
 - Separate distinct ideas into short paragraphs rather than one dense block of text.
 
 **Format each example as a JSON object (markdown allowed inside string fields):**
@@ -249,13 +257,21 @@ Return a JSON array of {count} example objects:"""
    - Explanation after they answer
 4. Design for progressive learning (each step builds on previous)
 
-**Formatting rules (IMPORTANT — follow these exactly):**
+**Formatting rules (CRITICAL — you MUST follow these exactly):**
 - All string fields support full markdown. Use it.
 - Any code snippet, memory layout, or command MUST be in a fenced code block with a language tag, e.g. ```c, ```python, ```text. NEVER dump code inline as plain text.
 - Use real line breaks (`\n`) inside JSON strings to separate paragraphs and before/after code fences. Do NOT put everything on one line.
 - Use `inline code` only for short identifiers, function names, or single expressions (e.g. `buf`, `strlen()`).
 - Keep step questions concise (one or two lines). Put code, layouts, and longer explanations in problem_statement, hint, or explanation fields.
-- For math expressions use LaTeX: inline `$E = mc^2$` or display `$$\\int_0^1 f(x)\\,dx$$`. For chemistry use `$2H_2 + O_2 \\to 2H_2O$`. Do NOT use plain-text math when LaTeX is clearer.
+- **MATHEMATICAL NOTATION (MANDATORY):** ALL mathematical expressions, variables, equations, subscripts, sets, and formulas MUST use LaTeX syntax:
+  * Variables: `$x$`, `$a_1$`, `$p_2$` (NOT plain a1, p2)
+  * Sets: `$A = \\{a_1, a_2, a_3\\}$` (NOT A = {a1, a2, a3})
+  * Functions: `$q(p_1) = 3$`, `$f(x)$` (NOT q(p1) = 3)
+  * Subscripts: `$C_{p_1}$`, `$x_i$` (NOT C_p1, x_i)
+  * Inline: `$E = mc^2$`, `$\\sigma$`
+  * Display: `$$\\int_0^1 f(x)\\,dx$$`, `$$\\sum_{i=1}^n x_i$$`
+  * Chemistry: `$2H_2 + O_2 \\to 2H_2O$`
+  * NEVER use plain text for variables, equations, or mathematical notation
 - Separate distinct ideas into short paragraphs rather than one dense block of text.
 
 **Format each example as a JSON object (markdown allowed inside string fields):**
