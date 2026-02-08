@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,8 @@ import {
   ClipboardCheck,
   GraduationCap,
   Clock,
+  LogOut,
+  User,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
@@ -117,6 +120,10 @@ export default function Dashboard({ projects, user }: DashboardProps) {
     }
   };
 
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/login' });
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -134,17 +141,31 @@ export default function Dashboard({ projects, user }: DashboardProps) {
               Keep momentum with one focused next action at a time.
             </p>
           </div>
-          <Button
-            onClick={() => {
-              setError(null);
-              setShowCreateForm(true);
-            }}
-            disabled={isCreating}
-            size="lg"
-          >
-            <Plus className="h-5 w-5 mr-2" />
-            New Project
-          </Button>
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 mr-2 px-3 py-2 bg-muted/50 rounded-lg">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">{user.email}</span>
+            </div>
+            <Button
+              onClick={() => {
+                setError(null);
+                setShowCreateForm(true);
+              }}
+              disabled={isCreating}
+              size="lg"
+            >
+              <Plus className="h-5 w-5 mr-2" />
+              New Project
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleLogout}
+              size="lg"
+            >
+              <LogOut className="h-5 w-5 mr-2" />
+              <span className="hidden sm:inline">Logout</span>
+            </Button>
+          </div>
         </div>
       </div>
       {showCreateForm && (

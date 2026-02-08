@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +22,7 @@ import {
   AlertCircle,
   Trash2,
   Mic,
+  LogOut,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
@@ -230,6 +232,10 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
     }
   };
 
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/login' });
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -243,6 +249,15 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
                   Back to Dashboard
                 </Button>
               </Link>
+              <Button
+                variant="ghost"
+                onClick={handleLogout}
+                size="sm"
+                className="ml-auto"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
+              </Button>
             </div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">
               Project Overview
