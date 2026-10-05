@@ -2,87 +2,84 @@
 
 # StudyBuddy
 
-### AI-Powered Exam Prep with RAG, Voice Coaching & Intelligent Grading
+### Exam prep with retrieval-augmented generation, voice coaching and LLM grading
 
-Transform lecture slides, textbooks, and past papers into structured notes, unlimited practice problems, mock exams, and real-time voice coaching—all with proper LaTeX math and code formatting.
+Turns lecture slides, textbooks, and past papers into study notes, practice problems, mock exams, and a real-time voice coach, with LaTeX math and code formatting.
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Click_Here-blue?style=for-the-badge)](https://studybuddy-web-926688152635.us-central1.run.app/)
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js_15-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 
-[Features](#features) • [Demo](#demo) • [Quick Start](#quick-start) • [Architecture](#architecture) • [Docs](#documentation)
+[Features](#features) • [Status](#status-and-known-gaps) • [Quick Start](#quick-start) • [Architecture](#architecture) • [Docs](#documentation)
 
 </div>
 
 ---
 
-## Demo
+## Status and known gaps
 
-**Live Application:** [https://studybuddy-web-926688152635.us-central1.run.app/](https://studybuddy-web-926688152635.us-central1.run.app/)
+- **The hosted demo is offline.** The Cloud Run deployment currently returns 503, so there is no live link. Run it locally with the Quick Start below; `DEMO.md` describes seeding demo data.
+- **`evals/` is a stub.** It contains a short README and a 3-line sample file. There is no runner and no results yet, so no answer-quality numbers are claimed.
+- **The FastAPI `/jobs` routes have no authentication.** They need service-to-service auth (for example a shared internal token, as `voice.py` already checks) before the AI service is redeployed.
 
-Try the full application deployed on Google Cloud Run! Sign up with email or Google OAuth, upload study materials, and experience AI-powered learning.
-
-### What to Try
-1. **Upload Materials** - Drop in PDFs, DOCX, or PPTX files
-2. **Extract Topics** - AI automatically identifies key learning topics
-3. **Generate Content** - Get notes, examples, quizzes, and practice problems
-4. **Voice Coach** - Real-time voice Q&A for conceptual understanding
-5. **Mock Exams** - Take timed exams with instant AI grading
+### What you can do in the app
+1. **Upload materials**: PDF, DOCX, PPTX, or DOC files
+2. **Extract topics**: an LLM proposes topics for you to review
+3. **Generate content**: notes, solved examples, quizzes, and practice problems per topic
+4. **Voice coach**: real-time voice Q&A on concepts
+5. **Mock exams**: timed exams graded by the app and an LLM
 
 ---
 
 ## Overview
 
-**StudyBuddy** is a comprehensive learning platform designed for university students preparing for exams. Upload your lecture notes, textbooks, and past exams—let AI create personalized study guides, practice problems, mock exams, and real-time voice coaching.
+**StudyBuddy** is a study tool for university students preparing for exams. You upload lecture notes, textbooks, and past exams, and it generates study guides, practice problems, mock exams, and voice coaching sessions from that material.
 
 ### The Problem
-- **Time-consuming**: Creating study materials from multiple sources takes hours
-- **No personalized practice**: Generic study guides don't adapt to your weak areas
-- **Limited feedback**: Hard to know if you're actually understanding concepts
-- **Expensive tutoring**: Professional help costs hundreds per hour
+- Creating study materials from multiple sources takes time
+- Generic study guides are not tied to your own course materials
+- It is hard to get quick feedback on whether you understand a concept
 
 ### The Solution
-**AI-powered study assistant** that transforms your materials into:
-- **Structured study content** - Notes, examples, quizzes with proper citations
-- **Unlimited practice** - Generate fresh problems on-demand (not reshuffled)
-- **Real-time voice coaching** - Oral exam prep with instant feedback
-- **Intelligent grading** - AI evaluates answers with detailed explanations
-- **70-85% cost reduction** - Smart retrieval instead of processing entire documents
+An LLM-backed study assistant that turns your materials into:
+- **Study content**: notes, examples, and quizzes, with source references taken from the retrieved chunks
+- **Repeatable practice**: each regeneration is prompted with a new variation seed
+- **Voice coaching**: oral exam prep over WebRTC
+- **Grading**: rule-based grading for MCQ and numeric answers, LLM grading with partial credit for short answers
+- **Bounded prompt size**: topic-scoped chunk retrieval instead of sending whole documents (see Architecture)
 
 ---
 
 ## Features
 
-### Smart Material Processing
-Upload PDFs, DOCX, PPTX, or DOC files → AI validates, chunks, and indexes with vector embeddings for semantic search
+### Material Processing
+Upload PDF, DOCX, PPTX, or DOC files. The AI service validates them, splits them into chunks, and stores vector embeddings for search
 
-### AI-Powered Content Generation
-Generate **study notes**, **solved examples**, **interactive practice**, **quizzes** (MCQ, short answer, numerical), and **full-length timed exams**—all with LaTeX math and code highlighting
+### Content Generation
+Generate **study notes**, **solved examples**, **interactive practice**, **quizzes** (MCQ, short answer, numerical), and **timed exams**, rendered with LaTeX math and code highlighting
 
-### Unlimited Fresh Practice
-Click **"Add Examples"** or **"Practice More"** to generate completely different problems (not reshuffled). Each regeneration creates unique content using variation seeds
+### Regenerating Practice
+Click **"Add Examples"** or **"Practice More"** to generate new problems. Each regeneration passes a timestamp-based variation seed into the prompt to encourage different output
 
-### Intelligent AI Grading
-- Instant grading for MCQ/numerical questions
-- Semantic evaluation for short answers with partial credit
-- Detailed feedback and explanations for every question
-- Progress tracking across multiple attempts
+### Grading
+- Direct grading for MCQ and numerical questions
+- LLM evaluation of short answers with partial credit
+- Feedback and explanations per question
+- Progress tracking across attempts
 
-### Voice Coach — Real-Time Oral Exam Prep
+### Voice Coach
 - **Real-time voice interaction** via WebRTC (OpenAI Realtime API)
 - **Three learning styles**: Oral Q&A, guided notes, or free conversation
-- **Concept-only focus**: Automatically filters math/calculations—perfect for oral exams
+- **Concept-only focus**: a regex filter and prompt instructions steer sessions away from math and calculations
 - **Topic Drill** or **Voice Sprint** modes for targeted practice
-- **Instant feedback** with key-point grading
+- **Feedback** with key-point grading
 
 ### Progress Tracking
-Visual progress bars, attempt history, and performance metrics—all inline, no overwhelming dashboards
+Progress bars, attempt history, and per-attempt scores shown inline
 
-### Beautiful Math & Code Rendering
+### Math and Code Rendering
 - **LaTeX support** via KaTeX for equations: $E = mc^2$, $\int_0^1 f(x)\,dx$
 - **Syntax highlighting** via Prism for code blocks in all major languages
-- **Smart formatting** - Automatic paragraph breaks, proper line spacing
 
 ---
 
@@ -191,37 +188,35 @@ uvicorn app.main:app --reload
 
 ### Key Design Decisions
 
-#### 1. Hybrid Search Architecture (70-85% Cost Reduction)
-Instead of sending entire textbooks to AI:
-- **Semantic Chunking**: PDFs → 500-1000 token chunks with vector embeddings
-- **Hybrid Retrieval**: Keyword + vector similarity search for relevant sections
-- **Smart Context**: Send only top 15-24 chunks instead of entire documents
-- **Result**: Typical textbook (50,000 tokens) costs $0.02-0.03 instead of $0.10-0.15 per request
+#### 1. Topic-Scoped Retrieval
+Instead of sending whole documents to the model:
+- **Chunking**: PDFs are split with heading-aware heuristics into chunks targeting about 800 tokens with 15% overlap, then embedded (`text-embedding-3-small`) and stored in pgvector
+- **Topic mapping**: when topics are extracted, each topic is mapped to its top 15 chunks using a blend of keyword matching and vector similarity
+- **Bounded prompts**: content generation fetches at most 24 mapped chunks for the topic, so prompt size is capped by the chunk limit rather than by document length
+- Token cost has not been measured or compared against a full-document baseline.
 
-#### 2. True Content Variation (Not Reshuffling)
-- Each "Practice More" generates **completely different content**
-- Uses timestamp-based variation seeds for uniqueness
-- Fresh scenarios, problem setups, and question formulations
-- Track improvement across attempts with unique content
+#### 2. Content Variation
+- Each "Practice More" request asks the model for new content
+- A timestamp-based variation seed is passed into the prompt on each regeneration
+- Uniqueness is encouraged by the prompt, not enforced or checked by code
 
 #### 3. Async Job Processing
 - Long tasks (PDF processing, content generation) run asynchronously
-- Production: Google Cloud Tasks with retry logic
-- Development: Direct HTTP with automatic retries
-- Frontend polls with exponential backoff
-- No HTTP timeout issues—jobs run for minutes without blocking UI
+- With `ENABLE_CLOUD_TASKS=true`, jobs are enqueued through Google Cloud Tasks; otherwise the frontend calls the AI service directly
+- The enqueue path uses timeouts, bounded exponential backoff, and retryable/permanent error classification
+- The frontend polls job status with exponential backoff and jitter
+- Long jobs do not block the UI
 
 #### 4. Concept-Only Voice Coach
 - Intentionally avoids math, equations, calculations
 - Focuses on: definitions, intuition, relationships, trade-offs
-- Regex filtering + LLM instructions enforce concept-only content
-- Perfect for oral exams where reasoning matters over computation
+- A regex filter and LLM instructions steer sessions toward concept-only content
 
-#### 5. Microservices Architecture
+#### 5. Two-Service Architecture
 - **Frontend (Next.js)**: UI, auth, API routing, job orchestration
 - **AI Service (FastAPI)**: LLM calls, PDF processing, embeddings, content generation
 - **Database (PostgreSQL + pgvector)**: User data, materials, vectors, progress
-- Independent scaling and deployment
+- The services can be deployed separately
 
 ---
 
@@ -233,7 +228,7 @@ Instead of sending entire textbooks to AI:
 | [Next.js 15](https://nextjs.org/) | React framework with App Router |
 | [TypeScript](https://www.typescriptlang.org/) | Type-safe JavaScript |
 | [Prisma](https://www.prisma.io/) | Type-safe ORM for PostgreSQL |
-| [NextAuth.js](https://next-auth.js.org/) | Authentication (Google OAuth) |
+| [NextAuth.js](https://next-auth.js.org/) | Authentication (email/password and Google OAuth) |
 | [TailwindCSS](https://tailwindcss.com/) | Utility-first CSS |
 | [Shadcn/ui](https://ui.shadcn.com/) | Component library |
 | [React-markdown](https://github.com/remarkjs/react-markdown) | Markdown rendering with GFM |
@@ -266,12 +261,12 @@ Instead of sending entire textbooks to AI:
 
 ### How It Works
 
-1. **Upload Materials** → Upload PDFs/DOCX/PPTX. API verifies files, then chunks into searchable sections
-2. **Extract Topics** → AI analyzes materials and proposes key learning topics for review
-3. **Generate Content** → For each topic: notes, solved examples, interactive practice, quizzes
-4. **Practice & Review** → Unlimited fresh content, track scores, monitor improvement
-5. **Take Exams** → Timed mock exams with AI grading and detailed feedback
-6. **Voice Coach** → Real-time voice Q&A for conceptual understanding
+1. **Upload Materials**: PDF, DOCX, or PPTX files are validated, then chunked into searchable sections
+2. **Extract Topics**: an LLM proposes key topics for review
+3. **Generate Content**: for each topic, notes, solved examples, interactive practice, and quizzes
+4. **Practice and Review**: regenerate content, track scores across attempts
+5. **Take Exams**: timed mock exams with grading and per-question feedback
+6. **Voice Coach**: real-time voice Q&A on concepts
 
 ### Environment Variables
 
@@ -359,15 +354,11 @@ pytest --cov=app tests/  # With coverage
 ### CI/CD Pipeline
 - Frontend CI: Prisma validation + lint + production build
 - AI Service CI: Python compile checks + pytest suite
+- `.github/workflows/test.yml` is a looser check (lint runs with `--exit-zero`); `ci.yml` is the gating workflow
 - Workflow file: `.github/workflows/ci.yml`
 
-### Evaluation Harness
-Track answer quality as prompts/models change:
-- **Faithfulness**: Answers grounded in retrieved chunks
-- **Context precision**: % of retrieved chunks used
-- **Quiz accuracy**: Generated questions align with source material
-
-See `evals/README.md` for evaluation plan.
+### Evaluation
+`evals/` only holds a plan (faithfulness, context precision, quiz correctness) and a 3-line sample dataset. There is no runner and no results. See `evals/README.md`.
 
 ---
 
@@ -396,12 +387,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 [![GitHub](https://img.shields.io/badge/GitHub-harishm17-181717?style=for-the-badge&logo=github)](https://github.com/harishm17)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-harishm17-0077B5?style=for-the-badge&logo=linkedin)](https://linkedin.com/in/harishm17)
 [![Portfolio](https://img.shields.io/badge/Portfolio-harishm17.github.io-000000?style=for-the-badge&logo=google-chrome)](https://harishm17.github.io)
-[![Email](https://img.shields.io/badge/Email-harish.manoharan@utdallas.edu-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:harish.manoharan@utdallas.edu)
+[![Email](https://img.shields.io/badge/Email-harish__manoharan@outlook.com-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:harish_manoharan@outlook.com)
 
 ---
 
 <div align="center">
 
-**[⬆ back to top](#studybuddy)**
+**[Back to top](#studybuddy)**
 
 </div>
