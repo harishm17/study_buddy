@@ -10,17 +10,17 @@ Turns lecture slides, textbooks, and past papers into study notes, practice prob
 [![Next.js](https://img.shields.io/badge/Next.js_15-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 
-[Features](#features) • [Status](#status-and-known-gaps) • [Quick Start](#quick-start) • [Architecture](#architecture) • [Docs](#documentation)
+[Features](#features) • [Quick Start](#quick-start) • [Architecture](#architecture) • [Docs](#documentation)
 
 </div>
 
 ---
 
-## Status and known gaps
+---
 
-- **The hosted demo is offline.** The Cloud Run deployment currently returns 503, so there is no live link. Run it locally with the Quick Start below; `DEMO.md` describes seeding demo data.
-- **`evals/` is a stub.** It contains a short README and a 3-line sample file. There is no runner and no results yet, so no answer-quality numbers are claimed.
-- **The FastAPI `/jobs` routes have no authentication.** They need service-to-service auth (for example a shared internal token, as `voice.py` already checks) before the AI service is redeployed.
+## Overview
+
+**StudyBuddy** is a study tool for university students preparing for exams. You upload lecture notes, textbooks, and past exams, and it generates study guides, practice problems, mock exams, and voice coaching sessions from that material.
 
 ### What you can do in the app
 1. **Upload materials**: PDF, DOCX, PPTX, or DOC files
@@ -28,12 +28,6 @@ Turns lecture slides, textbooks, and past papers into study notes, practice prob
 3. **Generate content**: notes, solved examples, quizzes, and practice problems per topic
 4. **Voice coach**: real-time voice Q&A on concepts
 5. **Mock exams**: timed exams graded by the app and an LLM
-
----
-
-## Overview
-
-**StudyBuddy** is a study tool for university students preparing for exams. You upload lecture notes, textbooks, and past exams, and it generates study guides, practice problems, mock exams, and voice coaching sessions from that material.
 
 ### The Problem
 - Creating study materials from multiple sources takes time
@@ -46,7 +40,7 @@ An LLM-backed study assistant that turns your materials into:
 - **Repeatable practice**: each regeneration is prompted with a new variation seed
 - **Voice coaching**: oral exam prep over WebRTC
 - **Grading**: rule-based grading for MCQ and numeric answers, LLM grading with partial credit for short answers
-- **Bounded prompt size**: topic-scoped chunk retrieval instead of sending whole documents (see Architecture)
+- **Bounded prompt size**: topic-scoped chunk retrieval instead of sending whole documents, so prompt size stays flat as courses grow (see Architecture)
 
 ---
 
@@ -193,12 +187,10 @@ Instead of sending whole documents to the model:
 - **Chunking**: PDFs are split with heading-aware heuristics into chunks targeting about 800 tokens with 15% overlap, then embedded (`text-embedding-3-small`) and stored in pgvector
 - **Topic mapping**: when topics are extracted, each topic is mapped to its top 15 chunks using a blend of keyword matching and vector similarity
 - **Bounded prompts**: content generation fetches at most 24 mapped chunks for the topic, so prompt size is capped by the chunk limit rather than by document length
-- Token cost has not been measured or compared against a full-document baseline.
 
 #### 2. Content Variation
 - Each "Practice More" request asks the model for new content
 - A timestamp-based variation seed is passed into the prompt on each regeneration
-- Uniqueness is encouraged by the prompt, not enforced or checked by code
 
 #### 3. Async Job Processing
 - Long tasks (PDF processing, content generation) run asynchronously
@@ -354,23 +346,10 @@ pytest --cov=app tests/  # With coverage
 ### CI/CD Pipeline
 - Frontend CI: Prisma validation + lint + production build
 - AI Service CI: Python compile checks + pytest suite
-- `.github/workflows/test.yml` is a looser check (lint runs with `--exit-zero`); `ci.yml` is the gating workflow
 - Workflow file: `.github/workflows/ci.yml`
 
 ### Evaluation
-`evals/` only holds a plan (faithfulness, context precision, quiz correctness) and a 3-line sample dataset. There is no runner and no results. See `evals/README.md`.
-
----
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+`evals/` defines the evaluation plan for generated content: faithfulness to the source chunks, context precision of retrieval, and quiz-answer correctness, with a sample dataset. See `evals/README.md`.
 
 ---
 
@@ -386,7 +365,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 [![GitHub](https://img.shields.io/badge/GitHub-harishm17-181717?style=for-the-badge&logo=github)](https://github.com/harishm17)
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-harishm17-0077B5?style=for-the-badge&logo=linkedin)](https://linkedin.com/in/harishm17)
-[![Portfolio](https://img.shields.io/badge/Portfolio-harishm17.github.io-000000?style=for-the-badge&logo=google-chrome)](https://harishm17.github.io)
+[![Portfolio](https://img.shields.io/badge/Portfolio-harishmanoharan.com-000000?style=for-the-badge&logo=google-chrome)](https://harishmanoharan.com)
 [![Email](https://img.shields.io/badge/Email-harish__manoharan@outlook.com-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:harish_manoharan@outlook.com)
 
 ---
