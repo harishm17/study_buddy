@@ -25,7 +25,7 @@ export default defineRailway(() => {
   // Deploy each service from GitHub on every push to main, after CI passes and only when its
   // own folder changed. Needs the Railway GitHub app installed for this repository; until
   // then deploy with `railway up` (see docs/deployment/RAILWAY.md).
-  const AUTO_DEPLOY_FROM_GITHUB = false;
+  const AUTO_DEPLOY_FROM_GITHUB = true;
   const fromGithub = (rootDirectory: string) =>
     AUTO_DEPLOY_FROM_GITHUB
       ? { source: github("harishm17/study_buddy", { branch: "main", rootDirectory, checkSuites: true }) }

@@ -47,8 +47,8 @@ railway service status -s ai
 
 ### Deploying on every push
 
-Deploys run from a working tree with `railway up` for now. To have Railway deploy each
-service on every push to `main` (after CI passes, and only when that service's folder changed):
+Railway deploys each
+service on every push to `main`, after CI passes and only when that service's folder changed. This is on; to set it up again elsewhere:
 
 1. In the Railway dashboard, open the `web` service, Settings, Source, and connect the
    GitHub repository. That installs the Railway GitHub app; give it access to `study_buddy`.
