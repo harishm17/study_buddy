@@ -27,6 +27,11 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
+# catdoc reads legacy .doc uploads (a few hundred KB, where LibreOffice would be several hundred MB)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends catdoc \
+    && rm -rf /var/lib/apt/lists/*
+
 # Run as an unprivileged user
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 

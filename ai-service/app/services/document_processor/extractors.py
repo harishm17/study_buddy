@@ -283,13 +283,34 @@ def _extract_pptx(file_path: str) -> ExtractedDocument:
 
 # Legacy DOC
 
+def _extract_doc_text(file_path: str, catdoc: str) -> ExtractedDocument:
+    """Plain text of a legacy Word file through catdoc (no headings or tables)."""
+    completed = subprocess.run(
+        [catdoc, "-w", "-d", "utf-8", file_path],
+        capture_output=True,
+        timeout=DOC_CONVERSION_TIMEOUT_SECONDS,
+        check=False,
+    )
+    text = _normalize_text(completed.stdout.decode("utf-8", errors="replace"))
+    if completed.returncode != 0 or not text.strip():
+        raise UnreadableDocumentError(
+            "The .doc file could not be read. Please save it as .docx or PDF and upload it again."
+        )
+    return ExtractedDocument(pages=[ExtractedPage(number=None, text=text)], extension=".doc", page_count=1)
+
+
 def _extract_doc(file_path: str) -> ExtractedDocument:
-    """Legacy Word files are converted to DOCX with LibreOffice, then read as DOCX."""
+    """Legacy Word files: converted to DOCX with LibreOffice when it is installed (keeps
+    headings and tables), otherwise read as plain text with catdoc (the Docker image ships
+    catdoc; LibreOffice would add several hundred MB)."""
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
+        catdoc = shutil.which("catdoc")
+        if catdoc:
+            return _extract_doc_text(file_path, catdoc)
         raise UnreadableDocumentError(
-            "Legacy .doc files need LibreOffice to be read, and it is not installed on this "
-            "server. Please save the file as .docx or PDF and upload it again."
+            "Legacy .doc files need LibreOffice or catdoc to be read, and neither is installed "
+            "on this server. Please save the file as .docx or PDF and upload it again."
         )
 
     work_dir = tempfile.mkdtemp(prefix="studybuddy-doc-")

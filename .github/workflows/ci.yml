@@ -87,6 +87,8 @@ jobs:
             "import os; from fastembed import TextEmbedding; m = TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir=os.environ['EMBEDDING_CACHE_DIR']); print(len(next(iter(m.embed(['hello'])))))"
           docker run --rm --network none --entrypoint python studybuddy-ai -c \
             "import tiktoken; print(len(tiktoken.get_encoding('cl100k_base').encode('hello world')))"
+      - name: catdoc is available for legacy .doc uploads
+        run: docker run --rm --network none --entrypoint catdoc studybuddy-ai -V
       - name: Image starts and answers health checks
         run: |
           docker run -d --name ai -p 8000:8000 \

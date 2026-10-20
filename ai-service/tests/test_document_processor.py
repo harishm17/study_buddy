@@ -360,7 +360,43 @@ def test_doc_without_libreoffice_fails_with_clear_message(monkeypatch, tmp_path)
     path = tmp_path / "old.doc"
     path.write_bytes(b"\xd0\xcf\x11\xe0 legacy")
 
-    with pytest.raises(UnreadableDocumentError, match="LibreOffice"):
+    with pytest.raises(UnreadableDocumentError, match="LibreOffice or catdoc"):
+        extract_document(str(path), "old.doc")
+
+
+def _fake_catdoc(monkeypatch, stdout: bytes, returncode: int = 0):
+    """No LibreOffice; catdoc at /usr/bin/catdoc printing `stdout`."""
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/catdoc" if name == "catdoc" else None)
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, returncode, stdout=stdout, stderr=b"")
+
+    monkeypatch.setattr("subprocess.run", run)
+    return calls
+
+
+def test_doc_falls_back_to_catdoc_text(monkeypatch, tmp_path):
+    calls = _fake_catdoc(monkeypatch, "Hash tables\n\nChaining keeps a list per bucket. H₂O.\n".encode())
+    path = tmp_path / "old.doc"
+    path.write_bytes(b"\xd0\xcf\x11\xe0 legacy")
+
+    extracted = extract_document(str(path), "old.doc")
+
+    assert calls[0][:4] == ["/usr/bin/catdoc", "-w", "-d", "utf-8"]
+    assert extracted.extension == ".doc"
+    assert "Chaining keeps a list per bucket. H₂O." in extracted.text
+    assert extracted.pages[0].number is None
+
+
+@pytest.mark.parametrize("stdout,returncode", [(b"", 0), (b"partial", 1)])
+def test_unreadable_catdoc_output_is_a_clear_error(monkeypatch, tmp_path, stdout, returncode):
+    _fake_catdoc(monkeypatch, stdout, returncode)
+    path = tmp_path / "old.doc"
+    path.write_bytes(b"\xd0\xcf\x11\xe0 legacy")
+
+    with pytest.raises(UnreadableDocumentError, match="could not be read"):
         extract_document(str(path), "old.doc")
 
 
