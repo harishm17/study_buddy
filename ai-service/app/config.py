@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     # takes over jobs whose lease ran out. 0 turns the periodic reaper off (POST /jobs/reap
     # still works).
     JOB_REAPER_INTERVAL_SECONDS: float = 60.0
+    # A job still pending (never claimed) this long after creation is dispatched again, then
+    # again after twice, three times this long, and so on. After JOB_MAX_REDISPATCHES
+    # re-dispatches it is failed with JOB_DISPATCH_FAILED.
+    JOB_PENDING_REDISPATCH_SECONDS: float = 120.0
+    JOB_MAX_REDISPATCHES: int = 3
     # Most an LLM-backed job may spend per user per UTC day, from the stored job costs.
     # 0 turns the cap off.
     DAILY_LLM_BUDGET_USD: float = 3.00

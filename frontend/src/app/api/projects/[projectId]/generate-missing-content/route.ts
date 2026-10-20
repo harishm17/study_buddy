@@ -4,7 +4,6 @@ import { prisma } from '@/lib/db/prisma'
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
 import { enqueueContentGenerationJob, TaskEnqueueError } from '@/lib/tasks/cloud-tasks'
 import {
-  closeUndispatchedJobs,
   createJobOrFindActive,
   generateContentTarget,
 } from '@/lib/jobs/active-jobs'
@@ -60,9 +59,6 @@ export async function POST(
     if (preflightError) {
       return preflightError
     }
-
-    // Jobs that never started must not count as active.
-    await closeUndispatchedJobs({ projectId, jobType: 'generate_content' })
 
     const [topics, activeGenerationJobs] = await Promise.all([
       prisma.topic.findMany({

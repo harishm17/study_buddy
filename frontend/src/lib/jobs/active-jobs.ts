@@ -12,9 +12,9 @@ import { prisma } from '@/lib/db/prisma'
 
 export const ACTIVE_JOB_STATUSES = ['pending', 'processing']
 
-// A job that was never picked up (the dispatcher died before the AI service claimed it)
-// is closed after this long so the user can start it again.
-const UNDISPATCHED_JOB_MS = 90 * 1000
+// Jobs that were never picked up (the dispatcher died before the AI service claimed them) are
+// dispatched again, or failed with JOB_DISPATCH_FAILED, by the AI service reaper. Creators do
+// not close them: a retry just gets the existing job back.
 
 export const extractTopicsTarget = (projectId: string) => `extract:${projectId}`
 export const generateContentTarget = (topicId: string, contentType: string) =>
@@ -26,27 +26,6 @@ type NewJob = Prisma.ProcessingJobUncheckedCreateInput & { targetKey: string }
 
 export const isUniqueViolation = (error: unknown): boolean =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
-
-/** Fail matching jobs that were created long ago and never started. */
-export async function closeUndispatchedJobs(
-  where: Prisma.ProcessingJobWhereInput
-): Promise<void> {
-  await prisma.processingJob.updateMany({
-    where: {
-      ...where,
-      status: 'pending',
-      startedAt: null,
-      createdAt: { lt: new Date(Date.now() - UNDISPATCHED_JOB_MS) },
-    },
-    data: {
-      status: 'failed',
-      errorCode: 'STALE_JOB',
-      errorMessage: 'Automatically closed a job that never started. Please retry.',
-      retryable: true,
-      completedAt: new Date(),
-    },
-  })
-}
 
 /**
  * Create the job, or return the pending/processing job that already has this targetKey.

@@ -16,7 +16,6 @@ import {
 } from '@/lib/api/errors'
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
 import {
-  closeUndispatchedJobs,
   createJobOrFindActive,
   extractTopicsTarget,
 } from '@/lib/jobs/active-jobs'
@@ -82,8 +81,6 @@ export async function POST(
     // One extraction per project at a time, including the one the AI service starts itself
     // after chunking: the unique target key hands every caller the same job.
     const targetKey = extractTopicsTarget(projectId)
-    await closeUndispatchedJobs({ targetKey })
-
     const { job, created } = await createJobOrFindActive({
       userId: session.user.id,
       projectId,

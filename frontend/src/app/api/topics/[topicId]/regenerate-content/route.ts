@@ -19,7 +19,6 @@ import {
 } from '@/lib/api/errors'
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
 import {
-  closeUndispatchedJobs,
   createJobOrFindActive,
   generateContentTarget,
 } from '@/lib/jobs/active-jobs'
@@ -80,7 +79,6 @@ export async function POST(
     // One generation per topic and content type at a time (a unique target key), so a
     // double click or a second tab gets the job that is already running.
     const targetKey = generateContentTarget(topicId, contentType)
-    await closeUndispatchedJobs({ targetKey })
 
     // Add timestamp as variation seed to ensure different content each time
     const enhancedPreferences = {

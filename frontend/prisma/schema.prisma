@@ -470,6 +470,9 @@ model ProcessingJob {
   maxAttempts     Int       @default(3) @map("max_attempts")
   leaseUntil      DateTime? @map("lease_until")
 
+  // How many times the reaper dispatched this job again because nothing claimed it.
+  dispatchCount   Int       @default(0) @map("dispatch_count")
+
   // What the job acts on, e.g. "extract:<projectId>" or "content:<topicId>:<contentType>".
   // A partial unique index (see the job_reliability migration; Prisma cannot express it)
   // allows one pending/processing job per targetKey.

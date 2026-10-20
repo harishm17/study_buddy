@@ -134,7 +134,8 @@ def classify_failure(exc: Exception, default_code: str) -> tuple[str, bool, int]
 async def claim_job(job_id: str, lease_seconds: float, stage: Optional[str]):
     """Take the job if nobody else has it. Returns the row, or None.
 
-    Claimable: pending; failed with retries left; processing with an expired lease.
+    Claimable: pending; failed with retries left; processing with an expired lease and
+    attempts left (a job that used them all is failed by the reaper, never run again).
     """
     return await execute_one(
         f"""
@@ -152,7 +153,11 @@ async def claim_job(job_id: str, lease_seconds: float, stage: Optional[str]):
           AND (
             status = 'pending'
             OR (status = 'failed' AND retryable AND attempt_count < max_attempts)
-            OR (status = 'processing' AND (lease_until IS NULL OR lease_until < {UTC_NOW}))
+            OR (
+                status = 'processing'
+                AND attempt_count < max_attempts
+                AND (lease_until IS NULL OR lease_until < {UTC_NOW})
+            )
           )
         RETURNING id, job_type, user_id, project_id, attempt_count, max_attempts
         """,
@@ -175,6 +180,8 @@ async def _skip_reason(job_id: str) -> str:
     if row["status"] == "completed":
         return "Job already completed"
     if row["status"] == "processing":
+        if row["attempt_count"] >= row["max_attempts"]:
+            return "Job used all its attempts"
         return "Job is already running"
     if row["status"] == "failed":
         if row["attempt_count"] >= row["max_attempts"]:

@@ -133,6 +133,24 @@ class TestClaim:
         job = await get_job(db, job_id)
         assert (job["status"], job["attempt_count"]) == ("completed", 2)
 
+    async def test_job_with_an_expired_lease_and_no_attempts_left_is_not_claimed(self, db, user_id):
+        job_id = await seed_job(
+            db, user_id, status="processing", attempt_count=3,
+            lease_until="SQL:(NOW() AT TIME ZONE 'UTC') - interval '1 minute'",
+        )
+        calls = []
+
+        async def body(payload, job):
+            calls.append(job.attempt)
+            return JobOutcome()
+
+        result = await make_handler(body)(payload(job_id))
+
+        assert result == {"status": "skipped", "jobId": job_id, "reason": "Job used all its attempts"}
+        assert calls == []
+        job = await get_job(db, job_id)
+        assert (job["status"], job["attempt_count"]) == ("processing", 3)
+
     async def test_failed_retryable_job_is_claimed_until_it_runs_out_of_attempts(self, db, user_id):
         job_id = await seed_job(db, user_id, status="failed", retryable=True, attempt_count=2)
         assert await claim_job(job_id, 60, None) is not None
@@ -437,7 +455,7 @@ class TestReaper:
 
         counts = await job_reaper.reap_expired_jobs()
 
-        assert counts == {"failed": 1, "redispatched": 1}
+        assert counts == {"failed": 1, "redispatched": 1, "pending_failed": 0, "pending_redispatched": 0}
         job = await get_job(db, exhausted)
         assert (job["status"], job["error_code"], job["retryable"]) == ("failed", "JOB_LEASE_EXPIRED", False)
         assert dispatched == [(retryable, "extract_topics", {"projectId": "p1"})]
@@ -462,6 +480,84 @@ class TestReaper:
 
         assert dispatched == [(job_id, "grade_exam", {"submissionId": "s1"})]
 
+    OLD = "SQL:(NOW() AT TIME ZONE 'UTC') - interval '10 minutes'"
+    FRESH = "SQL:(NOW() AT TIME ZONE 'UTC') - interval '5 seconds'"
+
+    @pytest.fixture(autouse=True)
+    def pending_settings(self, monkeypatch):
+        monkeypatch.setattr(settings, "JOB_PENDING_REDISPATCH_SECONDS", 120)
+        monkeypatch.setattr(settings, "JOB_MAX_REDISPATCHES", 3)
+
+    async def test_an_old_pending_job_that_never_started_is_dispatched_again(self, db, user_id, dispatched):
+        stuck = await seed_job(
+            db, user_id, "extract_topics", created_at=self.OLD, input_data={"projectId": "p1"}
+        )
+        await seed_job(db, user_id, created_at=self.FRESH)  # not old enough
+        await seed_job(db, user_id, created_at=self.OLD, started_at="SQL:NOW()")  # was claimed once
+
+        counts = await job_reaper.reap_expired_jobs()
+
+        assert counts["pending_redispatched"] == 1
+        assert dispatched == [(stuck, "extract_topics", {"projectId": "p1"})]
+        job = await get_job(db, stuck)
+        assert (job["status"], job["dispatch_count"]) == ("pending", 1)
+
+    async def test_redispatches_are_spaced_out_so_each_sweep_does_not_resend(self, db, user_id, dispatched):
+        # Created 3 minutes ago: due once (after 2), the next is due after 4 minutes.
+        job_id = await seed_job(
+            db, user_id, created_at="SQL:(NOW() AT TIME ZONE 'UTC') - interval '3 minutes'"
+        )
+
+        await job_reaper.reap_expired_jobs()
+        await job_reaper.reap_expired_jobs()
+        await job_reaper.reap_expired_jobs()
+
+        assert [d[0] for d in dispatched] == [job_id]
+
+    async def test_a_job_that_can_never_be_dispatched_is_failed_after_the_limit(self, db, user_id, dispatched):
+        job_id = await seed_job(db, user_id, created_at=self.OLD, dispatch_count=2)
+
+        first = await job_reaper.reap_expired_jobs()
+        assert first["pending_redispatched"] == 1
+        assert (await get_job(db, job_id))["dispatch_count"] == 3
+
+        second = await job_reaper.reap_expired_jobs()
+
+        assert second["pending_failed"] == 1
+        assert second["pending_redispatched"] == 0
+        job = await get_job(db, job_id)
+        assert (job["status"], job["error_code"], job["retryable"]) == (
+            "failed", "JOB_DISPATCH_FAILED", False,
+        )
+        assert job["completed_at"] is not None
+        assert len(dispatched) == 1
+
+    async def test_a_failed_dispatch_still_counts_towards_the_limit(self, db, user_id, monkeypatch):
+        async def broken(job_id, job_type, data):
+            raise RuntimeError("queue unavailable")
+
+        monkeypatch.setattr(job_reaper, "enqueue_job", broken)
+        job_id = await seed_job(db, user_id, created_at=self.OLD)
+
+        counts = await job_reaper.reap_expired_jobs()
+
+        assert counts["pending_redispatched"] == 0
+        assert (await get_job(db, job_id))["dispatch_count"] == 1
+
+    async def test_a_redispatched_pending_job_runs_once_when_two_deliveries_arrive(self, db, user_id):
+        job_id = await seed_job(db, user_id, created_at=self.OLD, dispatch_count=1)
+        runs = []
+
+        async def slow(payload, job):
+            runs.append(job.attempt)
+            await asyncio.sleep(0.2)
+            return JobOutcome()
+
+        handler = make_handler(slow)
+        await asyncio.gather(handler(payload(job_id)), handler(payload(job_id)))
+
+        assert runs == [1]
+
     async def test_reap_endpoint_runs_the_reaper(self, db, user_id, dispatched, monkeypatch):
         from fastapi.testclient import TestClient
 
@@ -477,7 +573,8 @@ class TestReaper:
         await connection.close_db_pool()
 
         assert response.status_code == 200
-        assert response.json() == {"failed": 1, "redispatched": 0}
+        assert response.json()["failed"] == 1
+        assert response.json()["redispatched"] == 0
 
 
 class TestActiveJobUniqueness:

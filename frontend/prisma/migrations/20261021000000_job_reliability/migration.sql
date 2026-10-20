@@ -3,6 +3,7 @@
 ALTER TABLE "processing_jobs"
     ADD COLUMN "max_attempts" INTEGER NOT NULL DEFAULT 3,
     ADD COLUMN "lease_until" TIMESTAMP(3),
+    ADD COLUMN "dispatch_count" INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN "target_key" TEXT,
     ADD COLUMN "llm_input_tokens" INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN "llm_output_tokens" INTEGER NOT NULL DEFAULT 0,
