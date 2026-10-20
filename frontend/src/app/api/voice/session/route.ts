@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import { VoiceQuestion } from '@/lib/voice/concept'
+import { normalizeFocus } from '@/lib/voice/coach-prompt'
 import { buildSprintQuestionSet, buildTopicQuestionSet } from '@/lib/voice/drill-pack'
 import {
   apiInternal,
@@ -19,7 +20,10 @@ const sessionSchema = z.object({
   projectId: z.string(),
   topicId: z.string().optional(),
   language: z.string().regex(/^[a-z]{2,8}$/i).optional().default('en'),
+  // Ignored since the coach moved to Claude (the browser chooses the voice). Still accepted.
   voice: z.string().optional().default('marin'),
+  // What the student wants to concentrate on; trimmed and cut to MAX_FOCUS_CHARS.
+  focus: z.string().nullish(),
 })
 
 const patchSchema = z.object({
@@ -92,6 +96,8 @@ export async function POST(request: NextRequest) {
         mode: payload.mode,
         language: payload.language || 'en',
         voice: payload.voice || 'marin',
+        style: payload.style,
+        focus: normalizeFocus(payload.focus),
         questionSet,
         metrics: { entries: [] },
         status: 'active',
@@ -102,6 +108,8 @@ export async function POST(request: NextRequest) {
       sessionId: voiceSession.id,
       questionCount: questionSet.length,
       mode: payload.mode,
+      style: payload.style,
+      focus: voiceSession.focus,
     })
   } catch (error) {
     console.error('Create voice session error:', error)
