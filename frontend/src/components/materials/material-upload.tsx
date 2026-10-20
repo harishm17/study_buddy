@@ -9,9 +9,12 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { formatBytes, isValidStudyMaterial, isValidFileSize } from '@/lib/utils'
 import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling'
+import { UploadAbortedError, uploadMaterial } from '@/lib/uploads/upload-file'
 
 interface MaterialUploadProps {
   projectId: string
+  /** The server's upload limit (MAX_UPLOAD_MB), shown to the student and checked before sending. */
+  maxUploadMb: number
 }
 
 type MaterialCategory = 'lecture_notes' | 'sample_exams' | 'book_chapters'
@@ -34,7 +37,7 @@ const CATEGORIES = [
   { value: 'book_chapters', label: 'Book Chapters', description: 'Textbook chapters and reading materials' },
 ] as const
 
-export function MaterialUpload({ projectId }: MaterialUploadProps) {
+export function MaterialUpload({ projectId, maxUploadMb }: MaterialUploadProps) {
   const router = useRouter()
   const [selectedCategory, setSelectedCategory] = useState<MaterialCategory>('lecture_notes')
   const [uploadingFiles, setUploadingFiles] = useState<UploadingFile[]>([])
@@ -42,6 +45,9 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
   const [isExtractingTopics, setIsExtractingTopics] = useState(false)
   const [postUploadMessage, setPostUploadMessage] = useState<string | null>(null)
   const isMountedRef = useRef(true)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  // One abort controller per file that is uploading, so a single upload can be cancelled.
+  const uploadControllers = useRef(new Map<string, AbortController>())
   const [resumedCount, setResumedCount] = useState(0)
   const { pollJob, stopPolling, resumeActiveJobs } = useJobPolling({ timeoutMs: 90_000 })
 
@@ -120,190 +126,108 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
     }
   }, [pollJob, projectId, resumeActiveJobs, router])
 
-  const uploadFile = useCallback(async (uploadingFile: UploadingFile) => {
+  const patchFile = useCallback((id: string, patch: Partial<UploadingFile>) => {
+    if (!isMountedRef.current) return
+    setUploadingFiles(prev => prev.map(f => (f.id === id ? { ...f, ...patch } : f)))
+  }, [])
+
+  // Follow the chunking job of a validated file until its text is ready.
+  const followChunking = useCallback(async (id: string, materialId: string) => {
     try {
-      // Create form data
-      const formData = new FormData()
-      formData.append('file', uploadingFile.file)
-      formData.append('category', uploadingFile.category)
-
-      // Upload to API
-      const response = await fetch(`/api/projects/${projectId}/materials`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        let message = 'Upload failed'
-        try {
-          const errorPayload = await response.json()
-          if (typeof errorPayload?.error === 'string') {
-            message = errorPayload.error
-          }
-        } catch {
-          // Fallback to default message.
-        }
-        throw new Error(message)
+      const chunkingResponse = await fetch(`/api/materials/${materialId}/chunking-job`)
+      const chunkingData = chunkingResponse.ok ? await chunkingResponse.json() : null
+      const chunkingJobId: string | undefined = chunkingData?.chunkingJob?.id
+      if (!chunkingJobId) {
+        // No chunking job yet: it starts in the background, so the file counts as done.
+        patchFile(id, { status: 'completed', progress: 100 })
+        return
       }
 
-      const data = await response.json()
-
-      // Update status to validating
-      if (!isMountedRef.current) return
-      setUploadingFiles(prev =>
-        prev.map(f =>
-          f.id === uploadingFile.id
-            ? { ...f, status: 'validating', progress: 50, materialId: data.material.id, jobId: data.jobId }
-            : f
-        )
+      const chunkingResult = await pollJob(chunkingJobId, (job) =>
+        patchFile(id, { chunkingJobId, progress: Math.max(0, Math.min(100, job.progressPercent)) })
       )
-
-      // Poll for validation status
-      const pollResult = await pollJob(data.jobId, (job) => {
-        if (!isMountedRef.current) return
-        setUploadingFiles(prev =>
-          prev.map(f =>
-            f.id === uploadingFile.id
-              ? { ...f, progress: 50 + (Math.max(0, Math.min(100, job.progressPercent)) / 2) }
-              : f
-          )
-        )
-      })
-
-      if (!isMountedRef.current) return
-      if (pollResult.state === 'completed') {
-        const resultData = pollResult.job?.resultData ?? null
-        const validationStatus =
-          typeof resultData?.validation_status === 'string'
-            ? resultData.validation_status.toLowerCase()
-            : 'valid'
-        const validationNotes =
-          typeof resultData?.notes === 'string' ? resultData.notes : null
-
-        if (validationStatus === 'invalid') {
-          setUploadingFiles(prev =>
-            prev.map(f =>
-              f.id === uploadingFile.id
-                ? {
-                    ...f,
-                    status: 'invalid',
-                    progress: 100,
-                    error: validationNotes || 'Validation rejected this file.',
-                  }
-                : f
-            )
-          )
-        } else {
-          // Validation succeeded - now poll chunking job
-          setUploadingFiles(prev =>
-            prev.map(f =>
-              f.id === uploadingFile.id
-                ? { ...f, status: 'processing', progress: 50 }
-                : f
-            )
-          )
-
-          // Get chunking job for this material
-          try {
-            const chunkingResponse = await fetch(`/api/materials/${data.material.id}/chunking-job`)
-            if (chunkingResponse.ok) {
-              const chunkingData = await chunkingResponse.json()
-              if (chunkingData.chunkingJob) {
-                const chunkingJobId = chunkingData.chunkingJob.id
-
-                // Poll chunking job
-                const chunkingPollResult = await pollJob(chunkingJobId, (job) => {
-                  if (!isMountedRef.current) return
-                  setUploadingFiles(prev =>
-                    prev.map(f =>
-                      f.id === uploadingFile.id
-                        ? {
-                            ...f,
-                            chunkingJobId,
-                            progress: 50 + (Math.max(0, Math.min(100, job.progressPercent)) / 2)
-                          }
-                        : f
-                    )
-                  )
-                })
-
-                if (!isMountedRef.current) return
-                if (chunkingPollResult.state === 'completed') {
-                  setUploadingFiles(prev =>
-                    prev.map(f =>
-                      f.id === uploadingFile.id
-                        ? { ...f, status: 'completed', progress: 100 }
-                        : f
-                    )
-                  )
-                } else {
-                  setUploadingFiles(prev =>
-                    prev.map(f =>
-                      f.id === uploadingFile.id
-                        ? {
-                            ...f,
-                            status: 'error',
-                            error: pollFailureMessage(chunkingPollResult, chunkingPollResult.error || 'Processing failed. Please retry.')
-                          }
-                        : f
-                    )
-                  )
-                }
-              } else {
-                // No chunking job found yet - mark as completed anyway (chunking may not have started yet)
-                setUploadingFiles(prev =>
-                  prev.map(f =>
-                    f.id === uploadingFile.id
-                      ? { ...f, status: 'completed', progress: 100 }
-                      : f
-                  )
-                )
-              }
-            } else {
-              // Couldn't get chunking job - mark as completed anyway
-              setUploadingFiles(prev =>
-                prev.map(f =>
-                  f.id === uploadingFile.id
-                    ? { ...f, status: 'completed', progress: 100 }
-                    : f
-                )
-              )
-            }
-          } catch (error) {
-            console.error('Error getting chunking job:', error)
-            // Mark as completed anyway - chunking may happen in background
-            if (!isMountedRef.current) return
-            setUploadingFiles(prev =>
-              prev.map(f =>
-                f.id === uploadingFile.id
-                  ? { ...f, status: 'completed', progress: 100 }
-                  : f
-              )
-            )
-          }
-        }
+      if (chunkingResult.state === 'completed') {
+        patchFile(id, { status: 'completed', progress: 100 })
       } else {
-        setUploadingFiles(prev =>
-          prev.map(f =>
-            f.id === uploadingFile.id
-              ? { ...f, status: 'error', error: pollFailureMessage(pollResult, pollResult.error || 'Validation failed. Please retry.') }
-              : f
-          )
-        )
+        patchFile(id, {
+          status: 'error',
+          error: pollFailureMessage(chunkingResult, chunkingResult.error || 'Processing failed. Please retry.'),
+        })
+      }
+    } catch (error) {
+      console.error('Error getting chunking job:', error)
+      // Chunking may still happen in the background.
+      patchFile(id, { status: 'completed', progress: 100 })
+    }
+  }, [patchFile, pollJob])
+
+  const uploadFile = useCallback(async (uploadingFile: UploadingFile) => {
+    const controller = new AbortController()
+    uploadControllers.current.set(uploadingFile.id, controller)
+    try {
+      // Send the file; the bar follows the bytes sent.
+      const data = await uploadMaterial({
+        projectId,
+        category: uploadingFile.category,
+        file: uploadingFile.file,
+        maxUploadMb,
+        signal: controller.signal,
+        onProgress: (percent) => patchFile(uploadingFile.id, { progress: percent }),
+      })
+      uploadControllers.current.delete(uploadingFile.id)
+
+      patchFile(uploadingFile.id, {
+        status: 'validating',
+        progress: 0,
+        materialId: data.material.id,
+        jobId: data.jobId,
+      })
+
+      // Validation is its own job with its own progress.
+      const pollResult = await pollJob(data.jobId, (job) =>
+        patchFile(uploadingFile.id, { progress: Math.max(0, Math.min(100, job.progressPercent)) })
+      )
+      if (!isMountedRef.current) return
+
+      if (pollResult.state !== 'completed') {
+        patchFile(uploadingFile.id, {
+          status: 'error',
+          error: pollFailureMessage(pollResult, pollResult.error || 'Validation failed. Please retry.'),
+        })
+        return
       }
 
+      const resultData = pollResult.job?.resultData ?? null
+      const validationStatus =
+        typeof resultData?.validation_status === 'string'
+          ? resultData.validation_status.toLowerCase()
+          : 'valid'
+      if (validationStatus === 'invalid') {
+        const notes = typeof resultData?.notes === 'string' ? resultData.notes : null
+        patchFile(uploadingFile.id, {
+          status: 'invalid',
+          progress: 100,
+          error: notes || 'Validation rejected this file.',
+        })
+        return
+      }
+
+      patchFile(uploadingFile.id, { status: 'processing', progress: 0 })
+      await followChunking(uploadingFile.id, data.material.id)
     } catch (error) {
+      uploadControllers.current.delete(uploadingFile.id)
+      if (error instanceof UploadAbortedError) {
+        // Cancelled by the student: the file simply leaves the list.
+        if (isMountedRef.current) setUploadingFiles(prev => prev.filter(f => f.id !== uploadingFile.id))
+        return
+      }
       console.error('Upload error:', error)
-      if (!isMountedRef.current) return
-      setUploadingFiles(prev =>
-        prev.map(f =>
-          f.id === uploadingFile.id
-            ? { ...f, status: 'error', error: error instanceof Error ? error.message : 'Upload failed' }
-            : f
-        )
-      )
+      patchFile(uploadingFile.id, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Upload failed',
+      })
     }
-  }, [pollJob, projectId])
+  }, [followChunking, maxUploadMb, patchFile, pollJob, projectId])
 
   const handleFiles = useCallback(async (files: File[]) => {
     for (const file of files) {
@@ -327,7 +251,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
         continue
       }
 
-      if (!isValidFileSize(file, 10)) {
+      if (!isValidFileSize(file, maxUploadMb)) {
         setUploadingFiles(prev => [
           ...prev,
           {
@@ -336,7 +260,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
             category: selectedCategory,
             progress: 0,
             status: 'error',
-            error: 'File exceeds 10MB limit',
+            error: `File is over the ${maxUploadMb} MB limit`,
           },
         ])
         continue
@@ -357,7 +281,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
       // and its own poller, so files dropped later never wait for (or cancel) earlier ones.
       void uploadFile(uploadingFile)
     }
-  }, [selectedCategory, uploadFile])
+  }, [maxUploadMb, selectedCategory, uploadFile])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -386,7 +310,15 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
 
 
   const removeFile = (uploadId: string) => {
+    // An upload that is still being sent is cancelled; anything else just leaves the list.
+    uploadControllers.current.get(uploadId)?.abort()
     setUploadingFiles(prev => prev.filter(f => f.id !== uploadId))
+  }
+
+  const retryFile = (upload: UploadingFile) => {
+    const retry: UploadingFile = { ...upload, status: 'uploading', progress: 0, error: undefined }
+    setUploadingFiles(prev => prev.map(f => (f.id === upload.id ? retry : f)))
+    void uploadFile(retry)
   }
 
   return (
@@ -402,6 +334,8 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
             {CATEGORIES.map(cat => (
               <button
                 key={cat.value}
+                type="button"
+                aria-pressed={selectedCategory === cat.value}
                 onClick={() => setSelectedCategory(cat.value as MaterialCategory)}
                 className={`p-4 rounded-lg border-2 text-left transition-colors ${
                   selectedCategory === cat.value
@@ -421,10 +355,12 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
       <Card>
         <CardHeader>
           <CardTitle>Upload Files</CardTitle>
-          <CardDescription>PDF, DOCX, PPTX, DOC files, max 10MB each.</CardDescription>
+          <CardDescription>PDF, DOCX, PPTX or DOC files, up to {maxUploadMb} MB each. You can add several at once.</CardDescription>
         </CardHeader>
         <CardContent>
           <div
+            role="group"
+            aria-label="Upload area. Drop files here, or use the Browse files button."
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -434,26 +370,27 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
                 : 'border-border bg-white/60 hover:border-primary/35 hover:bg-white/85'
             }`}
           >
-            <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" aria-hidden="true" />
             <p className="text-lg font-medium mb-2">
-              Drop study files here or click to browse
+              Drop study files here, or browse for them
             </p>
             <p className="text-sm text-muted-foreground mb-4">
               Uploading to: <Badge variant="outline">{CATEGORIES.find(c => c.value === selectedCategory)?.label}</Badge>
             </p>
+            {/* The input is closed to the page; this button is the way in for keyboard and screen reader users. */}
             <input
+              ref={fileInputRef}
               type="file"
               accept=".pdf,.doc,.docx,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
               multiple
               onChange={handleFileInput}
               className="hidden"
-              id="file-input"
+              tabIndex={-1}
+              aria-hidden="true"
             />
-            <label htmlFor="file-input">
-              <Button asChild>
-                <span>Browse Files</span>
-              </Button>
-            </label>
+            <Button type="button" onClick={() => fileInputRef.current?.click()}>
+              Browse files
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -475,6 +412,10 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
             <CardDescription>{uploadingFiles.length} file(s)</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="sr-only" role="status" aria-live="polite">
+              {validCount} of {uploadingFiles.length} files ready
+              {invalidCount + failedCount > 0 ? `, ${invalidCount + failedCount} need attention` : ''}.
+            </div>
             <div className="space-y-4">
               {uploadingFiles.map((upload) => (
                 <div key={upload.id} className="rounded-xl border border-border/70 bg-white/75 p-4">
@@ -484,12 +425,18 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
                       <div className="flex items-center justify-between gap-2 mb-2">
                         <p className="font-medium truncate">{upload.file.name}</p>
                         <Button
+                          type="button"
                           variant="ghost"
                           size="icon"
                           onClick={() => removeFile(upload.id)}
-                          disabled={upload.status === 'uploading' || upload.status === 'validating' || upload.status === 'processing'}
+                          disabled={upload.status === 'validating' || upload.status === 'processing'}
+                          aria-label={
+                            upload.status === 'uploading'
+                              ? `Cancel upload of ${upload.file.name}`
+                              : `Remove ${upload.file.name} from the list`
+                          }
                         >
-                          <X className="h-4 w-4" />
+                          <X className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
@@ -500,7 +447,16 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
                         </Badge>
                       </div>
                       {upload.status === 'error' ? (
-                        <p className="text-sm text-destructive">{upload.error}</p>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm text-destructive">{upload.error}</p>
+                          {!upload.materialId &&
+                            isValidStudyMaterial(upload.file) &&
+                            isValidFileSize(upload.file, maxUploadMb) && (
+                              <Button type="button" size="sm" variant="outline" onClick={() => retryFile(upload)}>
+                                Retry
+                              </Button>
+                            )}
+                        </div>
                       ) : upload.status === 'invalid' ? (
                         <p className="text-sm text-amber-700 dark:text-amber-300">
                           Validation flagged this file: {upload.error}
@@ -512,16 +468,25 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                             <span>
                               {upload.status === 'uploading'
-                                ? 'Uploading...'
+                                ? `Uploading... ${Math.round(upload.progress)}%`
                                 : upload.status === 'validating'
-                                ? 'Validating...'
-                                : 'Processing chunks...'}
+                                ? 'Checking that this is course material...'
+                                : 'Reading the file...'}
                             </span>
                           </div>
-                          <Progress value={upload.progress} />
+                          <Progress
+                            value={upload.progress}
+                            aria-label={`${upload.file.name}: ${
+                              upload.status === 'uploading'
+                                ? 'upload'
+                                : upload.status === 'validating'
+                                ? 'validation'
+                                : 'processing'
+                            } progress`}
+                          />
                         </div>
                       )}
                     </div>

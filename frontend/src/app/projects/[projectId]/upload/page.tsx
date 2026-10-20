@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { PageHeader, PageShell } from '@/components/ui/page-shell';
+import { maxUploadMb } from '@/lib/storage/upload-limits';
 
 interface UploadPageProps {
   params: Promise<{
@@ -45,7 +46,7 @@ export default async function UploadPage({ params }: UploadPageProps) {
       <PageHeader
         eyebrow="Materials"
         title="Upload Study Materials"
-        description={`Add study files for ${project.name} (PDF, DOCX, PPTX, DOC). Files are validated and queued for processing automatically.`}
+        description={`Add study files for ${project.name} (PDF, DOCX, PPTX, DOC, up to ${maxUploadMb()} MB each). Files are validated and queued for processing automatically.`}
         actions={
           <Link href={`/projects/${projectId}`}>
             <Button variant="back" size="back">
@@ -58,6 +59,7 @@ export default async function UploadPage({ params }: UploadPageProps) {
       <Suspense fallback={<div>Loading upload form...</div>}>
         <MaterialUpload
           projectId={projectId}
+          maxUploadMb={maxUploadMb()}
         />
       </Suspense>
     </PageShell>
