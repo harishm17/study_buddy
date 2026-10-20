@@ -109,7 +109,20 @@ Progress bars, attempt history, and per-attempt scores shown inline
    ```bash
    cd frontend
    npm install
-   npx prisma db push
+   npx prisma migrate deploy
+   ```
+
+   The schema is managed with Prisma migrations (`frontend/prisma/migrations`). After a
+   schema change, run `npm run db:migrate -- --name <what_changed>` to create a migration and
+   commit it.
+
+   **Existing databases.** If your database was created earlier with `prisma db push`, it has
+   the tables but no migration history, and `migrate deploy` will refuse to run. Mark the
+   baseline migration as already applied once, then deploy as usual:
+   ```bash
+   cd frontend
+   npx prisma migrate resolve --applied 0_init
+   npx prisma migrate deploy
    ```
 
 4. **Open browser**
@@ -133,7 +146,7 @@ CREATE EXTENSION vector;
 cd frontend
 cp .env.example .env  # Edit with your values
 npm install
-npx prisma db push
+npx prisma migrate deploy
 npm run dev
 ```
 
