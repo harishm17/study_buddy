@@ -19,8 +19,8 @@ export const ACTIVE_JOB_STATUSES = ['pending', 'processing']
 export const extractTopicsTarget = (projectId: string) => `extract:${projectId}`
 export const generateContentTarget = (topicId: string, contentType: string) =>
   `content:${topicId}:${contentType}`
-export const gradeExamTarget = (userId: string, idempotencyKey: string) =>
-  `grade:${userId}:${idempotencyKey}`
+// One grading job at a time per exam submission, for the first grading and for "grade again".
+export const gradeExamTarget = (submissionId: string) => `grade:${submissionId}`
 
 type NewJob = Prisma.ProcessingJobUncheckedCreateInput & { targetKey: string }
 
