@@ -468,16 +468,15 @@ export async function buildNextActionsForProject(
     .slice(0, 8)
 }
 
+/** Lay today's next actions out one after another from `startAt` (see study-plan-time). */
 export async function buildStudyPlanForProject(
   userId: string,
   projectId: string,
-  date: Date
+  startAt: Date
 ) {
   const actions = await buildNextActionsForProject(userId, projectId)
-  const start = new Date(date)
-  start.setHours(9, 0, 0, 0)
 
-  let cursor = start.getTime()
+  let cursor = startAt.getTime()
   return actions.map((action) => {
     const startTime = new Date(cursor)
     const endTime = new Date(cursor + action.etaMinutes * 60 * 1000)
