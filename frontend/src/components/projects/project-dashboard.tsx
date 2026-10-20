@@ -391,7 +391,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
       </div>
 
       <div className="mx-auto w-full max-w-6xl space-y-4">
-        <NextActionsCard projectId={project.id} compact autoStartBatchGeneration />
+        <NextActionsCard projectId={project.id} compact />
 
         {/* Materials Tab */}
         {activeTab === 'materials' && (

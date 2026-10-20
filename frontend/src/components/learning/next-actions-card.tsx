@@ -31,7 +31,6 @@ type NextActionsCardProps = {
   hideRedundant?: boolean
   compact?: boolean
   maxActions?: number
-  autoStartBatchGeneration?: boolean
 }
 
 const isBatchGenerateAction = (action: NextAction): boolean => {
@@ -70,13 +69,12 @@ export function NextActionsCard({
   hideRedundant = false,
   compact = false,
   maxActions,
-  autoStartBatchGeneration = false,
 }: NextActionsCardProps) {
   const [actions, setActions] = useState<NextAction[]>([])
   const [initialLoading, setInitialLoading] = useState(true)
   const [batchStarting, setBatchStarting] = useState(false)
   const actionsFingerprintRef = useRef<string>('')
-  const autoStartedRef = useRef<Set<string>>(new Set())
+  const [batchError, setBatchError] = useState<string | null>(null)
 
   const fetchActions = useCallback(async (background = false) => {
     if (!background) {
@@ -153,6 +151,7 @@ export function NextActionsCard({
   const startBatchGeneration = useCallback(async () => {
     if (batchStarting) return
     setBatchStarting(true)
+    setBatchError(null)
     try {
       const response = await fetch(`/api/projects/${projectId}/generate-missing-content`, {
         method: 'POST',
@@ -163,6 +162,8 @@ export function NextActionsCard({
       await fetchActions(true)
     } catch (error) {
       console.error('Batch generation error:', error)
+      // Generation costs money, so it never restarts on its own. The student retries by clicking.
+      setBatchError('Could not start generation. Try again when you are ready.')
     } finally {
       setBatchStarting(false)
     }
@@ -172,22 +173,6 @@ export function NextActionsCard({
   const secondaryActions = visibleActions.slice(1)
   const primaryIsBatchGeneration = !!primaryAction && isBatchGenerateAction(primaryAction)
   const primaryIsActiveBatch = !!primaryAction && primaryAction.id.endsWith('-batch-active')
-
-  useEffect(() => {
-    if (!compact || !autoStartBatchGeneration || initialLoading || !primaryAction) return
-    if (!isBatchGenerateAction(primaryAction)) return
-    if (primaryIsActiveBatch) return
-    if (autoStartedRef.current.has(primaryAction.id)) return
-    autoStartedRef.current.add(primaryAction.id)
-    void startBatchGeneration()
-  }, [
-    autoStartBatchGeneration,
-    compact,
-    initialLoading,
-    primaryAction,
-    primaryIsActiveBatch,
-    startBatchGeneration,
-  ])
 
   if (!initialLoading && hideRedundant && visibleActions.length === 0) {
     return null
@@ -218,6 +203,7 @@ export function NextActionsCard({
                   <div className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
                     {renderActionMeta(primaryAction)}
                   </div>
+                  {batchError && <div className="text-sm text-red-600">{batchError}</div>}
                 </div>
                 {primaryIsBatchGeneration && !primaryIsActiveBatch ? (
                   <Button size="sm" onClick={startBatchGeneration} disabled={batchStarting}>
@@ -265,6 +251,7 @@ export function NextActionsCard({
         {!initialLoading && visibleActions.length === 0 && (
           <div className="text-sm text-muted-foreground">You are all caught up for now.</div>
         )}
+        {batchError && <div className="text-sm text-red-600">{batchError}</div>}
         {visibleActions.map((action) => (
           <div key={action.id} className="rounded-xl border border-border/70 bg-white/70 px-4 py-3 transition hover:border-primary/30 hover:bg-white">
             <div className="flex items-center justify-between gap-4">
