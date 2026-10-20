@@ -56,7 +56,7 @@ export async function GET() {
     checks.push({
       name: 'ai_service_url',
       status: 'pass',
-      message: `AI service URL configured (${aiServiceUrl}).`,
+      message: 'AI service URL configured.',
     })
 
     try {

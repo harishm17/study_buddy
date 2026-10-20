@@ -7,6 +7,7 @@ import json
 import base64
 from typing import Dict, Any, Optional
 import httpx
+from app.api.internal_auth import internal_headers
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ async def enqueue_task(
                 response = await client.post(
                     f"{settings.AI_SERVICE_URL}{endpoint}",
                     json=payload,
+                    headers=internal_headers(),
                     timeout=30.0
                 )
 
@@ -76,6 +78,7 @@ async def enqueue_task(
                 response = await client.post(
                     f"{service_url}{endpoint}",
                     json=payload,
+                    headers=internal_headers(),
                     timeout=30.0
                 )
                 if response.status_code != 200:
@@ -102,9 +105,7 @@ async def enqueue_task(
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": f"{settings.AI_SERVICE_URL}{endpoint}",
-                "headers": {
-                    "Content-Type": "application/json",
-                },
+                "headers": internal_headers(),
                 "body": base64.b64encode(json.dumps(payload).encode()).decode(),
             }
         }
@@ -123,6 +124,7 @@ async def enqueue_task(
                 response = await client.post(
                     f"{service_url}{endpoint}",
                     json=payload,
+                    headers=internal_headers(),
                     timeout=30.0
                 )
                 if response.status_code != 200:

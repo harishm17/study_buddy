@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ApiErrorCode, apiError } from '@/lib/api/errors'
+import { aiServiceHeaders } from '@/lib/ai-service/headers'
 
 type DependencyCheck = {
   name?: string
@@ -12,6 +13,7 @@ export async function ensureAiGenerationReady(): Promise<NextResponse | null> {
 
   try {
     const response = await fetch(`${aiServiceUrl}/health/dependencies`, {
+      headers: aiServiceHeaders(),
       signal: AbortSignal.timeout(4000),
     })
 
