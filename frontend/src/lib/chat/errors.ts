@@ -41,6 +41,7 @@ const KNOWN: Record<string, ChatErrorInfo> = {
   PROJECT_NOT_FOUND: { message: 'That project was not found.', retryable: false, status: 404 },
   CHAT_UNAVAILABLE: { message: 'The AI service is not reachable right now. Try again in a moment.', retryable: true, status: 503 },
   CHAT_INTERRUPTED: { message: 'The answer was interrupted before it finished. Try again.', retryable: true, status: 502 },
+  CHAT_NOT_SAVED: { message: 'The answer could not be saved to this conversation. It is shown here only.', retryable: false, status: 500 },
   CHAT_FAILED: { message: 'The answer could not be written. Try again.', retryable: true, status: 502 },
 }
 
