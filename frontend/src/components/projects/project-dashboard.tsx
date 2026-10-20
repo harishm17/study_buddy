@@ -31,6 +31,7 @@ import {
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { NextActionsCard } from '@/components/learning/next-actions-card';
+import MaterialsChat from '@/components/chat/materials-chat';
 
 interface Material {
   id: string;
@@ -82,10 +83,12 @@ interface Project {
 
 interface ProjectDashboardProps {
   project: Project;
-  initialTab?: 'materials' | 'topics' | 'exams';
+  initialTab?: 'materials' | 'topics' | 'exams' | 'ask';
+  /** A topic the chat starts focused on (from "Ask about this topic"). */
+  initialTopicId?: string;
 }
 
-export default function ProjectDashboard({ project, initialTab }: ProjectDashboardProps) {
+export default function ProjectDashboard({ project, initialTab, initialTopicId }: ProjectDashboardProps) {
   const router = useRouter();
   const confirmedTopicsCount = project.topics.filter((topic) => topic.userConfirmed).length;
   const unconfirmedTopicsCount = project.topics.length - confirmedTopicsCount;
@@ -93,7 +96,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
   const resolvedInitialTab =
     initialTab ||
     (needsTopicConfirmation && project.topics.length > 0 ? 'topics' : 'materials');
-  const [activeTab, setActiveTab] = useState<'materials' | 'topics' | 'exams'>(resolvedInitialTab);
+  const [activeTab, setActiveTab] = useState<'materials' | 'topics' | 'exams' | 'ask'>(resolvedInitialTab);
 
   useEffect(() => {
     setActiveTab(resolvedInitialTab);
@@ -480,6 +483,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
               { id: 'materials', label: `Materials (${project.materials.length})` },
               { id: 'topics', label: `Topics (${project.topics.length})` },
               { id: 'exams', label: `Exams (${project.exams.length})` },
+              { id: 'ask', label: 'Ask' },
             ] as const
           ).map((tab) => (
             <button
@@ -740,6 +744,21 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
               })}
             </div>
           )}
+          </div>
+        )}
+
+        {/* Ask Tab */}
+        {activeTab === 'ask' && (
+          <div {...tabPanelProps('project', 'ask')}>
+            <MaterialsChat
+              projectId={project.id}
+              topics={project.topics.map((topic) => ({ id: topic.id, name: topic.name }))}
+              hasMaterials={validMaterialsCount > 0}
+              initialTopicId={
+                project.topics.some((topic) => topic.id === initialTopicId) ? initialTopicId : null
+              }
+              onGoToMaterials={() => setActiveTab('materials')}
+            />
           </div>
         )}
 

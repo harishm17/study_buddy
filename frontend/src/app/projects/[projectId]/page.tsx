@@ -12,6 +12,7 @@ interface ProjectPageProps {
   }>;
   searchParams?: Promise<{
     tab?: string;
+    topic?: string;
   }>;
 }
 
@@ -26,7 +27,10 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedTab = resolvedSearchParams?.tab;
   const initialTab =
-    requestedTab === 'materials' || requestedTab === 'topics' || requestedTab === 'exams'
+    requestedTab === 'materials' ||
+    requestedTab === 'topics' ||
+    requestedTab === 'exams' ||
+    requestedTab === 'ask'
       ? requestedTab
       : undefined;
 
@@ -103,6 +107,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
       <Suspense fallback={<div>Loading project...</div>}>
         <ProjectDashboard
           initialTab={initialTab}
+          initialTopicId={resolvedSearchParams?.topic}
           project={{
             id: project.id,
             name: project.name,
