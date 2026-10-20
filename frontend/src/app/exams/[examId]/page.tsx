@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { toPublicQuestions } from '@/lib/learning/quiz-questions';
 import ExamPageClient from '@/components/exams/exam-page-client';
 import { PageShell } from '@/components/ui/page-shell';
 
@@ -10,11 +11,6 @@ interface ExamPageProps {
   params: Promise<{
     examId: string;
   }>;
-}
-
-const toQuestionArray = (value: unknown) => {
-  if (!Array.isArray(value)) return []
-  return value.filter((item) => typeof item === 'object' && item !== null)
 }
 
 export default async function ExamPage({ params }: ExamPageProps) {
@@ -57,7 +53,8 @@ export default async function ExamPage({ params }: ExamPageProps) {
             name: exam.name,
             projectId: exam.project.id,
             projectName: exam.project.name,
-            questions: toQuestionArray(exam.questions),
+            // Answer keys stay on the server; they are released in the results after grading.
+            questions: toPublicQuestions(exam.questions),
             durationMinutes: exam.durationMinutes,
             difficultyLevel: exam.difficultyLevel,
             topicsCovered: exam.topicsCovered,
