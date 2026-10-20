@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
-import { computeTopicMastery } from '@/lib/learning/mastery'
+import { computeProjectMastery } from '@/lib/learning/mastery'
 
 export type NextAction = {
   id: string
@@ -76,16 +76,18 @@ async function loadTopicSnapshots(userId: string, projectId: string): Promise<To
     orderBy: { orderIndex: 'asc' },
   })
 
-  const masteryValues = await Promise.all(
-    topics.map((topic) => computeTopicMastery(userId, projectId, topic.id))
+  const masteryByTopic = await computeProjectMastery(
+    userId,
+    projectId,
+    topics.map((topic) => topic.id)
   )
 
-  return topics.map((topic, index) => ({
+  return topics.map((topic) => ({
     id: topic.id,
     name: topic.name,
     projectId,
     orderIndex: topic.orderIndex,
-    mastery: masteryValues[index].mastery,
+    mastery: masteryByTopic.get(topic.id)?.mastery ?? 0,
     progress: topic.progress[0] || {
       notesCompleted: false,
       examplesCompleted: false,
@@ -466,16 +468,15 @@ export async function buildNextActionsForProject(
     .slice(0, 8)
 }
 
+/** Lay today's next actions out one after another from `startAt` (see study-plan-time). */
 export async function buildStudyPlanForProject(
   userId: string,
   projectId: string,
-  date: Date
+  startAt: Date
 ) {
   const actions = await buildNextActionsForProject(userId, projectId)
-  const start = new Date(date)
-  start.setHours(9, 0, 0, 0)
 
-  let cursor = start.getTime()
+  let cursor = startAt.getTime()
   return actions.map((action) => {
     const startTime = new Date(cursor)
     const endTime = new Date(cursor + action.etaMinutes * 60 * 1000)

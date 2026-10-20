@@ -340,24 +340,43 @@ export default function ExamInterface({
           Previous
         </Button>
 
-        {/* Question Navigator */}
-        <div className="flex flex-wrap gap-2 max-w-md justify-center">
-          {questions.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentQuestionIndex(index)}
-              className={`w-8 h-8 rounded-md text-xs font-medium transition-colors ${
-                index === currentQuestionIndex
-                  ? 'bg-primary text-primary-foreground'
-                  : hasAnswer(answers[index])
-                  ? 'bg-green-100 text-green-700 border border-green-300'
-                  : 'bg-muted hover:bg-accent'
-              }`}
-            >
-              {index + 1}
-            </button>
-          ))}
-        </div>
+        {/* Question Navigator. Answered questions show a check mark as well as a colour. */}
+        <nav aria-label="Question navigator" className="flex flex-col items-center gap-2">
+          <ol className="flex max-w-md list-none flex-wrap justify-center gap-2 p-0">
+            {questions.map((_, index) => {
+              const answered = hasAnswer(answers[index]);
+              const current = index === currentQuestionIndex;
+              return (
+                <li key={index}>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentQuestionIndex(index)}
+                    aria-current={current ? 'step' : undefined}
+                    aria-label={`Question ${index + 1}, ${answered ? 'answered' : 'not answered'}${current ? ', current' : ''}`}
+                    className={`relative flex h-9 w-9 items-center justify-center rounded-md text-xs font-medium transition-colors ${
+                      current
+                        ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2'
+                        : answered
+                        ? 'bg-green-100 text-green-800 border border-green-300'
+                        : 'bg-muted border border-dashed border-border hover:bg-accent'
+                    }`}
+                  >
+                    {index + 1}
+                    {answered && (
+                      <CheckCircle2
+                        aria-hidden="true"
+                        className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full bg-white text-green-700"
+                      />
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+          <p className="text-xs text-muted-foreground">
+            Check mark: answered. Dashed outline: not answered yet.
+          </p>
+        </nav>
 
         <Button
           onClick={handleNext}

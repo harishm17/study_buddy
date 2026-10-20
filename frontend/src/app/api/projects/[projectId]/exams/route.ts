@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
-
-const getOverallScore = (value: unknown): number | null => {
-  if (!value || typeof value !== 'object') return null;
-  const candidate = (value as { overall_score?: unknown }).overall_score;
-  return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : null;
-};
+import { Prisma } from '@prisma/client';
 
 export async function GET(
   req: NextRequest,
@@ -50,29 +45,36 @@ export async function GET(
       orderBy: { createdAt: 'desc' },
     });
 
-    // For each exam, get user's best submission if exists
-    const examsWithScores = await Promise.all(
-      exams.map(async (exam) => {
-        const bestSubmission = await prisma.examSubmission.findFirst({
-          where: {
-            sampleExamId: exam.id,
-            userId: session.user.id,
-          },
-          select: {
-            aiGrading: true,
-            submittedAt: true,
-          },
-          orderBy: { submittedAt: 'desc' },
-        });
+    // The user's latest submission for every exam, in one query. The score is read in SQL so
+    // the grading JSON (every question and answer) is not loaded just to show a percentage.
+    const examIds = exams.map((exam) => exam.id);
+    const latestRows =
+      examIds.length === 0
+        ? []
+        : await prisma.$queryRaw<
+            Array<{ sampleExamId: string; submittedAt: Date; overallScore: number | null }>
+          >(Prisma.sql`
+            SELECT DISTINCT ON (sample_exam_id)
+              sample_exam_id AS "sampleExamId",
+              submitted_at AS "submittedAt",
+              CASE WHEN jsonb_typeof(ai_grading -> 'overall_score') = 'number'
+                THEN (ai_grading ->> 'overall_score')::float8 END AS "overallScore"
+            FROM exam_submissions
+            WHERE user_id = ${session.user.id}
+              AND sample_exam_id IN (${Prisma.join(examIds)})
+            ORDER BY sample_exam_id, submitted_at DESC
+          `);
+    const latestByExam = new Map(latestRows.map((row) => [row.sampleExamId, row]));
 
-        return {
-          ...exam,
-          attemptsCount: exam._count.submissions,
-          lastAttempt: bestSubmission?.submittedAt,
-          lastScore: getOverallScore(bestSubmission?.aiGrading),
-        };
-      })
-    );
+    const examsWithScores = exams.map((exam) => {
+      const latest = latestByExam.get(exam.id);
+      return {
+        ...exam,
+        attemptsCount: exam._count.submissions,
+        lastAttempt: latest?.submittedAt,
+        lastScore: latest?.overallScore ?? null,
+      };
+    });
 
     return NextResponse.json({ exams: examsWithScores });
   } catch (error) {

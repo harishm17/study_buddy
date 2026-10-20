@@ -485,7 +485,7 @@ export function QuizInterface({
         </Alert>
       )}
       {generationNotice && (
-        <Alert>
+        <Alert role="status" aria-live="polite">
           <AlertDescription>{generationNotice}</AlertDescription>
         </Alert>
       )}

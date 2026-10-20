@@ -30,21 +30,47 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
       ? requestedTab
       : undefined;
 
-  // Fetch project with all related data
+  // Only the columns the page shows. In particular, no exam questions: they are large and
+  // only the exam page needs them.
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
       userId: session.user.id,
     },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      status: true,
+      createdAt: true,
       materials: {
         orderBy: { uploadedAt: 'desc' },
+        select: {
+          id: true,
+          filename: true,
+          category: true,
+          validationStatus: true,
+          validationNotes: true,
+          sizeBytes: true,
+          uploadedAt: true,
+        },
       },
       topics: {
         orderBy: { orderIndex: 'asc' },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          orderIndex: true,
+          userConfirmed: true,
           progress: {
             where: { userId: session.user.id },
+            select: {
+              notesCompleted: true,
+              examplesCompleted: true,
+              quizCompleted: true,
+              quizScore: true,
+            },
           },
           _count: {
             select: { content: true },
@@ -53,7 +79,13 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
       },
       sampleExams: {
         orderBy: { createdAt: 'desc' },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          durationMinutes: true,
+          difficultyLevel: true,
+          topicsCovered: true,
+          createdAt: true,
           _count: {
             select: { submissions: true },
           },

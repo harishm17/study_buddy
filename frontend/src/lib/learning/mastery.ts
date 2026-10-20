@@ -1,64 +1,84 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
-import { computeMasteryFromSignals, intervalFromMastery, type MasteryComponents } from './mastery-math'
+import {
+  MASTERY_HISTORY,
+  computeMasteryFromSignals,
+  intervalFromMastery,
+  isConfidenceFeedback,
+  masteryFromHistory,
+  newestPerTopic,
+  type MasteryComponents,
+} from './mastery-math'
 
-export { computeMasteryFromSignals, intervalFromMastery }
+export { computeMasteryFromSignals, intervalFromMastery, isConfidenceFeedback }
 export type { MasteryComponents }
-
-/** Signals an older confidence route wrote with a copy of a past score; they are not results. */
-export const isConfidenceFeedback = (metadata: unknown) =>
-  !!metadata &&
-  typeof metadata === 'object' &&
-  (metadata as Record<string, unknown>).kind === 'confidence_feedback'
 
 export async function computeTopicMastery(
   userId: string,
   projectId: string,
   topicId: string
 ): Promise<MasteryComponents> {
+  const masteries = await computeProjectMastery(userId, projectId, [topicId])
+  return masteries.get(topicId) as MasteryComponents
+}
+
+/**
+ * Mastery for many topics of one project in three queries, however many topics there are.
+ * Each query fetches the user's recent rows for all the topics; the per-topic limits are
+ * applied here.
+ */
+export async function computeProjectMastery(
+  userId: string,
+  projectId: string,
+  topicIds: string[]
+): Promise<Map<string, MasteryComponents>> {
+  const result = new Map<string, MasteryComponents>()
+  if (topicIds.length === 0) return result
+
+  // One topic can be cut to its history length in SQL. With several, the rows are cut
+  // per topic below.
+  const limit = (history: number): number | undefined => (topicIds.length === 1 ? history : undefined)
+
   const [quizAttempts, voiceAttempts, examSignals] = await Promise.all([
     prisma.quizAttempt.findMany({
-      where: { userId, topicId },
+      where: { userId, topicId: { in: topicIds } },
       orderBy: { takenAt: 'desc' },
-      take: 5,
-      select: { score: true, takenAt: true },
+      take: limit(MASTERY_HISTORY.quiz),
+      select: { topicId: true, score: true, takenAt: true },
     }),
     prisma.voiceDrillAttempt.findMany({
-      where: { userId, topicId },
+      where: { userId, topicId: { in: topicIds } },
       orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: { score: true, createdAt: true },
+      take: limit(MASTERY_HISTORY.voice),
+      select: { topicId: true, score: true, createdAt: true },
     }),
     prisma.learningSignal.findMany({
-      where: {
-        userId,
-        projectId,
-        topicId,
-        source: 'exam',
-      },
+      where: { userId, projectId, topicId: { in: topicIds }, source: 'exam' },
       orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: { score: true, createdAt: true, metadata: true },
+      take: limit(MASTERY_HISTORY.exam),
+      select: { topicId: true, score: true, createdAt: true, metadata: true },
     }),
   ])
 
-  const examResults = examSignals.filter((signal) => !isConfidenceFeedback(signal.metadata))
+  const quizByTopic = newestPerTopic(quizAttempts, MASTERY_HISTORY.quiz)
+  const voiceByTopic = newestPerTopic(voiceAttempts, MASTERY_HISTORY.voice)
+  const examByTopic = newestPerTopic(examSignals, MASTERY_HISTORY.exam)
+  const now = Date.now()
 
-  const latestDates: Date[] = []
-  if (quizAttempts[0]?.takenAt) latestDates.push(quizAttempts[0].takenAt)
-  if (voiceAttempts[0]?.createdAt) latestDates.push(voiceAttempts[0].createdAt)
-  if (examResults[0]?.createdAt) latestDates.push(examResults[0].createdAt)
-
-  const daysSinceLastPractice = latestDates.length > 0
-    ? (Date.now() - Math.max(...latestDates.map((d) => d.getTime()))) / (1000 * 60 * 60 * 24)
-    : 30
-
-  return computeMasteryFromSignals({
-    quizScores: quizAttempts.map((attempt) => attempt.score),
-    voiceScores: voiceAttempts.map((attempt) => attempt.score),
-    examScores: examResults.map((signal) => signal.score),
-    daysSinceLastPractice,
-  })
+  for (const topicId of topicIds) {
+    result.set(
+      topicId,
+      masteryFromHistory({
+        quiz: (quizByTopic.get(topicId) ?? []).map((row) => ({ score: row.score, at: row.takenAt })),
+        voice: (voiceByTopic.get(topicId) ?? []).map((row) => ({ score: row.score, at: row.createdAt })),
+        exam: (examByTopic.get(topicId) ?? [])
+          .filter((row) => !isConfidenceFeedback(row.metadata))
+          .map((row) => ({ score: row.score, at: row.createdAt })),
+        now,
+      })
+    )
+  }
+  return result
 }
 
 export async function upsertReviewSchedule(input: {

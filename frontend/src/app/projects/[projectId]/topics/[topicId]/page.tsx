@@ -33,7 +33,7 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
   const { projectId, topicId } = await params
   const resolvedSearchParams = searchParams ? await searchParams : undefined
 
-  // Fetch topic with content and progress
+  // Fetch the topic with only the columns the page uses.
   const topic = await prisma.topic.findFirst({
     where: {
       id: topicId,
@@ -42,7 +42,11 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
         userId: session.user.id,
       },
     },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      orderIndex: true,
       project: {
         select: {
           id: true,
@@ -52,6 +56,13 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
       content: {
         orderBy: {
           createdAt: 'desc',
+        },
+        select: {
+          id: true,
+          contentType: true,
+          contentData: true,
+          metadata: true,
+          createdAt: true,
         },
       },
       topicQuizzes: {
@@ -67,6 +78,12 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
       progress: {
         where: {
           userId: session.user.id,
+        },
+        select: {
+          notesCompleted: true,
+          examplesCompleted: true,
+          quizCompleted: true,
+          quizScore: true,
         },
       },
     },
@@ -107,7 +124,12 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
     ...topic,
     content: topic.content.map((item) => ({
       ...item,
-      contentData: toPublicContentData(item.contentType, item.contentData),
+      // The topic_quiz row is a copy of the first quiz set. When quiz sets exist the page
+      // uses those, so the copy is not sent.
+      contentData:
+        item.contentType === 'topic_quiz' && topic.topicQuizzes.length > 0
+          ? []
+          : toPublicContentData(item.contentType, item.contentData),
     })),
     topicQuizzes: topic.topicQuizzes.map((quiz) => ({
       ...quiz,

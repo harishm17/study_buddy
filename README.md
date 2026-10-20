@@ -318,6 +318,7 @@ OPENAI_API_KEY=sk-proj-...
 OPENAI_REALTIME_MODEL=gpt-realtime-mini
 OPENAI_REALTIME_VOICE=marin
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+VOICE_DAILY_MINUTES=30            # per-user voice minutes per 24 hours (frontend setting)
 
 # GCP (for production deployment)
 GCS_BUCKET=studybuddy-materials

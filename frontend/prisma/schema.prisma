@@ -37,7 +37,6 @@ model User {
   learningSignals     LearningSignal[]
   reviewSchedules     ReviewSchedule[]
 
-  @@index([email])
   @@index([oauthProvider, oauthId])
   @@map("users")
 }
@@ -119,7 +118,6 @@ model MaterialChunk {
   material             Material              @relation(fields: [materialId], references: [id], onDelete: Cascade)
   topicChunkMappings   TopicChunkMapping[]
 
-  @@index([materialId])
   @@unique([materialId, chunkIndex])
   @@map("material_chunks")
 }
@@ -151,7 +149,6 @@ model Topic {
   learningSignals    LearningSignal[]
   reviewSchedules    ReviewSchedule[]
 
-  @@index([projectId])
   @@index([projectId, orderIndex])
   @@map("topics")
 }
@@ -256,7 +253,7 @@ model QuizAttempt {
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 
-  @@index([userId, topicId])
+  @@index([userId, topicId, takenAt])
   @@index([quizSetId])
   @@index([topicId])
   @@map("quiz_attempts")
@@ -281,6 +278,10 @@ model VoiceDrillSession {
   metrics     Json?
   createdAt   DateTime @default(now()) @map("created_at")
   endedAt     DateTime? @map("ended_at")
+  // Set when a realtime token is minted. Billable time runs from here to endedAt, or to
+  // lastSeenAt when the browser went away without ending the session.
+  connectedAt DateTime? @map("connected_at")
+  lastSeenAt  DateTime? @map("last_seen_at")
 
   user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   project  Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -288,6 +289,7 @@ model VoiceDrillSession {
   attempts VoiceDrillAttempt[]
 
   @@index([userId, projectId])
+  @@index([userId, connectedAt])
   @@index([topicId])
   @@map("voice_drill_sessions")
 }
@@ -312,9 +314,8 @@ model VoiceDrillAttempt {
   user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   topic   Topic?            @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
-  @@index([sessionId])
   @@unique([sessionId, questionIndex])
-  @@index([userId])
+  @@index([userId, topicId, createdAt])
   @@index([topicId])
   @@map("voice_drill_attempts")
 }
@@ -339,6 +340,7 @@ model LearningSignal {
   topic   Topic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
 
   @@index([userId, projectId, topicId])
+  @@index([userId, topicId, source, createdAt])
   @@index([source, createdAt])
   @@map("learning_signals")
 }
@@ -439,7 +441,7 @@ model ExamSubmission {
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([sampleExamId])
+  @@index([sampleExamId, userId, submittedAt])
   @@map("exam_submissions")
 }
 

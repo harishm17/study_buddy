@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2, Plus, Trash2, Check, Sparkles } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, GitMerge, Loader2, Pencil, Plus, Sparkles, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useJobPolling } from '@/hooks/useJobPolling'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { MergeTopicDialog } from '@/components/topics/merge-topic-dialog'
 
 interface Topic {
   id: string
@@ -31,6 +32,9 @@ export function TopicReview({ projectId }: TopicReviewProps) {
   const [saving, setSaving] = useState(false)
   const [newTopicName, setNewTopicName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editBusy, setEditBusy] = useState(false)
   const { pollJob, stopPolling, resumeActiveJobs } = useJobPolling({ timeoutMs: 120_000 })
 
   const fetchTopics = useCallback(async () => {
@@ -157,6 +161,68 @@ export function TopicReview({ projectId }: TopicReviewProps) {
     }
   }
 
+  const startRename = (topic: Topic) => {
+    setEditingId(topic.id)
+    setEditName(topic.name)
+  }
+
+  const handleRename = async (topicId: string) => {
+    const name = editName.trim()
+    if (!name) return
+    setEditBusy(true)
+    try {
+      setError(null)
+      const response = await fetch(`/api/topics/${topicId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      if (!response.ok) throw new Error('Failed to rename topic')
+      setTopics((current) => current.map((t) => (t.id === topicId ? { ...t, name } : t)))
+      setEditingId(null)
+    } catch (error) {
+      console.error('Error renaming topic:', error)
+      setError('Failed to rename topic')
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
+  const handleMove = async (topicId: string, toIndex: number) => {
+    setEditBusy(true)
+    try {
+      setError(null)
+      const response = await fetch(`/api/topics/${topicId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderIndex: toIndex }),
+      })
+      if (!response.ok) throw new Error('Failed to reorder topic')
+      await fetchTopics()
+    } catch (error) {
+      console.error('Error reordering topic:', error)
+      setError('Failed to reorder topic')
+    } finally {
+      setEditBusy(false)
+    }
+  }
+
+  const handleMerge = async (sourceTopicId: string, targetTopicId: string) => {
+    try {
+      setError(null)
+      const response = await fetch(`/api/projects/${projectId}/topics/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceTopicId, targetTopicId }),
+      })
+      if (!response.ok) throw new Error('Failed to merge topics')
+      await fetchTopics()
+    } catch (error) {
+      console.error('Error merging topics:', error)
+      setError('Failed to merge topics')
+    }
+  }
+
   const handleConfirmTopics = async () => {
     try {
       setSaving(true)
@@ -267,9 +333,48 @@ export function TopicReview({ projectId }: TopicReviewProps) {
                         <Badge variant="outline" className="font-mono text-xs">
                           {index + 1}
                         </Badge>
-                        <h4 className="font-semibold">{topic.name}</h4>
+                        {editingId === topic.id ? (
+                          <form
+                            className="flex flex-1 items-center gap-2"
+                            onSubmit={(event) => {
+                              event.preventDefault()
+                              void handleRename(topic.id)
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(event) => setEditName(event.target.value)}
+                              onKeyDown={(event) => event.key === 'Escape' && setEditingId(null)}
+                              aria-label={`Topic name for topic ${index + 1}`}
+                              maxLength={255}
+                              autoFocus
+                              className="flex-1 rounded-xl border border-input/80 bg-white/90 px-3 py-1.5 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                            />
+                            <Button
+                              type="submit"
+                              size="icon"
+                              variant="ghost"
+                              disabled={editBusy || !editName.trim()}
+                              aria-label="Save topic name"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => setEditingId(null)}
+                              aria-label="Cancel renaming"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </form>
+                        ) : (
+                          <h4 className="font-semibold">{topic.name}</h4>
+                        )}
                         {topic.userConfirmed && (
-                          <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          <Check className="h-4 w-4 text-green-600 dark:text-green-400" aria-label="Confirmed" />
                         )}
                       </div>
 
@@ -295,22 +400,69 @@ export function TopicReview({ projectId }: TopicReviewProps) {
                       )}
                     </div>
 
-                    <ConfirmDialog
-                      title="Delete topic?"
-                      description={`"${topic.name}" and its generated content will be removed.`}
-                      confirmLabel="Delete"
-                      variant="destructive"
-                      onConfirm={() => handleDeleteTopic(topic.id)}
-                      trigger={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      }
-                    />
+                    <div className="flex items-center">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleMove(topic.id, index - 1)}
+                        disabled={index === 0 || editBusy}
+                        aria-label={`Move ${topic.name} up`}
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleMove(topic.id, index + 1)}
+                        disabled={index === topics.length - 1 || editBusy}
+                        aria-label={`Move ${topic.name} down`}
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => startRename(topic)}
+                        disabled={editBusy}
+                        aria-label={`Rename ${topic.name}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      {topics.length > 1 && (
+                        <MergeTopicDialog
+                          source={{ id: topic.id, name: topic.name }}
+                          candidates={topics.filter((t) => t.id !== topic.id)}
+                          onMerge={(targetId) => handleMerge(topic.id, targetId)}
+                          trigger={
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              disabled={editBusy}
+                              aria-label={`Merge ${topic.name} into another topic`}
+                            >
+                              <GitMerge className="h-4 w-4" />
+                            </Button>
+                          }
+                        />
+                      )}
+                      <ConfirmDialog
+                        title="Delete topic?"
+                        description={`"${topic.name}" and its generated content will be removed.`}
+                        confirmLabel="Delete"
+                        variant="destructive"
+                        onConfirm={() => handleDeleteTopic(topic.id)}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(event) => event.stopPropagation()}
+                            aria-label={`Delete ${topic.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
               ))}

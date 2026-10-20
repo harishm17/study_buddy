@@ -461,12 +461,12 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
         </Alert>
       )}
       {jobStatusText && !error && (
-        <Alert>
+        <Alert role="status" aria-live="polite">
           <AlertDescription>{jobStatusText}</AlertDescription>
         </Alert>
       )}
       {batchJobs && batchJobs.length > 0 && (
-        <Card className="border-primary/10">
+        <Card className="border-primary/10" aria-live="polite">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Batch Progress</CardTitle>
             <CardDescription>Running all content jobs in the background.</CardDescription>

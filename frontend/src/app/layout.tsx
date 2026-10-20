@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import { JetBrains_Mono, Manrope } from "next/font/google"
 import "./globals.css"
-import { SessionProvider } from "@/components/providers/session-provider"
 
 const manrope = Manrope({
   subsets: ["latin"],
@@ -26,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${manrope.variable} ${jetbrainsMono.variable}`}>
-        <SessionProvider>{children}</SessionProvider>
+        {children}
       </body>
     </html>
   )

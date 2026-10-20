@@ -5,8 +5,8 @@ import { BookText, Headphones, Languages, ListChecks, MessageSquareText, Mic, Re
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
-import { useRealtimeVoice } from '@/hooks/useRealtimeVoice'
+import { MicLevelMeter } from '@/components/voice/MicLevelMeter'
+import { useRealtimeVoice, type AutoDisconnectReason } from '@/hooks/useRealtimeVoice'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -53,6 +53,37 @@ const TOOL_DEFS = [
 ]
 
 type VoiceLearningStyle = 'oral_quiz' | 'guided_notes' | 'topic_conversation'
+
+// Topic conversation uses no tools. A module-level array keeps the same reference between
+// renders, so the hook does not send a new session.update every time this component renders.
+const NO_TOOLS: typeof TOOL_DEFS = []
+
+const HEARTBEAT_MS = 30_000
+const USAGE_TICK_MS = 15_000
+const IDLE_TIMEOUT_MS = 2 * 60 * 1000
+
+type VoiceUsage = {
+  dailyMinutes: number
+  remainingSeconds: number
+  /** When remainingSeconds was read, in ms since the epoch. */
+  asOf: number
+}
+
+async function fetchVoiceUsage(): Promise<VoiceUsage | null> {
+  try {
+    const response = await fetch('/api/voice/usage', { cache: 'no-store' })
+    if (!response.ok) return null
+    const data = await response.json()
+    return {
+      dailyMinutes: Number(data.dailyMinutes),
+      remainingSeconds: Number(data.remainingSeconds),
+      asOf: Date.now(),
+    }
+  } catch {
+    // The meter is informational; the server enforces the cap.
+    return null
+  }
+}
 
 const STYLE_LABELS: Record<VoiceLearningStyle, string> = {
   oral_quiz: 'Oral Q&A',
@@ -153,6 +184,9 @@ export function VoiceCoach({
   } | null>(null)
   const [currentQuestionZeroBased, setCurrentQuestionZeroBased] = useState<number | null>(null)
   const [evaluatingAnswer, setEvaluatingAnswer] = useState(false)
+  const [usage, setUsage] = useState<VoiceUsage | null>(null)
+  const [usageNow, setUsageNow] = useState(0)
+  const [callNotice, setCallNotice] = useState<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const previousConnectionRef = useRef<'disconnected' | 'connecting' | 'connected'>('disconnected')
@@ -163,7 +197,7 @@ export function VoiceCoach({
   const pendingLanguageConfirmRef = useRef<string | null>(null)
 
   const selectedLanguageLabel = LANGUAGE_LABELS[preferredLanguage] || preferredLanguage
-  const activeTools = learningStyle === 'topic_conversation' ? [] : TOOL_DEFS
+  const activeTools = learningStyle === 'topic_conversation' ? NO_TOOLS : TOOL_DEFS
   const styleInstruction = learningStyle === 'oral_quiz'
     ? `Mode: Oral Q&A.
 - Ask exactly one question at a time.
@@ -235,7 +269,7 @@ export function VoiceCoach({
     userInterim,
     assistantInterim,
     metrics,
-    micLevel,
+    micLevelRef,
     connect,
     disconnect,
     sendResponseCreate,
@@ -248,6 +282,10 @@ export function VoiceCoach({
     language: preferredLanguage,
     languageMode,
     audioRef,
+    idleTimeoutMs: IDLE_TIMEOUT_MS,
+    onAutoDisconnect: (reason) => {
+      void handleAutoDisconnect(reason)
+    },
     onInterrupt: () => {
       patchSession({ incrementInterruptCount: 1 })
     },
@@ -397,9 +435,37 @@ export function VoiceCoach({
     }
   }
 
+  const loadUsage = useCallback(() => {
+    void fetchVoiceUsage().then((next) => {
+      if (!next) return
+      setUsage(next)
+      setUsageNow(next.asOf)
+    })
+  }, [])
+
+  // Forget the finished session so the next start creates a new one. Reusing a session
+  // that was aborted or completed would answer "Drill complete" straight away.
+  const resetSessionState = () => {
+    setSessionId(null)
+    setQuestionCount(null)
+    setCurrentIndex(null)
+    setCurrentQuestionZeroBased(null)
+    setLastEvaluation(null)
+    pendingLanguageConfirmRef.current = null
+  }
+
+  const abortSession = async () => {
+    if (sessionId && !sessionEndedRef.current) {
+      sessionEndedRef.current = true
+      await patchSession({ status: 'aborted' })
+    }
+  }
+
   const handleConnect = async () => {
     if (connection !== 'disconnected') return
-    if (!sessionId) {
+    setCallNotice(null)
+    if (!sessionId || sessionEndedRef.current) {
+      if (sessionId) resetSessionState()
       setPendingConnect(true)
       const newSession = await createSession()
       if (!newSession) {
@@ -411,29 +477,34 @@ export function VoiceCoach({
   }
 
   const handleDisconnect = async () => {
-    if (sessionId && !sessionEndedRef.current) {
-      await patchSession({ status: 'aborted' })
-      sessionEndedRef.current = true
-    }
+    await abortSession()
     disconnect()
+    resetSessionState()
+    loadUsage()
+  }
+
+  // The call ended without the learner pressing Disconnect: silence, or a lost connection.
+  const handleAutoDisconnect = async (reason: AutoDisconnectReason) => {
+    setCallNotice(
+      reason === 'idle'
+        ? 'The call ended after 2 minutes without speech. Start again when you are ready.'
+        : 'The connection dropped and could not be restored. Start again to reconnect.'
+    )
+    await abortSession()
+    resetSessionState()
+    loadUsage()
   }
 
   const handleNewSession = async () => {
-    if (sessionId && !sessionEndedRef.current) {
-      await patchSession({ status: 'aborted' })
-      sessionEndedRef.current = true
-    }
+    await abortSession()
     disconnect()
     resetMetrics()
-    setSessionId(null)
-    setQuestionCount(null)
-    setCurrentIndex(null)
-    setCurrentQuestionZeroBased(null)
+    resetSessionState()
+    loadUsage()
     setSessionError(null)
     setGenerationNotice(null)
     setLanguageNotice(null)
-    setLastEvaluation(null)
-    pendingLanguageConfirmRef.current = null
+    setCallNotice(null)
   }
 
   const handleGenerateContent = async () => {
@@ -524,6 +595,47 @@ export function VoiceCoach({
   }
 
   useEffect(() => {
+    loadUsage()
+  }, [loadUsage])
+
+  // While the call is open: keep the session counted as live, and stop at the daily cap.
+  useEffect(() => {
+    if (connection !== 'connected' || !sessionId) return
+    const heartbeat = window.setInterval(() => {
+      void patchSession({ heartbeat: true })
+    }, HEARTBEAT_MS)
+    const tick = window.setInterval(() => setUsageNow(Date.now()), USAGE_TICK_MS)
+    // The session now counts as live on the server, so this read is the time left to talk.
+    loadUsage()
+    return () => {
+      window.clearInterval(heartbeat)
+      window.clearInterval(tick)
+    }
+  }, [connection, sessionId, patchSession, loadUsage])
+
+  // End the call at the moment the daily minutes run out. The server refuses a new token
+  // past the cap; this stops a call that is already open.
+  const capHandlerRef = useRef<() => void>(() => undefined)
+  useEffect(() => {
+    capHandlerRef.current = () => {
+      void (async () => {
+        await abortSession()
+        disconnect()
+        resetSessionState()
+        setCallNotice('Your daily voice minutes are used up. The call has ended.')
+        loadUsage()
+      })()
+    }
+  })
+
+  useEffect(() => {
+    if (connection !== 'connected' || !usage) return
+    const msLeft = usage.remainingSeconds * 1000 - (Date.now() - usage.asOf)
+    const timer = window.setTimeout(() => capHandlerRef.current(), Math.max(0, msLeft))
+    return () => window.clearTimeout(timer)
+  }, [connection, usage])
+
+  useEffect(() => {
     if (pendingConnect && sessionId) {
       connect()
       setPendingConnect(false)
@@ -559,6 +671,16 @@ export function VoiceCoach({
   const formatMs = (value?: number) =>
     typeof value === 'number' ? `${Math.round(value)} ms` : '—'
   const visibleError = normalizeErrorMessage(sessionError || error)
+  const minutesLeft = usage
+    ? Math.max(
+        0,
+        Math.ceil(
+          (usage.remainingSeconds -
+            (connection === 'connected' ? (usageNow - usage.asOf) / 1000 : 0)) /
+            60
+        )
+      )
+    : null
 
   return (
     <Card className="overflow-hidden">
@@ -628,6 +750,11 @@ export function VoiceCoach({
             {sessionId && (
               <div className="mt-1 text-xs text-muted-foreground">
                 Session: {sessionId.slice(0, 8)}...
+              </div>
+            )}
+            {usage && minutesLeft !== null && (
+              <div className="mt-2 text-sm text-muted-foreground" aria-live="polite">
+                Voice time left today: {minutesLeft} of {Math.round(usage.dailyMinutes)} min
               </div>
             )}
             {questionCount !== null && (
@@ -721,6 +848,15 @@ export function VoiceCoach({
                 {generatingContent ? 'Generating...' : 'Generate notes + quiz'}
               </Button>
             )}
+          </div>
+        )}
+
+        {callNotice && (
+          <div
+            role="status"
+            className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+          >
+            {callNotice}
           </div>
         )}
 
@@ -875,7 +1011,7 @@ export function VoiceCoach({
 
         <div className="rounded-xl border border-border/70 bg-white/70 p-4">
           <div className="text-xs uppercase text-muted-foreground">Mic Level</div>
-          <Progress value={Math.min(micLevel * 150, 100)} className="mt-3" />
+          <MicLevelMeter levelRef={micLevelRef} active={connection === 'connected'} />
           <div className="mt-2 text-sm text-muted-foreground">
             Speak over the coach to barge in. Audio is canceled immediately.
           </div>
