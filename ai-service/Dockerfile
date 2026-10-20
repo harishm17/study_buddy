@@ -14,6 +14,10 @@ ENV UV_COMPILE_BYTECODE=1 \
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
+# Bake the local embedding model into the image so cold starts never download it.
+ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+RUN /opt/venv/bin/python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='${EMBEDDING_MODEL}', cache_dir='/opt/models')"
+
 # Stage 2: Runtime
 FROM python:3.14-slim
 
@@ -22,9 +26,12 @@ WORKDIR /app
 # Run as an unprivileged user
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 
-# Copy Python dependencies from builder
+# Copy Python dependencies and the embedding model from builder
 COPY --from=builder /opt/venv /opt/venv
-ENV PATH=/opt/venv/bin:$PATH
+COPY --from=builder --chown=app:app /opt/models /opt/models
+ENV PATH=/opt/venv/bin:$PATH \
+    EMBEDDING_CACHE_DIR=/opt/models \
+    HF_HUB_OFFLINE=1
 
 # Copy application code last, owned by root and read-only to the app user
 COPY . .

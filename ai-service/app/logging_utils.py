@@ -18,7 +18,7 @@ def _redact_text(value: str) -> str:
     redacted = value
 
     # Redact known configured secrets first.
-    for secret in (settings.OPENAI_API_KEY, settings.AI_INTERNAL_TOKEN):
+    for secret in (settings.ANTHROPIC_API_KEY, settings.OPENAI_API_KEY, settings.AI_INTERNAL_TOKEN):
         if secret:
             redacted = redacted.replace(secret, "[REDACTED]")
 

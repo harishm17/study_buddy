@@ -442,7 +442,8 @@ export const useRealtimeVoice = ({
       })
 
       if (!tokenResponse.ok) {
-        throw new Error(await tokenResponse.text())
+        const failure = await tokenResponse.json().catch(() => null)
+        throw new Error(failure?.error || 'Could not start the voice session.')
       }
 
       const tokenPayload = await tokenResponse.json()

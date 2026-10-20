@@ -15,6 +15,7 @@ async def health_check():
         "service": "studybuddy-ai",
         "environment": settings.ENVIRONMENT,
         "llm_provider": settings.LLM_PROVIDER,
+        "voice_enabled": settings.voice_enabled,
     }
 
 
@@ -35,11 +36,25 @@ async def dependency_health_check():
             "message": f"Database connection failed: {exc}",
         })
 
-    # OpenAI key presence
-    if settings.OPENAI_API_KEY:
-        checks.append({"name": "openai_key", "status": "pass", "message": "OPENAI_API_KEY configured"})
+    # Claude key: needed for validation, topics, generation and grading
+    if settings.llm_configured:
+        checks.append({
+            "name": "llm_key",
+            "status": "pass",
+            "message": f"LLM provider {settings.LLM_PROVIDER} configured",
+        })
     else:
-        checks.append({"name": "openai_key", "status": "fail", "message": "OPENAI_API_KEY missing"})
+        checks.append({"name": "llm_key", "status": "fail", "message": "ANTHROPIC_API_KEY missing"})
+
+    # OpenAI key: only the realtime voice coach uses it
+    if settings.voice_enabled:
+        checks.append({"name": "voice", "status": "pass", "message": "OPENAI_API_KEY configured"})
+    else:
+        checks.append({
+            "name": "voice",
+            "status": "warn",
+            "message": "OPENAI_API_KEY missing: the voice coach is turned off",
+        })
 
     # Internal auth token for frontend -> AI bridge
     if settings.AI_INTERNAL_TOKEN:

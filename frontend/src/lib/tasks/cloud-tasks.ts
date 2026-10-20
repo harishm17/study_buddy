@@ -59,17 +59,10 @@ export class TaskEnqueueError extends Error {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-function isPermanentTaskFailure(status: number, message: string): boolean {
-  if (NON_RETRYABLE_STATUSES.has(status)) {
-    return true
-  }
-  const normalized = message.toLowerCase()
-  return (
-    normalized.includes('openai_api_key is not configured') ||
-    normalized.includes('missing bearer') ||
-    normalized.includes('authentication') ||
-    normalized.includes('invalid api key')
-  )
+// The AI service answers 400 for failures a retry cannot fix (missing or rejected API key,
+// no credit, no source material) and 5xx for transient ones.
+function isPermanentTaskFailure(status: number): boolean {
+  return NON_RETRYABLE_STATUSES.has(status)
 }
 
 async function callAiServiceWithRetry(endpoint: string, payload: TaskPayload): Promise<void> {
@@ -88,7 +81,7 @@ async function callAiServiceWithRetry(endpoint: string, payload: TaskPayload): P
 
       if (!response.ok) {
         const message = await response.text()
-        const retryable = !isPermanentTaskFailure(response.status, message)
+        const retryable = !isPermanentTaskFailure(response.status)
         throw new TaskEnqueueError(
           `[DEV] Task execution failed (${response.status}): ${message}`,
           retryable,

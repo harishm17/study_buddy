@@ -39,7 +39,7 @@ jobs:
         working-directory: ai-service
     env:
       DATABASE_URL: postgresql://dev:devpass@localhost:5432/studybuddy
-      OPENAI_API_KEY: test-key
+      ANTHROPIC_API_KEY: test-key
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
@@ -80,10 +80,14 @@ jobs:
           uid="$(docker run --rm --entrypoint id studybuddy-ai -u)"
           echo "uid=$uid"
           test "$uid" != "0"
+      - name: Embedding model loads offline as the app user
+        run: |
+          docker run --rm --network none --entrypoint python studybuddy-ai -c \
+            "import os; from fastembed import TextEmbedding; m = TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir=os.environ['EMBEDDING_CACHE_DIR']); print(len(next(iter(m.embed(['hello'])))))"
       - name: Image starts and answers health checks
         run: |
           docker run -d --name ai -p 8000:8000 \
-            -e DATABASE_URL=postgresql://u:p@127.0.0.1:1/db -e OPENAI_API_KEY=test-key \
+            -e DATABASE_URL=postgresql://u:p@127.0.0.1:1/db -e ANTHROPIC_API_KEY=test-key \
             studybuddy-ai
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8000/health && exit 0

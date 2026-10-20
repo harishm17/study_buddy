@@ -5,6 +5,7 @@ from typing import List
 from pydantic import BaseModel
 from app.services.llm import LLMFactory
 from app.services.llm.base import LLMMessage
+from app.services.llm.schemas import TopicList
 from app.db.connection import execute_query
 
 logger = logging.getLogger(__name__)
@@ -255,35 +256,27 @@ Requirements:
   - description: Brief explanation (1-2 sentences)
   - keywords: 3-8 relevant keywords for searching
 
-Return a JSON object with this structure:
-{{
-  "topics": [
-    {{
-      "name": "Photosynthesis",
-      "description": "The process by which plants convert light energy into chemical energy, including light-dependent and light-independent reactions.",
-      "keywords": ["photosynthesis", "chloroplast", "light reactions", "Calvin cycle", "chlorophyll", "ATP", "NADPH"]
-    }}
-  ]
-}}
+Return the topics in the order a student should study them.
 """
 
-        # 4. Call LLM (using mini model for cost efficiency)
-        # Topic extraction from table of contents is straightforward enough for mini models
+        # Topic extraction from headings and samples is a short structured task: fast tier.
         llm = LLMFactory.get_provider()
         response = await llm.generate_structured(
-            messages=[
+            [
                 LLMMessage(
                     role="system",
                     content="You are an expert educational content analyzer. Extract key topics from course materials."
                 ),
                 LLMMessage(role="user", content=prompt)
             ],
-            use_mini=True  # Use mini model - topic extraction is straightforward (20x cost savings)
+            TopicList,
+            tier="fast",
+            max_tokens=6000,
+            purpose="extract_topics",
         )
 
         # 5. Parse response
-        topics_data = response.get("topics", [])
-        topics = [ExtractedTopic(**topic) for topic in topics_data]
+        topics = [ExtractedTopic(**topic.model_dump()) for topic in response.topics]
         topics = _postprocess_topics(topics, material_count=len(materials))
 
         logger.info(f"Extracted {len(topics)} topics for project {project_id}")

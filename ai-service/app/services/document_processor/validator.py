@@ -3,7 +3,8 @@ import logging
 from typing import Optional
 from pydantic import BaseModel
 from app.services.llm import LLMFactory
-from app.services.llm.base import LLMMessage
+from app.services.llm.base import LLMError, LLMMessage
+from app.services.llm.schemas import MaterialCheck
 from app.config import settings
 from app.services.document_processor.extractors import (
     extract_document_text,
@@ -95,9 +96,9 @@ async def validate_material(
             )
 
         # 3. LLM validation
-        prompt = f"""You are validating educational content for StudyBuddy.
+        prompt = f"""A student uploaded a file to study from. Decide whether it can be used as study material.
 
-Material Category: {category}
+Category the student chose: {category.replace('_', ' ')}
 Filename: {filename}
 Format: {extension}
 Page Count: {page_count}
@@ -105,25 +106,22 @@ Page Count: {page_count}
 Sample Content (first 500 words):
 {sample_text[:2000]}
 
-Please validate this material:
-1. Is this actually educational content related to "{category.replace('_', ' ')}"?
-2. Is the content readable and properly formatted?
-3. Are there any issues or concerns?
-
-Return a JSON response with:
-- is_valid: boolean
-- notes: string (brief explanation)
+Set is_valid to true for anything a student could reasonably study from: lecture notes, slides, textbook chapters, papers, problem sets, past exams, documentation, standards or legal texts, and so on. A category that does not match exactly is fine.
+Set is_valid to false only when the file clearly is not study material (a receipt, an invoice, spam, a personal letter) or the text is unreadable (garbled characters, almost no text).
+Give a one or two sentence note explaining the decision.
 """
         try:
             llm = LLMFactory.get_provider()
-            response = await llm.generate_structured(
-                messages=[LLMMessage(role="user", content=prompt)],
-                use_mini=True,  # Use cheaper model for validation
+            check = await llm.generate_structured(
+                [LLMMessage(role="user", content=prompt)],
+                MaterialCheck,
+                tier="fast",
+                max_tokens=2000,
+                purpose="validate_material",
             )
-
-            is_valid = response.get("is_valid", False)
-            notes = response.get("notes", "No validation notes provided")
-        except Exception as llm_error:
+            is_valid = check.is_valid
+            notes = check.notes or "No validation notes provided"
+        except LLMError as llm_error:
             # Fallback path: keep pipeline functional if LLM credentials are missing
             # or upstream API auth is unavailable.
             logger.warning(f"LLM validation unavailable for {material_id}: {llm_error}")

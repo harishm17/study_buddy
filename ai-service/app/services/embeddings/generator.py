@@ -1,91 +1,126 @@
-"""Embedding generation service."""
+"""Text embeddings for chunks and search queries.
+
+The default runs BAAI/bge-small-en-v1.5 locally through fastembed (ONNX, CPU): no API key
+and no per-call cost. Claude has no embeddings endpoint, so the OpenAI provider stays
+available for anyone who prefers text-embedding-3-small.
+
+Chunks and queries are embedded differently: bge models expect a retrieval instruction on
+the query side, which `embed_query` adds.
+"""
+import asyncio
 import logging
-from typing import List
-from app.services.llm import LLMFactory
+import threading
+from abc import ABC, abstractmethod
+from typing import List, Optional
+
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# The local model's runtime is CPU-bound; batches are small enough to keep latency even.
+LOCAL_BATCH_SIZE = 32
+OPENAI_BATCH_SIZE = 100
+
+
+class Embedder(ABC):
+    name: str
+
+    @abstractmethod
+    async def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """Embeddings for stored chunks, in input order."""
+
+    @abstractmethod
+    async def embed_query(self, text: str) -> List[float]:
+        """Embedding for a search query."""
+
+
+class LocalEmbedder(Embedder):
+    """fastembed (ONNX Runtime) in a worker thread, so the event loop stays free."""
+
+    def __init__(self, model_name: str, cache_dir: Optional[str] = None):
+        self.name = model_name
+        self._cache_dir = cache_dir or None
+        self._model = None
+        self._load_lock = threading.Lock()
+
+    def _get_model(self):
+        with self._load_lock:
+            if self._model is None:
+                from fastembed import TextEmbedding
+
+                logger.info("Loading local embedding model %s", self.name)
+                self._model = TextEmbedding(model_name=self.name, cache_dir=self._cache_dir)
+            return self._model
+
+    def _embed_documents_sync(self, texts: List[str]) -> List[List[float]]:
+        model = self._get_model()
+        return [vector.tolist() for vector in model.embed(texts, batch_size=LOCAL_BATCH_SIZE)]
+
+    def _embed_query_sync(self, text: str) -> List[float]:
+        model = self._get_model()
+        return next(iter(model.query_embed(text))).tolist()
+
+    async def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return await asyncio.to_thread(self._embed_documents_sync, texts)
+
+    async def embed_query(self, text: str) -> List[float]:
+        return await asyncio.to_thread(self._embed_query_sync, text)
+
+
+class OpenAIEmbedder(Embedder):
+    def __init__(self, api_key: str, model_name: str):
+        if not api_key:
+            raise ValueError("EMBEDDING_PROVIDER=openai needs OPENAI_API_KEY")
+        from openai import AsyncOpenAI
+
+        self.name = model_name
+        self._client = AsyncOpenAI(api_key=api_key, timeout=60.0, max_retries=2)
+
+    async def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        vectors: List[List[float]] = []
+        for start in range(0, len(texts), OPENAI_BATCH_SIZE):
+            response = await self._client.embeddings.create(
+                model=self.name, input=texts[start : start + OPENAI_BATCH_SIZE]
+            )
+            vectors.extend(item.embedding for item in response.data)
+        return vectors
+
+    async def embed_query(self, text: str) -> List[float]:
+        response = await self._client.embeddings.create(model=self.name, input=[text])
+        return response.data[0].embedding
+
+
+_embedder: Optional[Embedder] = None
+
+
+def get_embedder() -> Embedder:
+    global _embedder
+    if _embedder is None:
+        provider = settings.EMBEDDING_PROVIDER.lower()
+        if provider == "local":
+            _embedder = LocalEmbedder(settings.EMBEDDING_MODEL, settings.EMBEDDING_CACHE_DIR)
+        elif provider == "openai":
+            _embedder = OpenAIEmbedder(settings.OPENAI_API_KEY, settings.OPENAI_EMBEDDING_MODEL)
+        else:
+            raise ValueError(f"Unknown EMBEDDING_PROVIDER: {provider} (use local or openai)")
+    return _embedder
+
+
+def reset_embedder() -> None:
+    """Drop the cached embedder (tests)."""
+    global _embedder
+    _embedder = None
+
 
 async def generate_embeddings(texts: List[str]) -> List[List[float]]:
-    """
-    Generate embeddings for a list of texts.
-
-    Uses OpenAI text-embedding-3-small model.
-    Batch processing for efficiency.
-
-    Args:
-        texts: List of text strings to embed
-
-    Returns:
-        List of embedding vectors (each is List[float] of length 1536)
-    """
+    """Embeddings for chunk texts, in input order."""
     if not texts:
         return []
-
-    try:
-        logger.info(f"Generating embeddings for {len(texts)} texts")
-
-        llm = LLMFactory.get_provider()
-        
-        # Use batch API if OpenAI provider (direct client access for efficiency)
-        try:
-            from app.services.llm.openai_provider import OpenAIProvider
-            if isinstance(llm, OpenAIProvider) and hasattr(llm, 'client'):
-                embeddings = []
-                # OpenAI allows up to 2048 inputs per request
-                batch_size = 100
-                for i in range(0, len(texts), batch_size):
-                    batch = texts[i:i + batch_size]
-                    logger.debug(f"Processing batch {i // batch_size + 1}/{(len(texts) + batch_size - 1) // batch_size}")
-                    
-                    # Use batch API directly
-                    response = await llm.client.embeddings.create(
-                        model=llm.embedding_model,
-                        input=batch
-                    )
-                    batch_embeddings = [item.embedding for item in response.data]
-                    embeddings.extend(batch_embeddings)
-                
-                logger.info(f"Generated {len(embeddings)} embeddings using batch API")
-                return embeddings
-        except (AttributeError, ImportError, TypeError) as e:
-            logger.debug(f"Batch API not available: {e}, falling back to single-item API")
-        
-        # Fallback to single-item API if batch not available
-        logger.warning("Batch API not available, using single-item API (slower)")
-        embeddings = []
-        for text in texts:
-            embedding = await llm.generate_embedding(text)
-            embeddings.append(embedding)
-
-        logger.info(f"Generated {len(embeddings)} embeddings")
-        return embeddings
-
-    except Exception as e:
-        logger.error(f"Error generating embeddings: {e}")
-        raise
+    embedder = get_embedder()
+    logger.info("Embedding %s chunks with %s", len(texts), embedder.name)
+    return await embedder.embed_documents(texts)
 
 
-async def generate_single_embedding(text: str) -> List[float]:
-    """
-    Generate embedding for a single text.
-
-    Args:
-        text: Text to embed
-
-    Returns:
-        Embedding vector (List[float] of length 1536)
-    """
-    llm = LLMFactory.get_provider()
-    return await llm.generate_embedding(text)
-
-
-async def generate_embedding(text: str) -> List[float]:
-    """Backward-compatible single-text embedding helper."""
-    return await generate_single_embedding(text)
-
-
-async def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
-    """Backward-compatible batch embedding helper."""
-    return await generate_embeddings(texts)
+async def generate_query_embedding(text: str) -> List[float]:
+    """Embedding for a search query."""
+    return await get_embedder().embed_query(text)

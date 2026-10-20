@@ -1,5 +1,6 @@
 """Tests for exam grading functionality."""
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.exam_grader import ExamGrader
 
@@ -263,40 +264,12 @@ class TestShortAnswerGrading:
     """Test short answer question grading with AI."""
 
     @pytest.mark.asyncio
-    async def test_short_answer_development_mode(self):
-        """In development mode, should return mock grading."""
-        with patch('app.services.exam_grader.settings') as mock_settings:
-            mock_settings.is_development = True
-
-            grader = ExamGrader()
-            question = {
-                'question_text': 'Explain machine learning.',
-                'question_type': 'short_answer',
-                'points': 10,
-                'sample_answer': 'ML is a subset of AI...',
-                'key_points': ['AI subset', 'learns from data']
-            }
-
-            result = await grader._grade_short_answer(question, 'Student answer here')
-
-            assert 'points_earned' in result
-            assert result['points_earned'] > 0
-            assert 'DEV MODE' in result['feedback']
-
-    @pytest.mark.asyncio
     async def test_short_answer_full_credit(self):
         """Should award full credit for complete answer."""
-        with patch('app.services.exam_grader.settings') as mock_settings, \
-             patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
-
-            mock_settings.is_development = False
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
 
             mock_llm = MagicMock()
-            mock_llm.generate_structured = AsyncMock(return_value={
-                'points_earned': 10,
-                'is_correct': True,
-                'feedback': 'Excellent answer covering all key points.'
-            })
+            mock_llm.generate_structured = AsyncMock(return_value=SimpleNamespace(points_earned=10, feedback='Excellent answer covering all key points.'))
             mock_llm_factory.return_value = mock_llm
 
             grader = ExamGrader()
@@ -316,17 +289,10 @@ class TestShortAnswerGrading:
     @pytest.mark.asyncio
     async def test_short_answer_partial_credit(self):
         """Should award partial credit for incomplete answer."""
-        with patch('app.services.exam_grader.settings') as mock_settings, \
-             patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
-
-            mock_settings.is_development = False
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
 
             mock_llm = MagicMock()
-            mock_llm.generate_structured = AsyncMock(return_value={
-                'points_earned': 5,
-                'is_correct': False,
-                'feedback': 'Good start but missing key concepts.'
-            })
+            mock_llm.generate_structured = AsyncMock(return_value=SimpleNamespace(points_earned=5, feedback='Good start but missing key concepts.'))
             mock_llm_factory.return_value = mock_llm
 
             grader = ExamGrader()
@@ -346,10 +312,7 @@ class TestShortAnswerGrading:
     @pytest.mark.asyncio
     async def test_short_answer_error_handling(self):
         """Should handle AI grading errors gracefully."""
-        with patch('app.services.exam_grader.settings') as mock_settings, \
-             patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
-
-            mock_settings.is_development = False
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
 
             mock_llm = MagicMock()
             mock_llm.generate_structured = AsyncMock(side_effect=Exception('API Error'))
@@ -383,14 +346,12 @@ SHORT_QUESTION = {
 
 
 async def _grade_with_llm_reply(reply, answer='An answer'):
-    with patch('app.services.exam_grader.settings') as mock_settings, \
-         patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
-        mock_settings.is_development = False
+    with patch('app.services.exam_grader.LLMFactory.get_provider') as mock_llm_factory:
         mock_llm = MagicMock()
-        mock_llm.generate_structured = AsyncMock(return_value=reply)
+        mock_llm.generate_structured = AsyncMock(return_value=SimpleNamespace(**reply))
         mock_llm_factory.return_value = mock_llm
         result = await ExamGrader()._grade_short_answer(dict(SHORT_QUESTION), answer)
-        return result, mock_llm.generate_structured.call_args.kwargs['messages']
+        return result, mock_llm.generate_structured.call_args.args[0]
 
 
 class TestShortAnswerGuards:
@@ -531,3 +492,60 @@ class TestExamSubmissionGrading:
 
             assert result['earned_points'] == 0
             assert result['overall_score'] == 0.0
+
+
+class TestGradingFixes:
+    """Bugs from the October 2026 review."""
+
+    def _grader(self):
+        with patch('app.services.exam_grader.LLMFactory.get_provider', return_value=MagicMock()):
+            return ExamGrader()
+
+    @pytest.mark.parametrize('answer,expected', [
+        ('6.02e23', True),           # within 1% of 6.022e23
+        ('6.022 x 10^23', False),    # not machine-readable as one number: 6.022
+        ('602,200,000,000,000,000,000,000', True),
+        (6.5e23, False),
+    ])
+    def test_numeric_relative_tolerance(self, answer, expected):
+        question = {'question_text': 'N_A?', 'question_type': 'numerical', 'correct_answer': 6.022e23, 'points': 2}
+        assert self._grader()._grade_numerical(question, answer)['is_correct'] is expected
+
+    def test_numeric_answer_with_units(self):
+        question = {'question_text': 'g?', 'question_type': 'numerical', 'correct_answer': 9.81,
+                    'tolerance': 0.05, 'unit': 'm/s^2', 'points': 1}
+        result = self._grader()._grade_numerical(question, '9.8 m/s^2')
+        assert result['is_correct'] is True
+        wrong = self._grader()._grade_numerical(question, '12 m/s^2')
+        assert '9.81 m/s^2' in wrong['feedback']
+
+    def test_mcq_non_string_answer_does_not_crash(self):
+        question = {'question_text': 'Q', 'question_type': 'multiple_choice', 'correct_answer': 'B', 'points': 1}
+        assert self._grader()._grade_multiple_choice(question, 2)['is_correct'] is False
+
+    def test_true_false_garbage_is_wrong_not_false(self):
+        question = {'question_text': 'Q', 'question_type': 'true_false', 'correct_answer': False, 'points': 1}
+        assert self._grader()._grade_true_false(question, 'maybe')['is_correct'] is False
+
+    @pytest.mark.asyncio
+    async def test_short_answers_use_fast_tier_and_show_sample(self):
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as factory:
+            llm = MagicMock()
+            llm.generate_structured = AsyncMock(return_value=SimpleNamespace(points_earned=3, feedback='ok'))
+            factory.return_value = llm
+            questions = [dict(SHORT_QUESTION, question_text=f'Q{i}') for i in range(5)]
+            result = await ExamGrader().grade_submission('s', questions, {str(i): 'ans' for i in range(5)})
+        assert llm.generate_structured.await_count == 5
+        assert llm.generate_structured.call_args.kwargs['tier'] == 'fast'
+        assert result['earned_points'] == 15
+        assert result['graded_questions'][0]['correct_answer'] == 'Answer'
+
+    @pytest.mark.asyncio
+    async def test_blank_answer_counts_as_unanswered(self):
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as factory:
+            llm = MagicMock()
+            llm.generate_structured = AsyncMock()
+            factory.return_value = llm
+            result = await ExamGrader().grade_submission('s', [dict(SHORT_QUESTION)], {'0': '   '})
+        llm.generate_structured.assert_not_awaited()
+        assert result['graded_questions'][0]['feedback'] == 'Question not answered'

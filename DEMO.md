@@ -38,21 +38,22 @@ Re-running the seed script is safe — it deletes the previous demo project befo
 
 ## Environment Variables
 
-The `OPENAI_API_KEY` **and** `AI_INTERNAL_TOKEN` must be set in your shell before `docker compose up`:
+The `ANTHROPIC_API_KEY` **and** `AI_INTERNAL_TOKEN` must be set in your shell before `docker compose up`:
 
 ```bash
-export OPENAI_API_KEY=sk-your-key-here
+export ANTHROPIC_API_KEY=sk-ant-your-key-here
 export AI_INTERNAL_TOKEN=replace-with-shared-secret
 docker compose up --build
 ```
 
-All other variables are configured in `docker-compose.yml`. Key defaults:
+`OPENAI_API_KEY` is optional: only the Voice Coach (Scene 8) needs it. All other variables are configured in `docker-compose.yml`. Key defaults:
 
 | Variable            | Value                |
 |---------------------|----------------------|
-| LLM_PROVIDER        | openai               |
-| OPENAI_MODEL        | gpt-4o               |
-| OPENAI_MINI_MODEL   | gpt-4o-mini          |
+| LLM_PROVIDER        | anthropic            |
+| ANTHROPIC_MODEL     | claude-opus-5-5      |
+| ANTHROPIC_FAST_MODEL | claude-haiku-5-5    |
+| EMBEDDING_PROVIDER  | local                |
 | OPENAI_REALTIME_MODEL | gpt-realtime-mini  |
 | OPENAI_REALTIME_VOICE | marin              |
 | OPENAI_TRANSCRIPTION_MODEL | gpt-4o-mini-transcribe |
@@ -89,7 +90,7 @@ All other variables are configured in `docker-compose.yml`. Key defaults:
 2. Answer the 4 questions (mix of multiple-choice and true/false)
 3. Show the score and per-question explanations
 
-### Scene 6 — Live Upload (optional, requires OPENAI_API_KEY)
+### Scene 6 — Live Upload (optional, requires ANTHROPIC_API_KEY)
 1. Go back to the project dashboard
 2. Click **Upload material** and upload any PDF
 3. Watch the status change: pending → processing → valid
@@ -116,7 +117,7 @@ All other variables are configured in `docker-compose.yml`. Key defaults:
 Browser  →  Next.js (port 3000)  →  FastAPI AI service (port 8000)
                   │                          │
                   ▼                          ▼
-           PostgreSQL + pgvector       OpenAI / Anthropic API
+           PostgreSQL + pgvector       Anthropic API (+ OpenAI for voice)
            (port 5432)
 
 Shared volume: /data/uploads  (local file storage in dev)
@@ -125,14 +126,14 @@ Shared volume: /data/uploads  (local file storage in dev)
 ### How processing works in development
 1. **Upload:** Next.js writes the PDF to `/data/uploads/` (shared Docker volume)
 2. **Validate:** AI service reads the PDF from the same volume, parses it with PyMuPDF, and optionally validates content via LLM
-3. **Chunk:** PDF is split into semantic sections; embeddings are generated via OpenAI
+3. **Chunk:** PDF is split into semantic sections; embeddings are generated locally in the AI service
 4. **Extract topics:** LLM analyzes chunk structure and returns a topic list
 5. **Generate content:** For each topic the LLM produces notes, examples, and quiz questions grounded in the relevant chunks
 
 ### Disabling processing
 Set `ENABLE_PROCESSING=false` in the ai-service environment (docker-compose.yml).
 Validation and chunking will be simulated (instant success, zero chunks).
-Useful for pure UI development when you don't have an API key.
+Useful for pure UI development when you don't have an API key. Set `LLM_PROVIDER=mock` to run the full flow with placeholder content and no API calls.
 
 ---
 
@@ -140,7 +141,8 @@ Useful for pure UI development when you don't have an API key.
 
 | Symptom | Likely cause | Fix |
 |---------|--------------|-----|
-| AI service returns 500 on LLM calls | Missing or invalid API key | Check `OPENAI_API_KEY` env var |
+| AI service returns 500 on LLM calls | Missing or invalid API key | Check `ANTHROPIC_API_KEY` env var, or check `/health/dependencies` (`llm_key`) |
+| Voice Coach token request returns 503 | No `OPENAI_API_KEY` set | Set `OPENAI_API_KEY`; without it the voice coach is off |
 | Chunking job stays at 0% | File not found at `/data/uploads` | Verify `uploads_data` volume is mounted in both services |
 | "No relevant chunks found" on content gen | Chunks weren't created | Check chunking job status; ensure `ENABLE_PROCESSING=true` |
 | Prisma client errors on seed | Schema not applied | Run `npx prisma db push` first |
