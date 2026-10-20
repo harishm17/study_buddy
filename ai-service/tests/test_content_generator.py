@@ -36,6 +36,7 @@ CHUNKS = [
         "section_hierarchy": "Chapter 1 > Light reactions",
         "page_start": 3,
         "page_end": 4,
+        "material_id": "m1",
         "filename": "bio.pdf",
         "category": "lecture_notes",
         "relevance_score": 0.9,
@@ -46,6 +47,7 @@ CHUNKS = [
         "section_hierarchy": None,
         "page_start": 5,
         "page_end": 5,
+        "material_id": "m1",
         "filename": "bio.pdf",
         "category": "lecture_notes",
         "relevance_score": 0.8,
@@ -97,11 +99,25 @@ class TestNotesGeneration:
         with db, factory:
             result = await NotesGenerator().generate_notes("t1", "Photosynthesis", "desc", {"focus": "Calvin cycle"})
         assert result["content"].startswith("# Photosynthesis")
-        assert result["citations"] == [{"filename": "bio.pdf", "category": "lecture_notes", "pages": "3-4"}]
+        assert result["citations"] == [
+            {"filename": "bio.pdf", "category": "lecture_notes", "pages": "3-4", "material_id": "m1", "page": 3}
+        ]
         kwargs = llm.generate_text.call_args.kwargs
         assert kwargs["tier"] == "main" and kwargs["purpose"] == "section_notes"
         instructions = llm.generate_text.call_args.args[0][-1].content
         assert "Calvin cycle" in instructions
+
+    def test_citations_link_files_without_pages_by_material_only(self):
+        generator = NotesGenerator.__new__(NotesGenerator)
+        chunks = [
+            {"filename": "deck.pptx", "category": "lecture_notes", "page_start": None, "page_end": None, "material_id": "m2"},
+            {"filename": "deck.pptx", "category": "lecture_notes", "page_start": None, "page_end": None, "material_id": "m2"},
+            {"filename": "old.pdf", "category": "book_chapters", "page_start": 7, "page_end": 7},  # no material_id
+        ]
+        assert generator._extract_citations(chunks) == [
+            {"filename": "deck.pptx", "category": "lecture_notes", "pages": "n/a", "material_id": "m2", "page": None},
+            {"filename": "old.pdf", "category": "book_chapters", "pages": "7", "material_id": None, "page": 7},
+        ]
 
     @pytest.mark.asyncio
     async def test_detail_level_sets_length(self):

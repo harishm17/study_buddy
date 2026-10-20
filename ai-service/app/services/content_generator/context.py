@@ -48,6 +48,7 @@ async def fetch_topic_chunks(topic_id: str, limit: int = TOPIC_CHUNK_LIMIT) -> L
             mc.section_hierarchy,
             mc.page_start,
             mc.page_end,
+            m.id AS material_id,
             m.filename,
             m.category,
             tcm.relevance_score
