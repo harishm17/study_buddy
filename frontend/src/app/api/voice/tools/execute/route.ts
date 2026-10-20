@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { requireAuth } from '@/lib/auth/get-session'
 import { prisma } from '@/lib/db/prisma'
 import { VoiceQuestion } from '@/lib/voice/concept'
+import { buildHint, toGradableQuestion } from '@/lib/voice/grading'
+import { gradeAnswers, GradingUnavailableError } from '@/lib/ai-service/grading'
+import { createRateLimiter } from '@/lib/api/rate-limit'
 import {
   computeTopicMastery,
   recordLearningSignal,
@@ -22,7 +25,7 @@ const getNextQuestionArgsSchema = z.object({
 const recordAnswerArgsSchema = z.object({
   session_id: z.string(),
   question_index: z.number().int().nonnegative(),
-  user_answer: z.string().min(1),
+  user_answer: z.string().min(1).max(5000),
 }).strict()
 
 const getHintArgsSchema = z.object({
@@ -37,74 +40,8 @@ const getTopicIdFromQuestion = (question: VoiceQuestion): string | null => {
   return null
 }
 
-const normalizeText = (value: string) => value.toLowerCase().replace(/[^a-z0-9\s]/g, ' ')
-
-const toTokenSet = (value: string) =>
-  new Set(
-    normalizeText(value)
-      .split(/\s+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length > 1)
-  )
-
-const hasConceptMatch = (answer: string, keyPoint: string) => {
-  const normalizedAnswer = normalizeText(answer)
-  const normalizedPoint = normalizeText(keyPoint)
-  if (!normalizedPoint) return false
-  if (normalizedAnswer.includes(normalizedPoint)) return true
-
-  const pointTokens = [...toTokenSet(keyPoint)]
-  if (pointTokens.length === 0) return false
-  const answerTokens = toTokenSet(answer)
-  const overlap = pointTokens.filter((token) => answerTokens.has(token)).length
-
-  // Accept paraphrases when most concept tokens are present.
-  return overlap / pointTokens.length >= 0.6
-}
-
-const scoreKeyPoints = (answer: string, keyPoints: string[]) => {
-  if (keyPoints.length === 0) {
-    return { score: 0, matched: [], missing: [] }
-  }
-
-  const matched = keyPoints.filter(point =>
-    hasConceptMatch(answer, point)
-  )
-  const missing = keyPoints.filter(point => !matched.includes(point))
-  const score = matched.length / keyPoints.length
-  return { score, matched, missing }
-}
-
-const scoreSampleAnswer = (answer: string, sample: string) => {
-  const answerTokens = new Set(normalizeText(answer).split(/\s+/).filter(Boolean))
-  const sampleTokens = normalizeText(sample).split(/\s+/).filter(Boolean)
-  if (sampleTokens.length === 0) return 0
-
-  const overlap = sampleTokens.filter(token => answerTokens.has(token)).length
-  return overlap / sampleTokens.length
-}
-
-const gradeConceptAnswer = (question: VoiceQuestion, answer: string) => {
-  const keyPoints = question.key_points || []
-  if (keyPoints.length > 0) {
-    const { score, matched, missing } = scoreKeyPoints(answer, keyPoints)
-    return {
-      score,
-      isCorrect: score >= 0.6,
-      matched,
-      missing,
-    }
-  }
-
-  const sample = question.sample_answer || ''
-  const score = sample ? scoreSampleAnswer(answer, sample) : 0
-  return {
-    score,
-    isCorrect: score >= 0.5,
-    matched: [],
-    missing: [],
-  }
-}
+// Each answer costs a model call, so a session cannot be hammered with them.
+const answerLimiter = createRateLimiter({ limit: 30, windowMs: 60_000 })
 
 export async function POST(request: NextRequest) {
   try {
@@ -227,11 +164,52 @@ export async function POST(request: NextRequest) {
 
       const inferredTopicId = getTopicIdFromQuestion(question) || session.topicId
 
-      const grading = gradeConceptAnswer(question, userAnswer)
+      // The server grades the spoken answer; the model's own claim about it counts for
+      // nothing. A direct call with arbitrary text is graded like any other answer.
+      const gradable = toGradableQuestion(question)
+      let grading: { score: number; isCorrect: boolean; comment: string; ungraded: boolean }
+      if (gradable) {
+        const rate = answerLimiter.check(auth.user.id)
+        if (!rate.ok) {
+          return NextResponse.json({
+            call_id: payload.call_id,
+            output: JSON.stringify({ error: 'Too many answers too quickly. Wait a moment and try again.' }),
+          })
+        }
+        try {
+          const result = await gradeAnswers([gradable], { '0': userAnswer })
+          const graded = result.graded_questions[0]
+          grading = {
+            score: graded.points_possible > 0 ? graded.points_earned / graded.points_possible : 0,
+            isCorrect: graded.is_correct,
+            comment: graded.feedback,
+            ungraded: false,
+          }
+        } catch (gradeError) {
+          if (gradeError instanceof GradingUnavailableError) {
+            // Nothing is stored: a failed grading call must not become a score.
+            return NextResponse.json({
+              call_id: payload.call_id,
+              output: JSON.stringify({
+                error: 'Grading is unavailable right now. Do not give a score. Tell the learner and offer to try again.',
+              }),
+            })
+          }
+          throw gradeError
+        }
+      } else {
+        // No sample answer or key points to grade against: record it, but as ungraded.
+        grading = {
+          score: 0,
+          isCorrect: false,
+          comment: 'This question has no answer key, so it was not graded.',
+          ungraded: true,
+        }
+      }
       const feedback = {
-        matched: grading.matched,
-        missing: grading.missing,
+        comment: grading.comment,
         explanation: question.explanation || '',
+        ...(grading.ungraded ? { ungraded: true } : {}),
       }
 
       await prisma.voiceDrillAttempt.upsert({
@@ -271,7 +249,8 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      if (inferredTopicId) {
+      // An ungraded answer is not evidence of anything, so it adds no signal.
+      if (inferredTopicId && !grading.ungraded) {
         await recordLearningSignal({
           userId: auth.user.id,
           projectId: session.projectId,
@@ -321,12 +300,11 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // A nudge built from the shape of the question. The sample answer and key points
+      // stay on the server: this tool must not hand over the answer.
       return NextResponse.json({
         call_id: payload.call_id,
-        output: JSON.stringify({
-          hint: question.key_points?.slice(0, 3) || [],
-          sample_answer: question.sample_answer || '',
-        }),
+        output: JSON.stringify(buildHint(question)),
       })
     }
 

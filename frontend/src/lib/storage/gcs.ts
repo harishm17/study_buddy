@@ -48,6 +48,18 @@ async function deleteLocalFile(relativePath: string): Promise<void> {
   }
 }
 
+async function deleteLocalFolder(relativeFolder: string): Promise<void> {
+  const fs = await import('fs')
+  const pathModule = await import('path')
+  for (const base of [LOCAL_UPLOAD_BASE, LOCAL_UPLOAD_FALLBACK_BASE]) {
+    const root = pathModule.resolve(/* turbopackIgnore: true */ base)
+    const folder = pathModule.resolve(/* turbopackIgnore: true */ root, relativeFolder)
+    // Never remove the upload root itself or anything outside it.
+    if (folder === root || !folder.startsWith(root + pathModule.sep)) continue
+    fs.rmSync(folder, { recursive: true, force: true })
+  }
+}
+
 async function getStorage() {
   if (!CLOUD_STORAGE_ENABLED) {
     return null
@@ -176,10 +188,51 @@ export async function deleteFile(gcsPath: string): Promise<void> {
     await bucket.file(path).delete()
   } catch (error) {
     if (ALLOW_LOCAL_FALLBACK) {
+      console.warn(`[GCS] Delete of ${path} failed, trying local storage instead:`, error)
       await deleteLocalFile(path)
       return
     }
     throw error
+  }
+}
+
+/**
+ * Delete files after their database rows are already gone. A failure is logged with the
+ * path (so it can be cleaned up by hand) and never thrown: the user's delete has already
+ * succeeded and must not turn into an error because storage hiccuped.
+ * Returns the paths that could not be deleted.
+ */
+export async function deleteFilesBestEffort(gcsPaths: string[]): Promise<string[]> {
+  const failed: string[] = []
+  for (const gcsPath of gcsPaths) {
+    if (!gcsPath) continue
+    try {
+      await deleteFile(gcsPath)
+    } catch (error) {
+      failed.push(gcsPath)
+      console.error(`[STORAGE] Could not delete ${gcsPath}; remove it by hand:`, error)
+    }
+  }
+  return failed
+}
+
+/**
+ * Delete everything stored for a project (user/project/...), including files whose
+ * database rows were already removed. Best effort, like deleteFilesBestEffort.
+ */
+export async function deleteProjectFolder(userId: string, projectId: string): Promise<boolean> {
+  const folder = `${userId}/${projectId}/`
+  try {
+    // Uploads can be on local disk even with GCS on (the upload fallback), so sweep both.
+    await deleteLocalFolder(folder)
+    const storage = await getStorage()
+    if (storage) {
+      await storage.bucket(BUCKET_NAME).deleteFiles({ prefix: folder, force: true })
+    }
+    return true
+  } catch (error) {
+    console.error(`[STORAGE] Could not delete the folder ${folder}; remove it by hand:`, error)
+    return false
   }
 }
 

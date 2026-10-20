@@ -10,11 +10,7 @@ import {
   isUnauthorizedError,
   zodDetails,
 } from '@/lib/api/errors'
-import {
-  computeTopicMastery,
-  recordLearningSignal,
-  upsertReviewSchedule,
-} from '@/lib/learning/mastery'
+import { adjustReviewForConfidence, computeTopicMastery, isConfidenceFeedback } from '@/lib/learning/mastery'
 
 const confidenceSchema = z.object({
   source: z.enum(['quiz', 'voice', 'exam']),
@@ -49,58 +45,34 @@ export async function POST(
       return apiNotFound('Topic not found')
     }
 
-    let score = 0
-    if (parsed.data.source === 'quiz') {
-      const latest = await prisma.quizAttempt.findFirst({
-        where: {
-          userId: auth.user.id,
-          topicId,
-        },
-        orderBy: { takenAt: 'desc' },
-        select: { score: true },
+    // Confidence is a rating, not a result. It is attached to the student's latest real
+    // signal for this source, so it never adds a score of its own, and it never counts
+    // as practice (no streak change).
+    const recentSignals = await prisma.learningSignal.findMany({
+      where: {
+        userId: auth.user.id,
+        projectId: topic.projectId,
+        topicId: topic.id,
+        source: parsed.data.source,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: { id: true, metadata: true },
+    })
+    // Skip rows an older version of this route wrote: they hold a copy of a past score.
+    const latestSignal = recentSignals.find((signal) => !isConfidenceFeedback(signal.metadata))
+    if (latestSignal) {
+      await prisma.learningSignal.update({
+        where: { id: latestSignal.id },
+        data: { confidence: parsed.data.value },
       })
-      score = latest ? latest.score / 100 : 0
-    } else if (parsed.data.source === 'voice') {
-      const latest = await prisma.voiceDrillAttempt.findFirst({
-        where: {
-          userId: auth.user.id,
-          topicId,
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { score: true },
-      })
-      score = latest?.score || 0
-    } else {
-      const latest = await prisma.learningSignal.findFirst({
-        where: {
-          userId: auth.user.id,
-          projectId: topic.projectId,
-          topicId,
-          source: 'exam',
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { score: true },
-      })
-      score = latest?.score || 0
     }
 
-    await recordLearningSignal({
-      userId: auth.user.id,
-      projectId: topic.projectId,
-      topicId: topic.id,
-      source: parsed.data.source,
-      score,
-      confidence: parsed.data.value,
-      metadata: { kind: 'confidence_feedback' },
-    })
-
     const mastery = await computeTopicMastery(auth.user.id, topic.projectId, topic.id)
-    const schedule = await upsertReviewSchedule({
+    const schedule = await adjustReviewForConfidence({
       userId: auth.user.id,
-      projectId: topic.projectId,
       topicId: topic.id,
       mastery: mastery.mastery,
-      wasCorrect: score >= 0.6,
       confidence: parsed.data.value,
     })
 
@@ -108,7 +80,7 @@ export async function POST(
       success: true,
       confidence: parsed.data.value,
       mastery: mastery.mastery,
-      nextReviewAt: schedule.dueAt,
+      nextReviewAt: schedule?.dueAt ?? null,
     })
   } catch (error) {
     console.error('Confidence save error:', error)

@@ -34,22 +34,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Material not found' }, { status: 404 });
     }
 
-    // Delete file from GCS first (before deleting database record)
-    if (material.gcsPath) {
-      try {
-        const { deleteFile } = await import('@/lib/storage/gcs');
-        await deleteFile(material.gcsPath);
-      } catch (error) {
-        console.error('Error deleting file from GCS:', error);
-        // Continue with database deletion even if GCS deletion fails
-        // Log the error for manual cleanup if needed
-      }
-    }
-
-    // Delete material (cascades to chunks and mappings)
+    // Delete the database record first (cascades to chunks and mappings). If that fails
+    // nothing has been lost; a storage failure afterwards only leaves an unreferenced file.
     await prisma.material.delete({
       where: { id: materialId },
     });
+
+    if (material.gcsPath) {
+      const { deleteFilesBestEffort } = await import('@/lib/storage/gcs');
+      // Logs the path of any file it could not remove.
+      await deleteFilesBestEffort([material.gcsPath]);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -122,6 +122,10 @@ app.include_router(jobs.router, tags=["Jobs"], dependencies=internal_only)
 from app.api.routes import voice
 app.include_router(voice.router, tags=["Voice"], dependencies=internal_only)
 
+# Quiz and voice-answer grading (called by the Next.js server, never the browser)
+from app.api.routes import grading
+app.include_router(grading.router, tags=["Grading"], dependencies=internal_only)
+
 if __name__ == "__main__":
     import uvicorn
 

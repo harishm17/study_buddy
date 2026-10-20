@@ -14,13 +14,20 @@ import {
   recordLearningSignal,
   upsertReviewSchedule,
 } from '@/lib/learning/mastery'
+import { gradeAnswers, GradingUnavailableError } from '@/lib/ai-service/grading'
+import { loadAllQuizQuestionSets, loadQuizQuestions } from '@/lib/learning/quiz-sets'
+import { buildReview, toStoredResults } from '@/lib/learning/quiz-review'
+import { createRateLimiter } from '@/lib/api/rate-limit'
 
+// The client sends answers only. Anything else in the body (a score, per-question
+// results) is dropped by zod and never read: the server grades from the stored questions.
 const saveQuizAttemptSchema = z.object({
-  answers: z.record(z.string()), // { questionIndex: answer }
-  results: z.record(z.boolean()), // { questionIndex: isCorrect }
-  score: z.number().min(0).max(100),
+  answers: z.record(z.string().max(5000)), // { questionIndex: answer }
   quizSetId: z.string().optional(),
 })
+
+// Each submission can cost model calls for short answers.
+const submitLimiter = createRateLimiter({ limit: 10, windowMs: 60_000 })
 
 function isMissingQuizSetColumnError(error: unknown): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
@@ -76,6 +83,34 @@ export async function POST(
       )
     }
 
+    const rate = submitLimiter.check(session.user.id)
+    if (!rate.ok) {
+      return NextResponse.json(
+        { error: 'Too many quiz submissions. Please wait a moment and try again.' },
+        { status: 429, headers: { 'Retry-After': String(rate.retryAfterSeconds) } }
+      )
+    }
+
+    const quizSetId = validation.data.quizSetId || null
+    const questions = await loadQuizQuestions(topicId, quizSetId)
+    if (!questions) {
+      return NextResponse.json({ error: 'Quiz not found' }, { status: 404 })
+    }
+
+    let graded
+    try {
+      graded = await gradeAnswers(questions, validation.data.answers)
+    } catch (gradeError) {
+      if (gradeError instanceof GradingUnavailableError) {
+        return NextResponse.json({ error: gradeError.message }, { status: 503 })
+      }
+      throw gradeError
+    }
+
+    const score = graded.overall_score
+    const results = toStoredResults(graded.graded_questions)
+    const answers = validation.data.answers
+
     // Save quiz attempt. Fallback keeps older DBs (without quiz_set_id) working.
     let attempt: Awaited<ReturnType<typeof prisma.quizAttempt.create>>
     try {
@@ -83,10 +118,10 @@ export async function POST(
         data: {
           userId: session.user.id,
           topicId,
-          quizSetId: validation.data.quizSetId || null,
-          answers: validation.data.answers,
-          results: validation.data.results,
-          score: validation.data.score,
+          quizSetId,
+          answers,
+          results,
+          score,
         },
       })
     } catch (createError) {
@@ -98,9 +133,9 @@ export async function POST(
         data: {
           userId: session.user.id,
           topicId,
-          answers: validation.data.answers,
-          results: validation.data.results,
-          score: validation.data.score,
+          answers,
+          results,
+          score,
         },
       })
     }
@@ -117,8 +152,8 @@ export async function POST(
 
     const currentBest = existingProgress?.quizScore
     const bestScore = currentBest === null || currentBest === undefined
-      ? validation.data.score
-      : Math.max(currentBest, validation.data.score)
+      ? score
+      : Math.max(currentBest, score)
 
     await prisma.topicProgress.upsert({
       where: {
@@ -138,7 +173,7 @@ export async function POST(
         notesCompleted: false,
         examplesCompleted: false,
         quizCompleted: true,
-        quizScore: validation.data.score,
+        quizScore: score,
         lastAccessedAt: new Date(),
       },
     })
@@ -148,10 +183,10 @@ export async function POST(
       projectId: topic.projectId,
       topicId,
       source: 'quiz',
-      score: validation.data.score / 100,
+      score: score / 100,
       metadata: {
         attemptId: attempt.id,
-        quizSetId: validation.data.quizSetId || null,
+        quizSetId,
       },
     })
 
@@ -161,7 +196,7 @@ export async function POST(
       projectId: topic.projectId,
       topicId,
       mastery: mastery.mastery,
-      wasCorrect: validation.data.score >= 70,
+      wasCorrect: score >= 70,
     })
 
     return NextResponse.json({
@@ -171,6 +206,11 @@ export async function POST(
         takenAt: attempt.takenAt,
       },
       bestScore,
+      score,
+      earnedPoints: graded.earned_points,
+      totalPoints: graded.total_points,
+      // The answer key is released here, after grading.
+      review: buildReview(questions, results),
     })
   } catch (error) {
     console.error('Save quiz attempt error:', error)
@@ -289,8 +329,19 @@ export async function GET(
       ? attempts.reduce((sum, a) => sum + a.score, 0) / attempts.length
       : null
 
+    // Past attempts are already graded, so the review (answer key included) can be sent.
+    // The history list shows the five most recent, so only those carry one.
+    const questionSets = await loadAllQuizQuestionSets(topicId)
+    const attemptsWithReview = attempts.map((attempt, index) => {
+      const questions = questionSets.get(attempt.quizSetId ?? null)
+      return {
+        ...attempt,
+        review: index < 5 && questions ? buildReview(questions, attempt.results) : null,
+      }
+    })
+
     return NextResponse.json({
-      attempts,
+      attempts: attemptsWithReview,
       stats: {
         totalAttempts: attempts.length,
         bestScore,

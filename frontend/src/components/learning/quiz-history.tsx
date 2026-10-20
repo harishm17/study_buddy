@@ -7,22 +7,18 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { MarkdownBlock } from '@/components/ui/markdown'
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
+import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
+import type { QuizReviewItem } from '@/lib/learning/quiz-review'
 
-interface QuizQuestion {
-  question_type: 'multiple_choice' | 'short_answer' | 'numerical' | 'true_false'
-  question_text: string
-  options?: Array<{ id: string; text: string }>
-  correct_answer: string | boolean | number
-  explanation: string
-  points: number
-}
+// Public question fields only. The answer key arrives per attempt, in `review`.
+type QuizQuestion = PublicQuizQuestion
 
 interface QuizAttempt {
   id: string
   score: number
   takenAt: string
   answers: Record<string, string>
-  results: Record<string, boolean>
+  review: QuizReviewItem[] | null
 }
 
 interface QuizHistoryProps {
@@ -47,39 +43,8 @@ function parseStringRecord(value: unknown): Record<string, string> {
   return record
 }
 
-function parseBooleanRecord(value: unknown): Record<string, boolean> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {}
-  }
-
-  const record: Record<string, boolean> = {}
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof entry === 'boolean') {
-      record[key] = entry
-      continue
-    }
-    if (typeof entry === 'string') {
-      const normalized = entry.trim().toLowerCase()
-      if (normalized === 'true' || normalized === '1') {
-        record[key] = true
-      } else if (normalized === 'false' || normalized === '0') {
-        record[key] = false
-      }
-      continue
-    }
-    if (typeof entry === 'number') {
-      if (entry === 1) {
-        record[key] = true
-      } else if (entry === 0) {
-        record[key] = false
-      }
-    }
-  }
-
-  return record
-}
-
-function normalizeAnswer(
+/** Shows an answer the way a student would read it: option text for choices, True/False. */
+export function formatAnswer(
   question: QuizQuestion,
   rawValue: string | boolean | number | undefined
 ): string {
@@ -126,7 +91,7 @@ export function QuizHistory({ topicId, quizSetId, questions = [], refreshKey = 0
             score: Number(attempt.score ?? 0),
             takenAt: String(attempt.takenAt ?? ''),
             answers: parseStringRecord(attempt.answers),
-            results: parseBooleanRecord(attempt.results),
+            review: Array.isArray(attempt.review) ? (attempt.review as QuizReviewItem[]) : null,
           }))
         : []
       setAttempts(normalizedAttempts)
@@ -300,7 +265,7 @@ export function QuizHistory({ topicId, quizSetId, questions = [], refreshKey = 0
 
                   {isExpanded && (
                     <div className="rounded-xl border border-border/70 bg-white/80 p-3 space-y-3">
-                      {questions.length === 0 ? (
+                      {questions.length === 0 || !attempt.review ? (
                         <p className="text-sm text-muted-foreground">
                           Question details are unavailable for this attempt.
                         </p>
@@ -313,9 +278,10 @@ export function QuizHistory({ topicId, quizSetId, questions = [], refreshKey = 0
                             {questions.map((question, questionIndex) => {
                               const answerKey = String(questionIndex)
                               const userAnswerRaw = attempt.answers[answerKey]
-                              const userAnswer = normalizeAnswer(question, userAnswerRaw)
-                              const correctAnswer = normalizeAnswer(question, question.correct_answer)
-                              const wasCorrect = attempt.results[answerKey] === true
+                              const userAnswer = formatAnswer(question, userAnswerRaw)
+                              const item = attempt.review?.[questionIndex]
+                              const correctAnswer = formatAnswer(question, item?.correctAnswer)
+                              const wasCorrect = item?.isCorrect === true
                               return (
                                 <div
                                   key={`${attempt.id}-${questionIndex}`}
@@ -352,7 +318,7 @@ export function QuizHistory({ topicId, quizSetId, questions = [], refreshKey = 0
                                     </div>
                                     <div className="rounded-lg border border-border/60 bg-white/80 p-3">
                                       <div className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                                        Correct Answer
+                                        {question.question_type === 'short_answer' ? 'Sample Answer' : 'Correct Answer'}
                                       </div>
                                       <MarkdownBlock content={formatLearningMarkdown(correctAnswer)} variant="compact" />
                                     </div>
@@ -361,8 +327,16 @@ export function QuizHistory({ topicId, quizSetId, questions = [], refreshKey = 0
                                     <div className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                                       Explanation
                                     </div>
-                                    <MarkdownBlock content={formatLearningMarkdown(question.explanation)} variant="compact" />
+                                    <MarkdownBlock content={formatLearningMarkdown(item?.explanation ?? '')} variant="compact" />
                                   </div>
+                                  {item?.feedback && (
+                                    <div className="mt-3 rounded-lg border border-border/60 bg-white/80 p-3">
+                                      <div className="mb-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                                        Feedback
+                                      </div>
+                                      <MarkdownBlock content={formatLearningMarkdown(item.feedback)} variant="compact" />
+                                    </div>
+                                  )}
                                 </div>
                               )
                             })}

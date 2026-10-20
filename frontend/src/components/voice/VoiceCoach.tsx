@@ -148,8 +148,7 @@ export function VoiceCoach({
   const [lastEvaluation, setLastEvaluation] = useState<{
     isCorrect: boolean
     score: number
-    matched: string[]
-    missing: string[]
+    comment: string
     explanation: string
   } | null>(null)
   const [currentQuestionZeroBased, setCurrentQuestionZeroBased] = useState<number | null>(null)
@@ -320,13 +319,12 @@ export function VoiceCoach({
           setCurrentIndex(output.payload.question_index + 1)
           setLastEvaluation(null)
         }
-      } else if (output.name === 'record_answer') {
+      } else if (output.name === 'record_answer' && !output.payload?.error) {
         const payload = output.payload || {}
         setLastEvaluation({
           isCorrect: Boolean(payload.is_correct),
           score: Number(payload.score || 0),
-          matched: Array.isArray(payload.feedback?.matched) ? payload.feedback.matched : [],
-          missing: Array.isArray(payload.feedback?.missing) ? payload.feedback.missing : [],
+          comment: typeof payload.feedback?.comment === 'string' ? payload.feedback.comment : '',
           explanation:
             typeof payload.feedback?.explanation === 'string'
               ? payload.feedback.explanation
@@ -508,11 +506,13 @@ export function VoiceCoach({
 
       const data = await response.json()
       const payload = typeof data?.output === 'string' ? JSON.parse(data.output) : data?.output
+      if (payload?.error) {
+        throw new Error(String(payload.error))
+      }
       setLastEvaluation({
         isCorrect: Boolean(payload?.is_correct),
         score: Number(payload?.score || 0),
-        matched: Array.isArray(payload?.feedback?.matched) ? payload.feedback.matched : [],
-        missing: Array.isArray(payload?.feedback?.missing) ? payload.feedback.missing : [],
+        comment: typeof payload?.feedback?.comment === 'string' ? payload.feedback.comment : '',
         explanation: typeof payload?.feedback?.explanation === 'string' ? payload.feedback.explanation : '',
       })
       sendResponseCreate('Provide concise spoken feedback for the validated answer and suggest the next step.', true)
@@ -749,15 +749,8 @@ export function VoiceCoach({
               {' • '}
               {Math.round(lastEvaluation.score * 100)}%
             </div>
-            {lastEvaluation.matched.length > 0 && (
-              <div className="mt-1">
-                Matched: {lastEvaluation.matched.join(', ')}
-              </div>
-            )}
-            {lastEvaluation.missing.length > 0 && (
-              <div className="mt-1">
-                Missing: {lastEvaluation.missing.join(', ')}
-              </div>
+            {lastEvaluation.comment && (
+              <div className="mt-1">{lastEvaluation.comment}</div>
             )}
           </div>
         )}

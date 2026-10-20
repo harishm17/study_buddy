@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, Sparkles, ShieldCheck, Speech } from 'lucide-react'
+import { GOOGLE_SIGN_IN_ERRORS } from '@/lib/auth/google-link'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -20,6 +21,12 @@ export default function LoginPage() {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // NextAuth sends refused Google sign-ins back here as /login?error=<code>.
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get('error')
+    if (code && GOOGLE_SIGN_IN_ERRORS[code]) setError(GOOGLE_SIGN_IN_ERRORS[code])
+  }, [])
 
   useEffect(() => {
     if (status === 'authenticated') {

@@ -10,26 +10,16 @@ import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { QuizHistory } from './quiz-history'
+import { QuizHistory, formatAnswer } from './quiz-history'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useJobPolling } from '@/hooks/useJobPolling'
 import { MarkdownBlock, MarkdownInline } from '@/components/ui/markdown'
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
+import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
+import type { QuizReviewItem } from '@/lib/learning/quiz-review'
 
-interface QuizQuestion {
-  question_type: 'multiple_choice' | 'short_answer' | 'numerical' | 'true_false'
-  question_text: string
-  options?: Array<{ id: string; text: string }>
-  correct_answer: string | boolean | number
-  sample_answer?: string
-  key_points?: string[]
-  unit?: string
-  tolerance?: number
-  explanation: string
-  points: number
-  difficulty: string
-  concepts_tested: string[]
-}
+// The browser never holds the answer key before submitting; see lib/learning/quiz-questions.
+type QuizQuestion = PublicQuizQuestion
 
 interface QuizSet {
   id: string
@@ -96,7 +86,9 @@ export function QuizInterface({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [submitted, setSubmitted] = useState(false)
-  const [results, setResults] = useState<Record<number, boolean>>({})
+  // Set by the server after grading. Null until the quiz has been submitted.
+  const [review, setReview] = useState<QuizReviewItem[] | null>(null)
+  const [scoreSummary, setScoreSummary] = useState<{ earned: number; total: number; percentage: number } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -124,14 +116,16 @@ export function QuizInterface({
     setActiveQuizSetId(mostRecentQuizSetId)
     setCurrentQuestionIndex(0)
     setAnswers({})
-    setResults({})
+    setReview(null)
+    setScoreSummary(null)
     setSubmitted(false)
   }, [mostRecentQuizSetId, resolvedQuizSets])
 
   useEffect(() => {
     setCurrentQuestionIndex(0)
     setAnswers({})
-    setResults({})
+    setReview(null)
+    setScoreSummary(null)
     setSubmitted(false)
   }, [activeQuizSetId])
 
@@ -191,60 +185,8 @@ export function QuizInterface({
     })
   }
 
-  const checkAnswer = (question: QuizQuestion, userAnswer: string): boolean => {
-    const normalized = userAnswer.trim().toLowerCase()
-
-    switch (question.question_type) {
-      case 'multiple_choice':
-        return normalized === String(question.correct_answer).toLowerCase()
-
-      case 'true_false':
-        const boolAnswer = normalized === 'true' || normalized === 't' || normalized === '1'
-        return boolAnswer === question.correct_answer
-
-      case 'numerical':
-        const userNum = parseFloat(userAnswer)
-        const correctNum = parseFloat(String(question.correct_answer))
-        const tolerance = question.tolerance || 0.01
-        return !isNaN(userNum) && !isNaN(correctNum) && Math.abs(userNum - correctNum) <= tolerance
-
-      case 'short_answer':
-        // For short answer, check if it includes key points (basic check)
-        if (question.key_points) {
-          const matchedPoints = question.key_points.filter(point =>
-            normalized.includes(point.toLowerCase())
-          )
-          return matchedPoints.length >= Math.ceil(question.key_points.length * 0.5)
-        }
-        return normalized.includes(String(question.sample_answer).toLowerCase())
-
-      default:
-        return false
-    }
-  }
-
   const handleSubmitQuiz = async () => {
-    // Grade all questions
-    const gradedResults: Record<number, boolean> = {}
-    let correctCount = 0
-
-    questions.forEach((question, index) => {
-      const isCorrect = checkAnswer(question, answers[index] || '')
-      gradedResults[index] = isCorrect
-      if (isCorrect) correctCount++
-    })
-
-    setResults(gradedResults)
-    setSubmitted(true)
-
-    // Calculate score
-    const totalPoints = questions.reduce((sum, q) => sum + getQuestionPoints(q), 0)
-    const earnedPoints = questions.reduce((sum, q, i) => {
-      return sum + (gradedResults[i] ? getQuestionPoints(q) : 0)
-    }, 0)
-    const scorePercentage = totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0
-
-    // Save quiz attempt to database
+    // The server grades the answers against the stored quiz and sends back the results.
     try {
       setSubmitting(true)
       setError(null)
@@ -254,18 +196,32 @@ export function QuizInterface({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           answers,
-          results: gradedResults,
-          score: scorePercentage,
           quizSetId: activeQuizSetId && activeQuizSetId !== 'legacy' ? activeQuizSetId : undefined,
         }),
       })
 
-      if (!response.ok) throw new Error('Failed to save quiz attempt')
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(
+          typeof payload?.error === 'string' ? payload.error : 'Failed to grade the quiz'
+        )
+      }
+
+      if (!isMountedRef.current) return
+      setReview(payload.review as QuizReviewItem[])
+      setScoreSummary({
+        earned: Number(payload.earnedPoints) || 0,
+        total: Number(payload.totalPoints) || 0,
+        percentage: Number(payload.score) || 0,
+      })
+      setSubmitted(true)
+      setCurrentQuestionIndex(0)
       setHistoryRefreshKey(prev => prev + 1)
     } catch (error) {
-      console.error('Error saving quiz:', error)
+      console.error('Error submitting quiz:', error)
       if (!isMountedRef.current) return
-      setError('Quiz graded but failed to save results')
+      // Answers stay in place so the student can submit again.
+      setError(error instanceof Error ? error.message : 'Failed to grade the quiz')
     } finally {
       if (!isMountedRef.current) return
       setSubmitting(false)
@@ -274,7 +230,8 @@ export function QuizInterface({
 
   const handleRetakeQuiz = () => {
     setAnswers({})
-    setResults({})
+    setReview(null)
+    setScoreSummary(null)
     setSubmitted(false)
     setCurrentQuestionIndex(0)
     setError(null)
@@ -338,17 +295,8 @@ export function QuizInterface({
     }
   }
 
-  const calculateScore = () => {
-    const totalPoints = questions.reduce((sum, q) => sum + getQuestionPoints(q), 0)
-    const earnedPoints = questions.reduce((sum, q, i) => {
-      return sum + (results[i] ? getQuestionPoints(q) : 0)
-    }, 0)
-    return {
-      earned: earnedPoints,
-      total: totalPoints,
-      percentage: totalPoints > 0 ? (earnedPoints / totalPoints) * 100 : 0,
-    }
-  }
+  const formatPoints = (value: number) => String(Math.round(value * 10) / 10)
+  const currentReview = review?.[currentQuestionIndex] ?? null
 
   const totalQuestions = questions.length
   const totalPoints = questions.reduce((sum, q) => sum + getQuestionPoints(q), 0)
@@ -550,12 +498,12 @@ export function QuizInterface({
               <div className="flex-1">
                 <CardTitle className="text-2xl">Quiz Complete!</CardTitle>
                 <CardDescription>
-                  You scored {calculateScore().earned} out of {calculateScore().total} points
+                  You scored {formatPoints(scoreSummary?.earned ?? 0)} out of {formatPoints(scoreSummary?.total ?? 0)} points
                 </CardDescription>
               </div>
               <div className="text-right">
                 <div className="text-4xl font-bold text-primary">
-                  {Math.round(calculateScore().percentage)}%
+                  {Math.round(scoreSummary?.percentage ?? 0)}%
                 </div>
               </div>
             </div>
@@ -623,8 +571,8 @@ export function QuizInterface({
           {questions.map((_, index) => {
             const isActive = currentQuestionIndex === index
             const hasAnswer = (answers[index] || '').trim().length > 0
-            const isCorrect = submitted && results[index] === true
-            const isIncorrect = submitted && results[index] === false
+            const isCorrect = submitted && review?.[index]?.isCorrect === true
+            const isIncorrect = submitted && review?.[index]?.isCorrect === false
 
             let stateClass = 'border-border/70 bg-white/80 text-foreground hover:border-primary/35 hover:bg-white'
             if (isCorrect) {
@@ -745,44 +693,58 @@ export function QuizInterface({
                     onChange={(e) => handleAnswerChange(e.target.value)}
                     className="min-h-[140px] w-full resize-none rounded-xl border border-border/70 bg-white/80 p-3 text-base shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                   />
-                  {currentQuestion.key_points && (
-                    <p className="text-sm text-muted-foreground">
-                      Include these concepts: {currentQuestion.key_points.join(', ')}
-                    </p>
-                  )}
+                  <p className="text-sm text-muted-foreground">
+                    Answer in your own words. It is graded on meaning, not exact wording.
+                  </p>
                 </div>
               )}
             </>
           )}
 
           {/* Feedback (After Submission) */}
-          {submitted && (
+          {submitted && currentReview && (
             <div className="space-y-4">
               <div
                 className={`p-4 rounded-lg border-2 ${
-                  results[currentQuestionIndex]
+                  currentReview.isCorrect
                     ? 'bg-green-500/10 border-green-500/20'
                     : 'bg-red-500/10 border-red-500/20'
                 }`}
               >
                 <div className="flex gap-3">
-                  {results[currentQuestionIndex] ? (
+                  {currentReview.isCorrect ? (
                     <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
                   ) : (
                     <XCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
                   )}
                   <div className="flex-1">
                     <p className="font-semibold mb-1">
-                      {results[currentQuestionIndex] ? 'Correct!' : 'Incorrect'}
+                      {currentReview.isCorrect ? 'Correct!' : 'Incorrect'}
+                      {currentQuestion.question_type === 'short_answer' && (
+                        <span className="ml-2 text-sm font-normal text-muted-foreground">
+                          {formatPoints(currentReview.pointsEarned)} / {formatPoints(currentReview.pointsPossible)} points
+                        </span>
+                      )}
                     </p>
                     <p className="text-sm mb-3">
                       Your answer: {answers[currentQuestionIndex] || 'No answer'}
                     </p>
-                    {!results[currentQuestionIndex] && (
-                      <div className="text-sm">
-                        <p className="font-medium mb-1">Correct answer:</p>
+                    {currentReview.feedback && (
+                      <div className="mb-3 text-sm">
+                        <p className="font-medium mb-1">Feedback:</p>
                         <MarkdownBlock
-                          content={formatLearningMarkdown(String(currentQuestion.correct_answer))}
+                          content={formatLearningMarkdown(currentReview.feedback)}
+                          variant="compact"
+                        />
+                      </div>
+                    )}
+                    {!currentReview.isCorrect && currentReview.correctAnswer && (
+                      <div className="text-sm">
+                        <p className="font-medium mb-1">
+                          {currentQuestion.question_type === 'short_answer' ? 'Sample answer:' : 'Correct answer:'}
+                        </p>
+                        <MarkdownBlock
+                          content={formatLearningMarkdown(formatAnswer(currentQuestion, currentReview.correctAnswer))}
                           variant="compact"
                         />
                       </div>
@@ -791,14 +753,16 @@ export function QuizInterface({
                 </div>
               </div>
 
-              <div className="bg-muted/50 p-4 rounded-lg">
-                <p className="font-medium mb-2">Explanation:</p>
-                <MarkdownBlock
-                  content={formatLearningMarkdown(currentQuestion.explanation)}
-                  variant="compact"
-                  className="text-muted-foreground"
-                />
-              </div>
+              {currentReview.explanation && (
+                <div className="bg-muted/50 p-4 rounded-lg">
+                  <p className="font-medium mb-2">Explanation:</p>
+                  <MarkdownBlock
+                    content={formatLearningMarkdown(currentReview.explanation)}
+                    variant="compact"
+                    className="text-muted-foreground"
+                  />
+                </div>
+              )}
             </div>
           )}
 

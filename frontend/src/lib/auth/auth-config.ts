@@ -7,11 +7,10 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
 import { compare } from 'bcryptjs'
 import { prisma } from '@/lib/db/prisma'
+import { resolveAuthSecret } from './secret'
+import { decideGoogleSignIn } from './google-link'
 
-const nextAuthSecret =
-  process.env.NEXTAUTH_SECRET ||
-  process.env.AUTH_SECRET ||
-  'studybuddy-dev-insecure-secret'
+const nextAuthSecret = resolveAuthSecret()
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -72,26 +71,36 @@ export const authOptions: NextAuthOptions = {
         const email = user.email?.toLowerCase()
         if (!email) return false
 
-        // Check if user exists
-        let existingUser = await prisma.user.findUnique({
+        const existingUser = await prisma.user.findUnique({
           where: { email },
         })
 
-        if (existingUser) {
-          // Update OAuth info if user signed up with credentials before
-          if (!existingUser.oauthProvider) {
-            await prisma.user.update({
-              where: { id: existingUser.id },
-              data: {
-                oauthProvider: account.provider,
-                oauthId: account.providerAccountId,
-                name: user.name || existingUser.name,
-              },
-            })
-          }
-        } else {
-          // Create new user for OAuth sign-in
-          existingUser = await prisma.user.create({
+        const decision = decideGoogleSignIn({
+          emailVerified: (profile as { email_verified?: unknown } | undefined)?.email_verified,
+          providerAccountId: account.providerAccountId,
+          existing: existingUser
+            ? { oauthProvider: existingUser.oauthProvider, oauthId: existingUser.oauthId }
+            : null,
+        })
+
+        if (decision.action === 'refuse') {
+          // Sends the browser back to the login page, which explains why.
+          return `/login?error=${decision.error}`
+        }
+
+        let signedInUser = existingUser
+        if (decision.action === 'link' && existingUser) {
+          // A password account the same person is now reaching through Google.
+          await prisma.user.update({
+            where: { id: existingUser.id },
+            data: {
+              oauthProvider: account.provider,
+              oauthId: account.providerAccountId,
+              name: user.name || existingUser.name,
+            },
+          })
+        } else if (decision.action === 'create') {
+          signedInUser = await prisma.user.create({
             data: {
               email,
               name: user.name,
@@ -102,7 +111,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Set user.id for JWT callback
-        user.id = existingUser.id
+        if (signedInUser) user.id = signedInUser.id
       }
       return true
     },
