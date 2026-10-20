@@ -80,10 +80,12 @@ jobs:
           uid="$(docker run --rm --entrypoint id studybuddy-ai -u)"
           echo "uid=$uid"
           test "$uid" != "0"
-      - name: Embedding model loads offline as the app user
+      - name: Embedding model and tokenizer load offline as the app user
         run: |
           docker run --rm --network none --entrypoint python studybuddy-ai -c \
             "import os; from fastembed import TextEmbedding; m = TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir=os.environ['EMBEDDING_CACHE_DIR']); print(len(next(iter(m.embed(['hello'])))))"
+          docker run --rm --network none --entrypoint python studybuddy-ai -c \
+            "import tiktoken; print(len(tiktoken.get_encoding('cl100k_base').encode('hello world')))"
       - name: Image starts and answers health checks
         run: |
           docker run -d --name ai -p 8000:8000 \
