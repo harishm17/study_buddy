@@ -22,14 +22,19 @@ export default defineRailway(() => {
     S3_ACCESS_KEY_ID: ref(uploads, "ACCESS_KEY_ID"),
     S3_SECRET_ACCESS_KEY: ref(uploads, "SECRET_ACCESS_KEY"),
   };
-  // Each service deploys from GitHub after CI passes, and only when its own folder changed.
-  const REPO = "harishm17/study_buddy";
-  const BRANCH = "feat/railway";
+  // Deploy each service from GitHub on every push to main, after CI passes and only when its
+  // own folder changed. Needs the Railway GitHub app installed for this repository; until
+  // then deploy with `railway up` (see docs/deployment/RAILWAY.md).
+  const AUTO_DEPLOY_FROM_GITHUB = false;
+  const fromGithub = (rootDirectory: string) =>
+    AUTO_DEPLOY_FROM_GITHUB
+      ? { source: github("harishm17/study_buddy", { branch: "main", rootDirectory, checkSuites: true }) }
+      : {};
   // The web app reaches the AI service over the private network only.
   const aiServiceUrl = "http://${{ai.RAILWAY_PRIVATE_DOMAIN}}:8000";
 
   const ai = service("ai", {
-    source: github(REPO, { branch: BRANCH, rootDirectory: "ai-service", checkSuites: true }),
+    ...fromGithub("ai-service"),
     build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", watchPatterns: ["/ai-service/**"] },
     healthcheck: "/health",
     healthcheckTimeout: 120,
@@ -48,7 +53,7 @@ export default defineRailway(() => {
   });
 
   const web = service("web", {
-    source: github(REPO, { branch: BRANCH, rootDirectory: "frontend", checkSuites: true }),
+    ...fromGithub("frontend"),
     build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", watchPatterns: ["/frontend/**"] },
     // Apply database migrations before the new version takes traffic.
     preDeploy: ["prisma migrate deploy"],
