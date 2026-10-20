@@ -1,75 +1,81 @@
 'use client'
 
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
+import * as React from 'react'
+import { Button } from './button'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+} from './dialog'
 
 type ConfirmDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
   title: string
-  description: string
-  confirmLabel?: string
+  /** One sentence on what will happen. */
+  description?: React.ReactNode
+  /** Names the action: "Delete course", never "OK". */
+  confirmLabel: string
   cancelLabel?: string
-  variant?: 'default' | 'destructive'
-  trigger: React.ReactNode
-  disabled?: boolean
-  onConfirm: () => Promise<void> | void
+  destructive?: boolean
+  /** May return a promise; the dialog shows progress and closes when it resolves. */
+  onConfirm: () => void | Promise<void>
+  confirmDisabled?: boolean
+  /** Extra content under the description, e.g. a field to type the course name. */
+  children?: React.ReactNode
 }
 
 export function ConfirmDialog({
+  open,
+  onOpenChange,
   title,
   description,
-  confirmLabel = 'Confirm',
+  confirmLabel,
   cancelLabel = 'Cancel',
-  variant = 'default',
-  trigger,
-  disabled,
+  destructive,
   onConfirm,
+  confirmDisabled,
+  children,
 }: ConfirmDialogProps) {
-  const [open, setOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const [pending, setPending] = React.useState(false)
 
-  const handleConfirm = async () => {
-    setSubmitting(true)
+  async function handleConfirm() {
+    setPending(true)
     try {
       await onConfirm()
-      setOpen(false)
+      onOpenChange(false)
+    } catch {
+      // The caller reports the failure (toast or inline); the dialog stays open to retry.
     } finally {
-      setSubmitting(false)
+      setPending(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild disabled={disabled}>
-        {trigger}
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={(next) => (pending ? undefined : onOpenChange(next))}>
+      <DialogContent size="sm" hideClose>
+        <DialogHeader className="mb-0 pr-0">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
+          {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
+        {children ? <div className="mt-4">{children}</div> : null}
         <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="secondary" disabled={pending}>
+              {cancelLabel}
+            </Button>
+          </DialogClose>
           <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={submitting}
-          >
-            {cancelLabel}
-          </Button>
-          <Button
-            variant={variant === 'destructive' ? 'destructive' : 'default'}
+            variant={destructive ? 'danger' : 'primary'}
+            loading={pending}
+            disabled={confirmDisabled}
             onClick={handleConfirm}
-            disabled={submitting}
           >
-            {submitting ? 'Working...' : confirmLabel}
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

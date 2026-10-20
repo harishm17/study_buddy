@@ -1,0 +1,21 @@
+'use client'
+
+import dynamic from 'next/dynamic'
+import { Skeleton, SkeletonText } from './skeleton'
+
+/**
+ * Markdown loads as its own chunk, only where it is used. The server still renders it into the
+ * first response, so there is no empty flash; the skeleton covers client-side navigation.
+ */
+export const LazyMarkdown = dynamic(() => import('./markdown').then((m) => m.Markdown), {
+  loading: () => (
+    <div className="flex flex-col gap-4" aria-hidden="true">
+      <Skeleton className="h-6 w-2/5 rounded-chip" />
+      <SkeletonText lines={4} />
+    </div>
+  ),
+})
+
+export const LazyMarkdownInline = dynamic(() => import('./markdown').then((m) => m.MarkdownInline), {
+  loading: () => null,
+})
