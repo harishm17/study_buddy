@@ -26,6 +26,21 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 180.0
     LLM_MAX_RETRIES: int = 2
 
+    # "Ask your materials" chat. Answers are written by the CHAT_TIER model at CHAT_EFFORT.
+    CHAT_TIER: str = "main"  # main or fast
+    CHAT_EFFORT: str = "low"
+    CHAT_MAX_TOKENS: int = 4000
+    # Excerpts offered to the model per question, and the cosine similarity below which a chunk
+    # is not offered at all. A question is shorter than a topic query, so its floor is lower
+    # than retrieval's MIN_SIMILARITY. When nothing clears it the answer is "not in your
+    # materials" and no model call is made.
+    CHAT_TOP_K: int = 12
+    CHAT_MIN_SIMILARITY: float = 0.5
+    CHAT_MAX_QUESTION_CHARS: int = 2000
+    # Earlier turns sent along with a question, and how much of each is kept.
+    CHAT_HISTORY_TURNS: int = 6
+    CHAT_HISTORY_TURN_CHARS: int = 3000
+
     # Embeddings. "local" runs a small ONNX model in-process (no API key, no per-call cost);
     # "openai" uses text-embedding-3-small and needs OPENAI_API_KEY.
     # The chunk column is vector(384) (EMBEDDING_DIMENSIONS in embeddings/generator.py), so only
@@ -55,8 +70,8 @@ class Settings(BaseSettings):
     # re-dispatches it is failed with JOB_DISPATCH_FAILED.
     JOB_PENDING_REDISPATCH_SECONDS: float = 120.0
     JOB_MAX_REDISPATCHES: int = 3
-    # Most an LLM-backed job may spend per user per UTC day, from the stored job costs.
-    # 0 turns the cap off.
+    # Most a user's LLM-backed jobs and chat answers may cost per UTC day, from the stored
+    # costs. 0 turns the cap off.
     DAILY_LLM_BUDGET_USD: float = 3.00
 
     # Dispatching jobs to this service. With ENABLE_CLOUD_TASKS the service creates Cloud

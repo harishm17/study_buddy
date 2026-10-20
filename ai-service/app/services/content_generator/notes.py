@@ -142,17 +142,24 @@ Return only the markdown."""
         return "".join(cleaned_parts).strip()
 
     def _extract_citations(self, chunks: List[Dict]) -> List[Dict]:
-        """Extract citation metadata from chunks."""
+        """One citation per source file: its name, category and pages.
+
+        `material_id` and `page` (the first page of the file's most relevant chunk, None for
+        formats without pages) let the notes page link to the file viewer.
+        """
         citations = []
         seen_files = set()
 
         for chunk in chunks:
             filename = chunk['filename']
             if filename not in seen_files:
+                material_id = chunk.get('material_id')
                 citations.append({
                     'filename': filename,
                     'category': chunk['category'],
-                    'pages': self._page_range(chunk)
+                    'pages': self._page_range(chunk),
+                    'material_id': str(material_id) if material_id is not None else None,
+                    'page': chunk.get('page_start'),
                 })
                 seen_files.add(filename)
 

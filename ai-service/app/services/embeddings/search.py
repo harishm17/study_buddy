@@ -282,3 +282,86 @@ async def hybrid_search_chunks(
         len(chunks),
     )
     return chunks
+
+
+# Words of a question that the full-text leg looks for, beyond the question itself.
+_QUESTION_WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9'_-]{3,}")
+
+
+def question_phrases(question: str) -> List[str]:
+    """The phrases the full-text leg uses for a free-form question.
+
+    The whole question comes first (all of its words must match, so it only hits a chunk that
+    answers it closely), then its longest distinct words one by one, since a chunk that
+    contains any of them can be relevant. English stop words drop out in Postgres.
+    """
+    collapsed = re.sub(r"\s+", " ", question or "").strip()
+    if not collapsed:
+        return []
+    words: List[str] = []
+    seen = set()
+    for word in _QUESTION_WORD.findall(collapsed):
+        key = word.lower()
+        if key not in seen:
+            seen.add(key)
+            words.append(word)
+    longest_first = sorted(words, key=len, reverse=True)[: MAX_FULLTEXT_PHRASES - 1]
+    kept = set(longest_first)
+    return [collapsed, *(word for word in words if word in kept)]
+
+
+def boost_chunks(chunks: Sequence[Dict], boosted_ids: Iterable[str], factor: float) -> List[Dict]:
+    """Multiply the score of the chunks in `boosted_ids` by `factor` and re-sort. Pure."""
+    boosted = {str(chunk_id) for chunk_id in boosted_ids}
+    rescored = [
+        {**chunk, "relevance_score": chunk["relevance_score"] * (factor if str(chunk["id"]) in boosted else 1.0)}
+        for chunk in chunks
+    ]
+    return sorted(rescored, key=lambda c: (-c["relevance_score"], str(c["id"])))
+
+
+async def search_chunks_for_question(
+    project_id: str,
+    question: str,
+    limit: int = 12,
+    min_similarity: float = MIN_SIMILARITY,
+    topic_chunk_ids: Optional[Iterable[str]] = None,
+    topic_boost: float = 1.5,
+) -> List[Dict]:
+    """The chunks of a project that best answer a question, best first.
+
+    Same two legs and fusion as `hybrid_search_chunks`, but the query is the question as
+    asked and the similarity floor is the caller's. With `topic_chunk_ids` (the chunks mapped
+    to a topic) those chunks' scores are multiplied by `topic_boost` before the cut to
+    `limit`. Empty when nothing clears the floor.
+    """
+    query_embedding: Optional[List[float]] = None
+    try:
+        query_embedding = await generate_query_embedding(question)
+    except Exception as exc:
+        logger.warning("Could not embed the question (%s); using full-text search only", exc)
+
+    vector_rows: List[Dict] = []
+    if query_embedding is not None:
+        vector_rows = await _vector_leg(project_id, query_embedding, CANDIDATE_POOL)
+    fulltext_rows = await _fulltext_leg(
+        project_id, question_phrases(question), query_embedding, CANDIDATE_POOL
+    )
+
+    boosted = list(topic_chunk_ids or [])
+    chunks = fuse_rankings(
+        vector_rows,
+        fulltext_rows,
+        limit * 2 if boosted else limit,
+        rrf_k=RRF_K,
+        min_similarity=min_similarity if query_embedding is not None else None,
+    )
+    if boosted:
+        chunks = boost_chunks(chunks, boosted, topic_boost)[:limit]
+    logger.info(
+        "Question search: %s vector and %s full-text candidates, %s chunks kept",
+        len(vector_rows),
+        len(fulltext_rows),
+        len(chunks),
+    )
+    return chunks

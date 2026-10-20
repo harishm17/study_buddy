@@ -24,7 +24,8 @@ from app.services.job_runner import (
 )
 from app.services.llm.base import LLMAuthError, LLMRateLimitError, LLMUsage
 from app.services.llm.usage import record_usage
-from tests.db_helpers import get_job, seed_job, seed_user
+from app.services.budget import spent_today_usd
+from tests.db_helpers import get_job, seed_job, seed_project, seed_usage, seed_user
 
 
 def payload(job_id: str) -> JobPayload:
@@ -314,6 +315,33 @@ class TestUsage:
         assert job["llm_input_tokens"] == 4_000_000
         assert float(job["llm_cost_usd"]) == pytest.approx(0.4)
 
+    async def test_each_attempt_adds_a_ledger_row_that_outlives_the_job(self, db, user_id):
+        project_id = await seed_project(db, user_id)
+        job_id = await seed_job(db, user_id, project_id=project_id)
+
+        async def body(payload, job):
+            record_usage(usage(input_tokens=2_000_000, output_tokens=0))
+            if job.attempt == 1:
+                raise LLMRateLimitError("slow down")
+            return JobOutcome()
+
+        handler = make_handler(body)
+        with pytest.raises(HTTPException):
+            await handler(payload(job_id))
+        await handler(payload(job_id))
+
+        rows = await db.fetch("SELECT * FROM llm_usage_events WHERE user_id = $1", user_id)
+        assert len(rows) == 2
+        assert {(r["source"], r["source_id"], r["project_id"], r["models"]) for r in rows} == {
+            ("job", job_id, project_id, "claude-haiku-5-5")
+        }
+        assert sum(float(r["cost_usd"]) for r in rows) == pytest.approx(0.4)
+
+        # Deleting the project deletes the job (cascade), not what it cost.
+        await db.execute("DELETE FROM projects WHERE id = $1", project_id)
+        assert await db.fetchval("SELECT count(*) FROM processing_jobs WHERE id = $1", job_id) == 0
+        assert await spent_today_usd(user_id) == pytest.approx(0.4)
+
     async def test_a_job_without_llm_calls_records_zero(self, db, user_id):
         job_id = await seed_job(db, user_id)
 
@@ -323,6 +351,7 @@ class TestUsage:
         assert (job["llm_input_tokens"], job["llm_output_tokens"]) == (0, 0)
         assert float(job["llm_cost_usd"]) == 0
         assert "usage" not in json.loads(job["result_data"])
+        assert await db.fetchval("SELECT count(*) FROM llm_usage_events") == 0
 
 
 class TestDailyBudget:
@@ -341,7 +370,7 @@ class TestDailyBudget:
         return job_id, calls, make_handler(body, uses_llm=True)
 
     async def test_job_is_refused_permanently_when_the_user_is_over_budget(self, db, user_id):
-        await seed_job(db, user_id, status="completed", llm_cost_usd=1.25)
+        await seed_usage(db, user_id, 1.25)
         job_id, calls, handler = await self.run_llm_job(db, user_id)
 
         with pytest.raises(HTTPException) as raised:
@@ -357,7 +386,7 @@ class TestDailyBudget:
         assert "$1.25 of $1.00" in job["error_message"]
 
     async def test_job_under_budget_runs(self, db, user_id):
-        await seed_job(db, user_id, status="completed", llm_cost_usd=0.40)
+        await seed_usage(db, user_id, 0.40)
         job_id, calls, handler = await self.run_llm_job(db, user_id)
 
         assert (await handler(payload(job_id)))["status"] == "success"
@@ -365,22 +394,21 @@ class TestDailyBudget:
 
     async def test_other_users_and_earlier_days_do_not_count(self, db, user_id):
         other = await seed_user(db)
-        await seed_job(db, other, status="completed", llm_cost_usd=5)
-        await seed_job(db, user_id, status="completed", llm_cost_usd=5,
-                       created_at="SQL:(NOW() AT TIME ZONE 'UTC') - interval '2 days'")
+        await seed_usage(db, other, 5)
+        await seed_usage(db, user_id, 5, created_at="SQL:(NOW() AT TIME ZONE 'UTC') - interval '2 days'")
         job_id, calls, handler = await self.run_llm_job(db, user_id)
 
         assert (await handler(payload(job_id)))["status"] == "success"
 
     async def test_zero_turns_the_budget_off(self, db, user_id, monkeypatch):
         monkeypatch.setattr(settings, "DAILY_LLM_BUDGET_USD", 0)
-        await seed_job(db, user_id, status="completed", llm_cost_usd=500)
+        await seed_usage(db, user_id, 500)
         job_id, calls, handler = await self.run_llm_job(db, user_id)
 
         assert (await handler(payload(job_id)))["status"] == "success"
 
     async def test_jobs_that_do_not_call_the_model_ignore_the_budget(self, db, user_id):
-        await seed_job(db, user_id, status="completed", llm_cost_usd=5)
+        await seed_usage(db, user_id, 5)
         job_id = await seed_job(db, user_id)
 
         assert (await make_handler(ok, uses_llm=False)(payload(job_id)))["status"] == "success"

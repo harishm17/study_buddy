@@ -9,6 +9,8 @@ import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
+import { CitationMarker } from '@/components/chat/citation-context'
+import { markerFromHref } from '@/lib/chat/citations'
 import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light'
 import vscDarkPlus from 'react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus'
 import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash'
@@ -83,6 +85,16 @@ const INLINE_DISALLOWED_ELEMENTS = [
 ]
 
 const BLOCK_COMPONENTS = {
+  // Chat answers link their citation markers as "#cite-N"; they render as numbered source links.
+  a({ node: _node, href, children, ...props }: any) {
+    const marker = markerFromHref(href)
+    if (marker !== null) return <CitationMarker marker={marker} />
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    )
+  },
   code({ className, children, ...props }: any) {
     const match = /language-([\w+#-]+)/.exec(className || '')
     return match ? (

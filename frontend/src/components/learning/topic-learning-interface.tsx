@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, BookOpen, Code, HelpCircle, ClipboardList, CheckCircle, Circle, Mic, Sparkles, BarChart3, Layers3 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, BookOpen, Code, HelpCircle, ClipboardList, CheckCircle, Circle, Mic, Sparkles, BarChart3, Layers3, MessageSquare } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
@@ -441,6 +441,18 @@ export function TopicLearningInterface({ topic, allTopics, userId, initialTab = 
               >
                 <Sparkles className="h-4 w-4" />
                 {generatorLabel}
+              </Button>
+            </div>
+            <div className="mt-2 flex justify-start lg:justify-end">
+              <Button
+                variant="ghost"
+                onClick={() =>
+                  router.push(`/projects/${topic.project.id}?tab=ask&topic=${encodeURIComponent(topic.id)}`)
+                }
+                className="flex items-center gap-2"
+              >
+                <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                Ask about this topic
               </Button>
             </div>
           </div>

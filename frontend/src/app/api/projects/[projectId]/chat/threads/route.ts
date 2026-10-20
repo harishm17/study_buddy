@@ -1,0 +1,78 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import prisma from '@/lib/prisma'
+import { apiInvalidInput, apiNotFound, apiUnauthorized } from '@/lib/api/errors'
+import { MAX_THREAD_TITLE_CHARS } from '@/lib/chat/server'
+
+export const dynamic = 'force-dynamic'
+
+const MAX_THREADS = 100
+
+async function ownedProject(projectId: string) {
+  const session = await getServerSession(authOptions)
+  const userId = session?.user?.id
+  if (!userId) return { userId: null, project: null }
+  const project = await prisma.project.findFirst({ where: { id: projectId, userId }, select: { id: true } })
+  return { userId, project }
+}
+
+/** GET: this user's conversations in the project, most recently active first. */
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  const { projectId } = await params
+  const { userId, project } = await ownedProject(projectId)
+  if (!userId) return apiUnauthorized()
+  if (!project) return apiNotFound('Project not found')
+
+  const threads = await prisma.chatThread.findMany({
+    where: { projectId, userId },
+    orderBy: { updatedAt: 'desc' },
+    take: MAX_THREADS,
+    select: { id: true, title: true, createdAt: true, updatedAt: true },
+  })
+  return NextResponse.json({
+    threads: threads.map((t) => ({
+      id: t.id,
+      title: t.title,
+      createdAt: t.createdAt.toISOString(),
+      updatedAt: t.updatedAt.toISOString(),
+    })),
+  })
+}
+
+const createSchema = z.object({ title: z.string().trim().min(1).max(MAX_THREAD_TITLE_CHARS).optional() })
+
+/** POST: start an empty conversation. (Asking a question without a threadId starts one too.) */
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ projectId: string }> }
+) {
+  const { projectId } = await params
+  const { userId, project } = await ownedProject(projectId)
+  if (!userId) return apiUnauthorized()
+  if (!project) return apiNotFound('Project not found')
+
+  const body = await req.json().catch(() => ({}))
+  const parsed = createSchema.safeParse(body ?? {})
+  if (!parsed.success) return apiInvalidInput('Invalid title')
+
+  const thread = await prisma.chatThread.create({
+    data: { userId, projectId, title: parsed.data.title ?? null },
+    select: { id: true, title: true, createdAt: true, updatedAt: true },
+  })
+  return NextResponse.json(
+    {
+      thread: {
+        id: thread.id,
+        title: thread.title,
+        createdAt: thread.createdAt.toISOString(),
+        updatedAt: thread.updatedAt.toISOString(),
+      },
+    },
+    { status: 201 }
+  )
+}

@@ -276,3 +276,55 @@ export function generateMaterialPath(
   const sanitizedFilename = filename.replace(/[^a-zA-Z0-9.-]/g, '_')
   return `${userId}/${projectId}/materials/${materialId}/${sanitizedFilename}`
 }
+
+export type StoredFile = {
+  size: number
+  /** Streams the file, or the inclusive byte range of it. */
+  stream: (range?: { start: number; end: number }) => import('stream').Readable
+}
+
+/**
+ * Open a stored material for reading. Like the AI service, a `gs://` path is looked up in
+ * the local upload folders first (uploads can be on disk even with GCS on), then in the
+ * bucket. Returns null when the file is in neither place.
+ */
+export async function openStoredFile(gcsPath: string): Promise<StoredFile | null> {
+  const match = /^gs:\/\/([^/]+)\/(.+)$/.exec(gcsPath)
+  if (!match) return null
+  const [, bucketName, blobPath] = match
+
+  const fs = await import('fs')
+  const pathModule = await import('path')
+  for (const base of [LOCAL_UPLOAD_BASE, LOCAL_UPLOAD_FALLBACK_BASE]) {
+    // Runtime upload folder, not project files: keep Turbopack from tracing the whole project.
+    const root = pathModule.resolve(/* turbopackIgnore: true */ base)
+    const candidate = pathModule.resolve(/* turbopackIgnore: true */ root, blobPath)
+    // The path comes from the database, but never read outside the upload folder.
+    if (!candidate.startsWith(root + pathModule.sep)) continue
+    let stat
+    try {
+      stat = fs.statSync(candidate)
+    } catch {
+      continue
+    }
+    if (!stat.isFile()) continue
+    return {
+      size: stat.size,
+      stream: (range) => fs.createReadStream(candidate, range),
+    }
+  }
+
+  const storage = await getStorage()
+  if (!storage) return null
+  const file = storage.bucket(bucketName).file(blobPath)
+  try {
+    const [metadata] = await file.getMetadata()
+    return {
+      size: Number(metadata.size),
+      stream: (range) => file.createReadStream(range),
+    }
+  } catch (error) {
+    if ((error as { code?: number })?.code === 404) return null
+    throw error
+  }
+}

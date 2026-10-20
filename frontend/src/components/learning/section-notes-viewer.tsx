@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { MarkdownBlock } from '@/components/ui/markdown'
+import { viewerUrl } from '@/lib/chat/citations'
 
 interface SectionNotesViewerProps {
   content: string
@@ -16,6 +17,9 @@ interface SectionNotesViewerProps {
       filename: string
       category: string
       pages: string
+      // Older notes were generated without these two.
+      material_id?: string | null
+      page?: number | null
     }>
     chunk_count?: number
   }
@@ -168,7 +172,22 @@ export function SectionNotesViewer({
                   className="flex items-center justify-between rounded-xl border border-border/70 bg-white/70 p-3"
                 >
                   <div>
-                    <div className="font-medium">{citation.filename}</div>
+                    {citation.material_id ? (
+                      <a
+                        href={viewerUrl({
+                          materialId: citation.material_id,
+                          filename: citation.filename,
+                          pageStart: citation.page ?? null,
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {citation.filename}
+                      </a>
+                    ) : (
+                      <div className="font-medium">{citation.filename}</div>
+                    )}
                     <div className="text-sm text-muted-foreground">
                       Pages {citation.pages}
                     </div>

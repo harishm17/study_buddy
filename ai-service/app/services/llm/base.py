@@ -1,6 +1,6 @@
 """Provider-neutral LLM interface, errors and usage records."""
 from abc import ABC, abstractmethod
-from typing import List, Literal, Optional, Type, TypeVar
+from typing import AsyncIterator, List, Literal, Optional, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
@@ -47,6 +47,9 @@ class LLMError(Exception):
 
     code = "LLM_ERROR"
     retryable = True
+    # Tokens a failed call still used (a refusal or cut-off answer is billed), so callers can
+    # record the cost. None when the call produced no usage.
+    usage: Optional["LLMUsage"] = None
 
 
 class LLMNotConfiguredError(LLMError):
@@ -95,6 +98,59 @@ class LLMOutputError(LLMError):
     retryable = True
 
 
+class Excerpt(BaseModel):
+    """One passage the model may quote when it answers a question.
+
+    `ref` is a stable identifier the caller can map back to its own record (for example
+    `chunk:<id>`). It travels to the model as the search result's `source`.
+    """
+
+    ref: str
+    title: str
+    text: str
+
+
+class AnswerText(BaseModel):
+    """A piece of the answer, in the order it was written."""
+
+    type: Literal["text"] = "text"
+    text: str
+
+
+class AnswerCitation(BaseModel):
+    """The model cited an excerpt. It belongs to the text written just before it.
+
+    `offset` is the number of characters of answer text written so far, so a marker for
+    this citation goes at that position.
+    """
+
+    type: Literal["citation"] = "citation"
+    ref: str  # Excerpt.ref
+    cited_text: str
+    start_block_index: int
+    end_block_index: int
+    offset: int
+
+
+class AnswerReset(BaseModel):
+    """Everything sent so far is void: a fallback model is writing the answer instead."""
+
+    type: Literal["reset"] = "reset"
+
+
+class AnswerDone(BaseModel):
+    """The last event: the whole answer, its citations and what the call cost."""
+
+    type: Literal["done"] = "done"
+    text: str
+    citations: List[AnswerCitation]
+    stop_reason: str
+    usage: LLMUsage
+
+
+AnswerEvent = Union[AnswerText, AnswerCitation, AnswerReset, AnswerDone]
+
+
 class LLMProvider(ABC):
     """Interface every provider implements."""
 
@@ -120,6 +176,28 @@ class LLMProvider(ABC):
         purpose: str = "",
     ) -> SchemaT:
         """Return output constrained to `schema` and validated against it."""
+
+    @abstractmethod
+    def stream_cited_answer(
+        self,
+        *,
+        system: str,
+        history: List[LLMMessage],
+        question: str,
+        excerpts: List[Excerpt],
+        tier: Tier = "main",
+        effort: Optional[str] = None,
+        max_tokens: int = 4000,
+        purpose: str = "chat",
+    ) -> AsyncIterator[AnswerEvent]:
+        """Answer `question` from `excerpts`, streaming the answer and the citations.
+
+        Yields AnswerText pieces and AnswerCitation events as they arrive and ends with one
+        AnswerDone. An AnswerReset means a fallback model took over: discard what came
+        before. Raises LLMRefusalError when the model declines and LLMOutputError when the
+        answer is empty or cut off (both with `usage` set). Free text only: search result
+        citations cannot be combined with structured outputs.
+        """
 
     def model_for(self, tier: Tier) -> Optional[str]:
         """The model a tier maps to, for logging."""

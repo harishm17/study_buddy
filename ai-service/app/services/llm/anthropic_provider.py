@@ -1,14 +1,22 @@
 """Claude (Anthropic API) provider."""
 import logging
-from typing import Any, Dict, List, Optional, Type
+import re
+from typing import Any, AsyncIterator, Dict, List, Optional, Type
 
 import anthropic
 from anthropic import AsyncAnthropic
 from pydantic import ValidationError
 
 from app.services.llm.base import (
+    AnswerCitation,
+    AnswerDone,
+    AnswerEvent,
+    AnswerReset,
+    AnswerText,
+    Excerpt,
     LLMAuthError,
     LLMCreditError,
+    LLMError,
     LLMMessage,
     LLMNotConfiguredError,
     LLMOutputError,
@@ -81,6 +89,107 @@ def _final_text(content: List[Any]) -> str:
     return "".join(
         block.text for block in content[start:] if getattr(block, "type", None) == "text"
     ).strip()
+
+
+# Excerpts are sent as several text blocks, one paragraph each, because Claude cites whole
+# blocks: one block per chunk would make every citation quote the entire chunk.
+_BLOCK_TARGET_CHARS = 450
+# A paragraph longer than this is split at sentence boundaries into blocks near the target.
+_BLOCK_MAX_CHARS = 600
+_PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
+_HEADING_LINE = re.compile(r"^#{1,6}[ \t]+\S[^\n]*$")
+
+
+def _split_long_paragraph(paragraph: str, target_chars: int) -> List[str]:
+    pieces: List[str] = []
+    current = ""
+    for sentence in _SENTENCE_BREAK.split(paragraph):
+        if current and len(current) + 1 + len(sentence) > target_chars:
+            pieces.append(current)
+            current = sentence
+        else:
+            current = f"{current} {sentence}" if current else sentence
+    if current:
+        pieces.append(current)
+    return pieces
+
+
+def split_excerpt_blocks(
+    text: str, target_chars: int = _BLOCK_TARGET_CHARS, max_chars: int = _BLOCK_MAX_CHARS
+) -> List[str]:
+    """Split text into citable blocks, one paragraph each; never returns an empty list.
+
+    A heading line is kept with the paragraph that follows it. A paragraph longer than
+    `max_chars` is split at sentence boundaries into blocks of about `target_chars` (a single
+    sentence is never cut). Short paragraphs are not merged: a citation should quote the
+    paragraph that supports the claim, not its neighbours.
+    """
+    cleaned = text.strip()
+    if not cleaned:
+        return [text or " "]
+
+    blocks: List[str] = []
+    heading = ""
+    for paragraph in _PARAGRAPH_BREAK.split(cleaned):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        if _HEADING_LINE.match(paragraph):
+            # Two headings in a row stay together, then go with the next paragraph.
+            heading = f"{heading}\n\n{paragraph}" if heading else paragraph
+            continue
+        if heading:
+            paragraph = f"{heading}\n\n{paragraph}"
+            heading = ""
+        if len(paragraph) > max_chars:
+            blocks.extend(_split_long_paragraph(paragraph, target_chars))
+        else:
+            blocks.append(paragraph)
+    if heading:  # a heading with nothing after it
+        blocks.append(heading)
+    return blocks
+
+
+def _search_result_block(excerpt: Excerpt) -> Dict[str, Any]:
+    return {
+        "type": "search_result",
+        "source": excerpt.ref,
+        "title": excerpt.title,
+        "content": [{"type": "text", "text": block} for block in split_excerpt_blocks(excerpt.text)],
+        "citations": {"enabled": True},
+    }
+
+
+def _answer_conversation(
+    history: List[LLMMessage], question: str, excerpts: List[Excerpt]
+) -> List[Dict[str, Any]]:
+    """Earlier turns as plain text, then one user turn: the excerpts, then the question.
+
+    Search results may only appear in user messages. The conversation must start with a
+    user turn and alternate, so a leading assistant turn is dropped and neighbours with the
+    same role are merged.
+    """
+    conversation: List[Dict[str, Any]] = []
+    for message in history:
+        if not message.content.strip() or message.role == "system":
+            continue
+        role = "assistant" if message.role == "assistant" else "user"
+        if not conversation and role == "assistant":
+            continue
+        block = {"type": "text", "text": message.content}
+        if conversation and conversation[-1]["role"] == role:
+            conversation[-1]["content"].append(block)
+        else:
+            conversation.append({"role": role, "content": [block]})
+
+    final = [_search_result_block(excerpt) for excerpt in excerpts]
+    final.append({"type": "text", "text": question})
+    if conversation and conversation[-1]["role"] == "user":
+        conversation[-1]["content"].extend(final)
+    else:
+        conversation.append({"role": "user", "content": final})
+    return conversation
 
 
 def _translate_api_error(exc: anthropic.APIError) -> Exception:
@@ -238,3 +347,133 @@ class AnthropicProvider(LLMProvider):
             raise LLMOutputError(
                 f"Output did not match {schema.__name__} ({purpose or 'llm call'}): {exc}"
             ) from exc
+
+    async def stream_cited_answer(
+        self,
+        *,
+        system: str,
+        history: List[LLMMessage],
+        question: str,
+        excerpts: List[Excerpt],
+        tier: Tier = "main",
+        effort: Optional[str] = None,
+        max_tokens: int = 4000,
+        purpose: str = "chat",
+    ) -> AsyncIterator[AnswerEvent]:
+        if not excerpts:
+            raise LLMRequestError("A cited answer needs at least one excerpt")
+        model = self._models[tier]
+        used_effort = effort or self._efforts[tier]
+
+        params: Dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": _answer_conversation(history, question, excerpts),
+        }
+        if system:
+            params["system"] = [{"type": "text", "text": system}]
+        if used_effort:
+            params["output_config"] = {"effort": used_effort}
+        if _supports_server_fallback(model):
+            params["betas"] = [_SERVER_FALLBACK_BETA]
+            params["fallbacks"] = "default"
+
+        refs = [excerpt.ref for excerpt in excerpts]
+        text_parts: List[str] = []
+        written = 0
+        citations: List[AnswerCitation] = []
+
+        try:
+            async with self.client.beta.messages.stream(**params) as stream:
+                async for event in stream:
+                    kind = getattr(event, "type", None)
+                    if kind == "content_block_start":
+                        if event.content_block.type == "fallback":
+                            # The declined model's partial answer is void.
+                            text_parts, written, citations = [], 0, []
+                            yield AnswerReset()
+                    elif kind == "content_block_delta":
+                        delta = event.delta
+                        if delta.type == "text_delta" and delta.text:
+                            text_parts.append(delta.text)
+                            written += len(delta.text)
+                            yield AnswerText(text=delta.text)
+                        elif delta.type == "citations_delta":
+                            citation = _to_answer_citation(delta.citation, refs, written)
+                            if citation is not None:
+                                citations.append(citation)
+                                yield citation
+                final = await stream.get_final_message()
+        except anthropic.APIError as exc:
+            raise _translate_api_error(exc) from exc
+
+        usage = LLMUsage(
+            model=final.model or model,
+            purpose=purpose,
+            input_tokens=final.usage.input_tokens or 0,
+            output_tokens=final.usage.output_tokens or 0,
+            cache_read_input_tokens=final.usage.cache_read_input_tokens or 0,
+            cache_creation_input_tokens=final.usage.cache_creation_input_tokens or 0,
+        )
+        record_usage(usage)
+        cost = estimate_cost_usd(usage)
+        logger.info(
+            "llm stream purpose=%s model=%s stop=%s in=%s out=%s cache_read=%s cache_write=%s "
+            "excerpts=%s citations=%s cost_usd=%s request_id=%s",
+            purpose or "-",
+            usage.model,
+            final.stop_reason,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_read_input_tokens,
+            usage.cache_creation_input_tokens,
+            len(excerpts),
+            len(citations),
+            f"{cost:.5f}" if cost is not None else "?",
+            getattr(final, "_request_id", None),
+        )
+
+        stop_reason = final.stop_reason or ""
+        if stop_reason == "refusal":
+            details = final.stop_details
+            category = getattr(details, "category", None) if details else None
+            error: LLMError = LLMRefusalError(
+                f"Claude declined the request (category: {category or 'unspecified'})"
+            )
+        elif stop_reason == "max_tokens":
+            error = LLMOutputError(f"The answer was cut off at max_tokens={max_tokens} ({purpose})")
+        elif not "".join(text_parts).strip():
+            error = LLMOutputError(f"Claude returned no text ({purpose})")
+        else:
+            yield AnswerDone(
+                text="".join(text_parts),
+                citations=citations,
+                stop_reason=stop_reason,
+                usage=usage,
+            )
+            return
+        error.usage = usage
+        raise error
+
+
+def _to_answer_citation(citation: Any, refs: List[str], offset: int) -> Optional[AnswerCitation]:
+    """Map a search_result_location citation back to the excerpt it quotes.
+
+    The `source` we sent identifies the excerpt; `search_result_index` (position among the
+    search results in the request) is the fallback. Other citation kinds are ignored.
+    """
+    if getattr(citation, "type", None) != "search_result_location":
+        return None
+    ref = citation.source if citation.source in refs else None
+    if ref is None and 0 <= citation.search_result_index < len(refs):
+        ref = refs[citation.search_result_index]
+    if ref is None:
+        logger.warning("Citation points at an unknown source: %s", citation.source)
+        return None
+    return AnswerCitation(
+        ref=ref,
+        cited_text=citation.cited_text,
+        start_block_index=citation.start_block_index,
+        end_block_index=citation.end_block_index,
+        offset=offset,
+    )
