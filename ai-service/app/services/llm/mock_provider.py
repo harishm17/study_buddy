@@ -47,8 +47,18 @@ It records zero token usage, so the daily budget is never reached.
 """
 
 
+def _first_paragraph(text: str) -> str:
+    """The first paragraph that is more than a heading line, or the first one."""
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text.strip()) if p.strip()]
+    for paragraph in paragraphs:
+        if not paragraph.startswith("#") or "\n" in paragraph:
+            return paragraph
+    return paragraphs[0] if paragraphs else text.strip()
+
+
 def _first_sentence(text: str, limit: int = 220) -> str:
-    flat = re.sub(r"\s+", " ", text).strip()
+    body = "\n".join(line for line in _first_paragraph(text).splitlines() if not line.startswith("#"))
+    flat = re.sub(r"\s+", " ", body or text).strip()
     match = re.search(r"[.!?](\s|$)", flat)
     sentence = flat[: match.end()].strip() if match else flat
     return sentence if len(sentence) <= limit else sentence[: limit - 1].rstrip() + "..."
@@ -112,14 +122,14 @@ class MockProvider(LLMProvider):
         text = ""
         citations: List[AnswerCitation] = []
         for chunk, excerpt in parts:
-            for word in re.findall(r"\S+\s*", chunk):
+            for word in re.findall(r"\s*\S+\s*", chunk):
                 text += word
                 yield AnswerText(text=word)
                 await asyncio.sleep(0.005)
             if excerpt is not None:
                 citation = AnswerCitation(
                     ref=excerpt.ref,
-                    cited_text=excerpt.text.strip().split("\n\n")[0],
+                    cited_text=_first_paragraph(excerpt.text),
                     start_block_index=0,
                     end_block_index=1,
                     offset=len(text),
