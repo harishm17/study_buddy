@@ -1,13 +1,23 @@
 'use client'
 
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
-import rehypeKatex from 'rehype-katex'
-import 'katex/dist/katex.min.css'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import dynamic from 'next/dynamic'
 import { cn } from '@/lib/utils'
+
+// One markdown pipeline for the whole app. It is loaded on demand, so pages that only show
+// a little markdown do not pay for KaTeX and Prism up front. The server still renders it.
+const MarkdownRenderer = dynamic(() => import('./markdown-renderer'), {
+  loading: () => (
+    <div
+      className="h-16 animate-pulse rounded-lg bg-muted/60"
+      role="status"
+      aria-label="Loading content"
+    />
+  ),
+})
+
+const InlineMarkdownRenderer = dynamic(() => import('./markdown-renderer'), {
+  loading: () => <span className="inline-block h-4 w-24 animate-pulse rounded bg-muted/60 align-middle" />,
+})
 
 type MarkdownVariant = 'default' | 'compact'
 
@@ -26,8 +36,6 @@ const normalizeMarkdown = (content?: string | null) => {
   return (content ?? '').replace(/\r\n/g, '\n').trim()
 }
 
-const CODE_BLOCK_STYLE = vscDarkPlus
-
 export function MarkdownBlock({
   content,
   className,
@@ -44,31 +52,7 @@ export function MarkdownBlock({
         className
       )}
     >
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        components={{
-          code({ inline, className: codeClassName, children, ...props }: any) {
-            const match = /language-(\w+)/.exec(codeClassName || '')
-            return !inline && match ? (
-              <SyntaxHighlighter
-                style={CODE_BLOCK_STYLE}
-                language={match[1]}
-                PreTag="div"
-                {...props}
-              >
-                {String(children).replace(/\n$/, '')}
-              </SyntaxHighlighter>
-            ) : (
-              <code className={codeClassName} {...props}>
-                {children}
-              </code>
-            )
-          },
-        }}
-      >
-        {normalized}
-      </ReactMarkdown>
+      <MarkdownRenderer content={normalized} />
     </div>
   )
 }
@@ -79,54 +63,7 @@ export function MarkdownInline({ content, className }: MarkdownInlineProps) {
 
   return (
     <span className={cn(className)}>
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
-        disallowedElements={[
-          'p',
-          'h1',
-          'h2',
-          'h3',
-          'h4',
-          'h5',
-          'h6',
-          'ul',
-          'ol',
-          'li',
-          'blockquote',
-          'pre',
-          'hr',
-          'table',
-          'thead',
-          'tbody',
-          'tr',
-          'td',
-          'th',
-          'img',
-        ]}
-        unwrapDisallowed
-        components={{
-          code({ children, ...props }: any) {
-            return (
-              <code
-                className="rounded bg-muted px-1.5 py-0.5 text-sm font-mono"
-                {...props}
-              >
-                {children}
-              </code>
-            )
-          },
-          a({ children, ...props }: any) {
-            return (
-              <a className="underline underline-offset-4 hover:text-primary" {...props}>
-                {children}
-              </a>
-            )
-          },
-        }}
-      >
-        {normalized}
-      </ReactMarkdown>
+      <InlineMarkdownRenderer content={normalized} inline />
     </span>
   )
 }

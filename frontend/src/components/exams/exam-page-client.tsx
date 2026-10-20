@@ -6,8 +6,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import ExamInterface from './exam-interface';
-import ExamHistory from './exam-history';
+import dynamic from 'next/dynamic';
+
+// The exam taker (with markdown and the question navigator) and the history list load on
+// demand instead of with the page.
+const ExamInterface = dynamic(() => import('./exam-interface'), {
+  loading: () => <div className="h-64 animate-pulse rounded-2xl border border-border/70 bg-white/60" role="status" aria-label="Loading exam" />,
+});
+const ExamHistory = dynamic(() => import('./exam-history'), {
+  loading: () => <div className="h-32 animate-pulse rounded-2xl border border-border/70 bg-white/60" role="status" aria-label="Loading history" />,
+});
 import { ArrowLeft, Clock, BarChart3, BookOpen, Play, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling';

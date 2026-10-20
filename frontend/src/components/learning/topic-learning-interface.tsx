@@ -6,12 +6,41 @@ import { ChevronLeft, ChevronRight, BookOpen, Code, HelpCircle, ClipboardList, C
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { SectionNotesViewer } from './section-notes-viewer'
-import { SolvedExamplesViewer } from './solved-examples-viewer'
-import { InteractiveExamplesViewer } from './interactive-examples-viewer'
-import { QuizInterface } from './quiz-interface'
-import { VoiceCoach } from '@/components/voice/VoiceCoach'
-import { ContentGenerator } from '@/components/content/content-generator'
+import dynamic from 'next/dynamic'
+
+// Each tab loads when it is first opened, so the topic page does not ship the viewers,
+// the voice coach and the markdown libraries all at once.
+const TabLoading = () => (
+  <div
+    className="h-64 animate-pulse rounded-2xl border border-border/70 bg-white/60"
+    role="status"
+    aria-label="Loading"
+  />
+)
+const SectionNotesViewer = dynamic(
+  () => import('./section-notes-viewer').then((mod) => mod.SectionNotesViewer),
+  { loading: TabLoading }
+)
+const SolvedExamplesViewer = dynamic(
+  () => import('./solved-examples-viewer').then((mod) => mod.SolvedExamplesViewer),
+  { loading: TabLoading }
+)
+const InteractiveExamplesViewer = dynamic(
+  () => import('./interactive-examples-viewer').then((mod) => mod.InteractiveExamplesViewer),
+  { loading: TabLoading }
+)
+const QuizInterface = dynamic(
+  () => import('./quiz-interface').then((mod) => mod.QuizInterface),
+  { loading: TabLoading }
+)
+const VoiceCoach = dynamic(
+  () => import('@/components/voice/VoiceCoach').then((mod) => mod.VoiceCoach),
+  { loading: TabLoading }
+)
+const ContentGenerator = dynamic(
+  () => import('@/components/content/content-generator').then((mod) => mod.ContentGenerator),
+  { loading: TabLoading }
+)
 
 type ContentType = 'notes' | 'solved_examples' | 'interactive_examples' | 'quiz' | 'voice_drill' | 'generate'
 
