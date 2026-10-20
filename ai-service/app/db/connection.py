@@ -1,8 +1,19 @@
-"""Database connection utilities."""
+"""Database connection utilities.
+
+Prisma stores DateTime columns as `timestamp(3) without time zone` holding UTC. SQL written
+here must produce UTC too: use `UTC_NOW` instead of a plain now call, which would give the database
+server's local time.
+"""
+import asyncio
+
 import asyncpg
 from app.config import settings
 
+# Current UTC time as a plain timestamp, the way Prisma writes it.
+UTC_NOW = "(NOW() AT TIME ZONE 'UTC')"
+
 _pool: asyncpg.Pool | None = None
+_pool_lock = asyncio.Lock()
 
 
 async def get_db_pool() -> asyncpg.Pool:
@@ -10,22 +21,29 @@ async def get_db_pool() -> asyncpg.Pool:
     global _pool
 
     if _pool is None:
-        _pool = await asyncpg.create_pool(
-            settings.DATABASE_URL,
-            min_size=2,
-            max_size=10,
-        )
+        async with _pool_lock:
+            if _pool is None:
+                _pool = await asyncpg.create_pool(
+                    settings.DATABASE_URL,
+                    min_size=2,
+                    max_size=settings.DB_POOL_MAX_SIZE,
+                    command_timeout=settings.DB_COMMAND_TIMEOUT_SECONDS,
+                    # So a bare now call or a timestamptz comparison is UTC as well.
+                    server_settings={"timezone": "UTC"},
+                )
 
     return _pool
 
 
 async def close_db_pool():
     """Close database connection pool."""
-    global _pool
+    global _pool, _pool_lock
 
     if _pool is not None:
         await _pool.close()
         _pool = None
+    # A lock that has waited is tied to that event loop; start fresh for the next one.
+    _pool_lock = asyncio.Lock()
 
 
 async def execute_query(query: str, *args):

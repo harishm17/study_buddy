@@ -1,4 +1,5 @@
 """Main FastAPI application for StudyBuddy AI service."""
+import asyncio
 from contextlib import asynccontextmanager
 import logging
 
@@ -63,9 +64,16 @@ async def _run_shutdown() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await _run_startup_checks()
+    reaper = None
+    if settings.JOB_REAPER_INTERVAL_SECONDS > 0:
+        from app.services.job_reaper import reaper_loop
+
+        reaper = asyncio.create_task(reaper_loop())
     try:
         yield
     finally:
+        if reaper is not None:
+            reaper.cancel()
         await _run_shutdown()
 
 

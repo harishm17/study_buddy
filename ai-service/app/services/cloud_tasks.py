@@ -1,178 +1,165 @@
-"""Google Cloud Tasks client wrapper for AI service.
+"""Dispatch jobs to this service's own job endpoints.
 
-Handles enqueueing async jobs.
+One path, chosen by configuration:
+
+- ENABLE_CLOUD_TASKS=true: create a Cloud Task that posts to AI_SERVICE_URL. Cloud Tasks does
+  the retrying; a failure to create the task is raised to the caller.
+- otherwise: post to AI_SERVICE_URL from a background asyncio task, with the internal token
+  header, retrying network errors and 5xx answers.
+
+The job endpoints answer 400 for failures a retry cannot fix and 200 {"status": "skipped"}
+for jobs that were already handled, so neither is retried here.
 """
-import logging
-import json
+import asyncio
 import base64
-from typing import Dict, Any, Optional
+import json
+import logging
+from typing import Any, Dict, Optional, Set
+
 import httpx
+
 from app.api.internal_auth import internal_headers
 from app.config import settings
+from app.db.connection import UTC_NOW, execute_update
 
 logger = logging.getLogger(__name__)
 
-# Initialize Cloud Tasks client for production
+DIRECT_MAX_ATTEMPTS = 3
+DIRECT_TIMEOUT_SECONDS = 600.0
+
 _client: Optional[Any] = None
+_background_tasks: Set["asyncio.Task[None]"] = set()
 
-if settings.is_production:
-    try:
+
+class TaskDispatchError(RuntimeError):
+    """The task could not be handed to Cloud Tasks."""
+
+
+def _cloud_tasks_client():
+    global _client
+    if _client is None:
         from google.cloud import tasks_v2
+
         _client = tasks_v2.CloudTasksClient()
-        logger.warning(f"***** Cloud Tasks client initialized successfully *****")
-    except Exception as e:
-        logger.warning(f"***** Failed to initialize Cloud Tasks client: {e} *****")
-        _client = None
-
-# TEMPORARY: Force direct HTTP fallback for debugging
-logger.warning(f"***** Forcing _client to None for debugging (was: {type(_client).__name__ if _client else 'None'}) *****")
-_client = None
+    return _client
 
 
-async def enqueue_task(
-    endpoint: str,
-    payload: Dict[str, Any]
-) -> str:
-    """
-    Enqueue a task to Cloud Tasks or make direct HTTP call in development.
+def _create_cloud_task(endpoint: str, payload: Dict[str, Any]) -> str:
+    from google.cloud import tasks_v2
 
-    Args:
-        endpoint: AI service endpoint (e.g., /jobs/chunk-material)
-        payload: Task payload with jobId, jobType, and data
+    project = settings.cloud_tasks_project
+    if not project:
+        raise TaskDispatchError("ENABLE_CLOUD_TASKS is set but no project id is configured")
+    client = _cloud_tasks_client()
+    parent = client.queue_path(project, settings.CLOUD_TASKS_LOCATION, settings.CLOUD_TASKS_QUEUE)
+    task = {
+        "http_request": {
+            "http_method": tasks_v2.HttpMethod.POST,
+            "url": f"{settings.AI_SERVICE_URL}{endpoint}",
+            "headers": internal_headers(),
+            "body": base64.b64encode(json.dumps(payload).encode()).decode(),
+        }
+    }
+    response = client.create_task(request={"parent": parent, "task": task})
+    return response.name
 
-    Returns:
-        Task name or task ID
-    """
-    if settings.is_development:
-        # Development mode - make direct HTTP call
-        logger.info(f"[DEV] Triggering job via direct HTTP call to {endpoint}")
 
+async def mark_undelivered(job_id: str, message: str) -> None:
+    """The service never answered: fail the job if no handler has touched it."""
+    try:
+        await execute_update(
+            f"""
+            UPDATE processing_jobs
+            SET status = 'failed',
+                error_code = 'ENQUEUE_FAILED',
+                error_message = $2,
+                retryable = TRUE,
+                completed_at = {UTC_NOW}
+            WHERE id = $1 AND status = 'pending'
+            """,
+            job_id,
+            message[:1000],
+        )
+    except Exception as exc:
+        logger.error("Could not record the dispatch failure of job %s: %s", job_id, exc)
+
+
+async def _post_with_retries(endpoint: str, payload: Dict[str, Any]) -> None:
+    job_id = payload.get("jobId", "")
+    last_error = ""
+    for attempt in range(1, DIRECT_MAX_ATTEMPTS + 1):
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{settings.AI_SERVICE_URL}{endpoint}",
                     json=payload,
                     headers=internal_headers(),
-                    timeout=30.0
+                    timeout=DIRECT_TIMEOUT_SECONDS,
                 )
+            if response.status_code < 500:
+                if response.status_code >= 400:
+                    logger.error(
+                        "Job %s rejected by %s (%s): %s",
+                        job_id, endpoint, response.status_code, response.text[:500],
+                    )
+                return
+            last_error = f"{endpoint} answered {response.status_code}: {response.text[:500]}"
+        except httpx.HTTPError as exc:
+            last_error = f"{endpoint} unreachable: {exc!r}"
+        logger.warning("Dispatch of job %s failed (attempt %d): %s", job_id, attempt, last_error)
+        if attempt < DIRECT_MAX_ATTEMPTS:
+            await asyncio.sleep(0.5 * 2 ** (attempt - 1))
+    await mark_undelivered(job_id, last_error)
 
-                if response.status_code != 200:
-                    logger.error(f"[DEV] Task execution failed: {response.text}")
-                else:
-                    logger.info(f"[DEV] Task triggered successfully")
 
-        except Exception as e:
-            logger.error(f"[DEV] Failed to call AI service: {e}")
+async def enqueue_task(endpoint: str, payload: Dict[str, Any]) -> str:
+    """Hand a job to the job endpoint. Returns a task name or id.
 
-        return f"dev-task-{payload['jobId']}"
-
-    # Production mode - use Cloud Tasks
-    logger.info(f"Production mode: _client={'available' if _client else 'None'}, attempting task enqueue")
-    if not _client:
-        logger.warning("Cloud Tasks client not available, falling back to direct HTTP call")
-        # Use localhost when calling same service to avoid DNS resolution issues
-        service_url = "http://localhost:8080" if settings.is_production else settings.AI_SERVICE_URL
-        logger.warning(f"***** Using service URL: {service_url}{endpoint} *****")
+    Direct dispatch returns at once and runs in the background.
+    """
+    if settings.ENABLE_CLOUD_TASKS:
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{service_url}{endpoint}",
-                    json=payload,
-                    headers=internal_headers(),
-                    timeout=30.0
-                )
-                if response.status_code != 200:
-                    logger.error(f"Direct HTTP fallback failed ({response.status_code}): {response.text}")
-                else:
-                    logger.info(f"Direct HTTP fallback succeeded for {endpoint}")
-        except Exception as e:
-            logger.error(f"Failed to call AI service directly: {e}")
-        return f"direct-task-{payload['jobId']}"
+            name = await asyncio.to_thread(_create_cloud_task, endpoint, payload)
+        except TaskDispatchError:
+            raise
+        except Exception as exc:
+            raise TaskDispatchError(f"Could not create Cloud Task: {exc}") from exc
+        logger.info("Created Cloud Task %s", name)
+        return name
 
-    try:
-        # Build the task
-        project_id = settings.GCS_PROJECT_ID
-        if not project_id:
-            logger.error("GCS_PROJECT_ID not configured - cannot create Cloud Task")
-            return f"error-task-{payload['jobId']}"
+    task = asyncio.create_task(_post_with_retries(endpoint, payload))
+    # The loop keeps only weak references to tasks.
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return f"direct-task-{payload.get('jobId', '')}"
 
-        location = "us-central1"  # Same as deploy.yml
-        queue = "studybuddy-jobs"  # Same as deploy.yml
 
-        parent = _client.queue_path(project_id, location, queue)
+async def wait_for_background_tasks() -> None:
+    """Wait for direct dispatches in flight (tests, shutdown)."""
+    while _background_tasks:
+        await asyncio.gather(*list(_background_tasks), return_exceptions=True)
 
-        task = {
-            "http_request": {
-                "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.AI_SERVICE_URL}{endpoint}",
-                "headers": internal_headers(),
-                "body": base64.b64encode(json.dumps(payload).encode()).decode(),
-            }
-        }
 
-        response = _client.create_task(request={"parent": parent, "task": task})
-        logger.info(f"Created Cloud Task: {response.name}")
-        return response.name
+JOB_ENDPOINTS = {
+    "validate_material": "/jobs/validate-material",
+    "chunk_material": "/jobs/chunk-material",
+    "extract_topics": "/jobs/extract-topics",
+    "generate_content": "/jobs/generate-content",
+    "generate_exam": "/jobs/generate-exam",
+    "grade_exam": "/jobs/grade-exam",
+}
 
-    except Exception as e:
-        logger.error(f"Failed to create Cloud Task: {e}, falling back to direct HTTP call")
-        # Use localhost when calling same service to avoid DNS resolution issues
-        service_url = "http://localhost:8080" if settings.is_production else settings.AI_SERVICE_URL
-        logger.warning(f"***** Exception fallback using service URL: {service_url}{endpoint} *****")
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{service_url}{endpoint}",
-                    json=payload,
-                    headers=internal_headers(),
-                    timeout=30.0
-                )
-                if response.status_code != 200:
-                    logger.error(f"Direct HTTP fallback failed: {response.text}")
-                else:
-                    logger.info(f"Direct HTTP fallback succeeded")
-        except Exception as fallback_error:
-            logger.error(f"Direct HTTP fallback also failed: {fallback_error}")
-        return f"fallback-task-{payload['jobId']}"
+
+async def enqueue_job(job_id: str, job_type: str, data: Dict[str, Any]) -> str:
+    """Dispatch any job type by name."""
+    return await enqueue_task(
+        JOB_ENDPOINTS[job_type], {"jobId": job_id, "jobType": job_type, "data": data}
+    )
 
 
 async def enqueue_chunking_job(job_id: str, material_id: str) -> str:
-    """
-    Enqueue a material chunking job.
-
-    Args:
-        job_id: Processing job ID
-        material_id: Material ID to chunk
-
-    Returns:
-        Task name
-    """
-    return await enqueue_task(
-        "/jobs/chunk-material",
-        {
-            "jobId": job_id,
-            "jobType": "chunk_material",
-            "data": {"materialId": material_id}
-        }
-    )
+    return await enqueue_job(job_id, "chunk_material", {"materialId": material_id})
 
 
 async def enqueue_topic_extraction_job(job_id: str, project_id: str) -> str:
-    """
-    Enqueue a topic extraction job.
-
-    Args:
-        job_id: Processing job ID
-        project_id: Project ID
-
-    Returns:
-        Task name
-    """
-    return await enqueue_task(
-        "/jobs/extract-topics",
-        {
-            "jobId": job_id,
-            "jobType": "extract_topics",
-            "data": {"projectId": project_id}
-        }
-    )
+    return await enqueue_job(job_id, "extract_topics", {"projectId": project_id})

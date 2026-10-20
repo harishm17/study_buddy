@@ -1,4 +1,8 @@
+import asyncio
 import os
+from pathlib import Path
+
+import asyncpg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -88,3 +92,68 @@ def test_client():
     """FastAPI test client."""
     from app.main import app
     return TestClient(app)
+
+
+# ---- A real Postgres for the job tests ----------------------------------------------------
+# The claim, lease and append logic is SQL, so those tests run against a throwaway database
+# built from the Prisma migrations. Point TEST_DB_ADMIN_URL at a server with pgvector; the
+# tests skip when none is reachable.
+
+MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "frontend" / "prisma" / "migrations"
+TEST_DB_ADMIN_URL = os.environ.get("TEST_DB_ADMIN_URL", "postgresql://postgres@127.0.0.1:5544/postgres")
+
+
+def _swap_database(url: str, name: str) -> str:
+    return url.rsplit("/", 1)[0] + "/" + name
+
+
+async def _build_test_database(name: str) -> None:
+    admin = await asyncpg.connect(TEST_DB_ADMIN_URL, timeout=3)
+    try:
+        await admin.execute(f'DROP DATABASE IF EXISTS "{name}"')
+        await admin.execute(f'CREATE DATABASE "{name}"')
+    finally:
+        await admin.close()
+    conn = await asyncpg.connect(_swap_database(TEST_DB_ADMIN_URL, name))
+    try:
+        for migration in sorted(MIGRATIONS_DIR.glob("*/migration.sql")):
+            await conn.execute(migration.read_text())
+    finally:
+        await conn.close()
+
+
+async def _drop_test_database(name: str) -> None:
+    admin = await asyncpg.connect(TEST_DB_ADMIN_URL, timeout=3)
+    try:
+        await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+    finally:
+        await admin.close()
+
+
+@pytest.fixture(scope="session")
+def test_database_url():
+    name = f"sb_pytest_{os.getpid()}"
+    try:
+        asyncio.run(_build_test_database(name))
+    except Exception as exc:  # no server, no pgvector, ...
+        pytest.skip(f"No test Postgres available ({exc!r}); set TEST_DB_ADMIN_URL")
+    yield _swap_database(TEST_DB_ADMIN_URL, name)
+    asyncio.run(_drop_test_database(name))
+
+
+@pytest.fixture
+async def db(test_database_url, monkeypatch):
+    """The service's connection pool, pointed at the test database and emptied afterwards."""
+    from app.config import settings
+    from app.db import connection
+
+    monkeypatch.setattr(settings, "DATABASE_URL", test_database_url)
+    await connection.close_db_pool()
+    pool = await connection.get_db_pool()
+    try:
+        yield pool
+    finally:
+        # A test may have closed the pool it was given.
+        pool = await connection.get_db_pool()
+        await pool.execute("TRUNCATE users CASCADE")
+        await connection.close_db_pool()
