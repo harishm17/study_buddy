@@ -37,7 +37,8 @@ def test_job_and_voice_routes_are_all_listed():
     paths = {path for _, path in PROTECTED}
     assert "/jobs/grade-exam" in paths
     assert "/voice/realtime/token" in paths
-    assert len(PROTECTED) == 8
+    assert "/grade/quiz" in paths
+    assert len(PROTECTED) == 9
 
 
 @pytest.mark.parametrize("method,path", PROTECTED)
