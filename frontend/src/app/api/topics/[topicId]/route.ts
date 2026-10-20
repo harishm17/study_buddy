@@ -1,6 +1,7 @@
 /**
  * API routes for individual topics
- * PATCH /api/topics/[topicId] - Update topic
+ * PATCH /api/topics/[topicId] - Update topic (name, description, confirmed, or move it to
+ *   a new position with orderIndex; the topics around it shift to make room)
  * DELETE /api/topics/[topicId] - Delete topic
  */
 
@@ -8,11 +9,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import { z } from 'zod'
+import { moveInOrder } from '@/lib/topics/ordering'
 
 const updateTopicSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
+  name: z.string().trim().min(1).max(255).optional(),
   description: z.string().optional(),
   userConfirmed: z.boolean().optional(),
+  orderIndex: z.number().int().min(0).optional(),
 })
 
 export async function PATCH(
@@ -50,10 +53,28 @@ export async function PATCH(
       )
     }
 
-    // Update topic
-    const updatedTopic = await prisma.topic.update({
-      where: { id: topicId },
-      data: validation.data,
+    const { orderIndex, ...fields } = validation.data
+
+    const updatedTopic = await prisma.$transaction(async (tx) => {
+      if (orderIndex !== undefined) {
+        const siblings = await tx.topic.findMany({
+          where: { projectId: topic.projectId },
+          orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
+          select: { id: true, orderIndex: true },
+        })
+        const newOrder = moveInOrder(
+          siblings.map((sibling) => sibling.id),
+          topicId,
+          orderIndex
+        )
+        const currentIndex = new Map(siblings.map((sibling) => [sibling.id, sibling.orderIndex]))
+        for (const [index, id] of newOrder.entries()) {
+          if (currentIndex.get(id) !== index) {
+            await tx.topic.update({ where: { id }, data: { orderIndex: index } })
+          }
+        }
+      }
+      return tx.topic.update({ where: { id: topicId }, data: fields })
     })
 
     return NextResponse.json({ topic: updatedTopic })
