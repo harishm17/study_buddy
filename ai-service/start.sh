@@ -4,7 +4,6 @@ set -e
 # Get PORT from environment variable, default to 8000 for local/docker.
 # Railway and Cloud Run inject their own PORT.
 PORT=${PORT:-8000}
-# "::" listens on IPv6 and IPv4, which Railway's private network needs.
 HOST=${HOST:-0.0.0.0}
 
 echo "Starting StudyBuddy AI Service..."

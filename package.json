@@ -1,0 +1,9 @@
+{
+  "name": "studybuddy",
+  "private": true,
+  "description": "Railway infrastructure config (.railway/railway.ts); the apps live in frontend/ and ai-service/",
+  "type": "module",
+  "devDependencies": {
+    "railway": "^3.16.0"
+  }
+}
