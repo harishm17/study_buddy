@@ -129,14 +129,14 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
           </CardHeader>
           <CardContent className="space-y-4">
             {isSubmitting ? (
-              <Alert>
-                <Loader2 className="h-4 w-4 animate-spin" />
+              <Alert role="status" aria-live="polite">
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 <AlertDescription>
                   Your exam is being graded by AI. This may take a minute...
                 </AlertDescription>
               </Alert>
             ) : (
-              <Alert>
+              <Alert role="status" aria-live="polite">
                 <AlertDescription>
                   Your exam has been graded! View your results below.
                 </AlertDescription>
