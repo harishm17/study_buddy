@@ -6,7 +6,7 @@ There is no generation-quality eval yet. See [Generation quality](#generation-qu
 
 ## What the retrieval eval measures
 
-When the extract-topics job finds a topic, it looks up that topic's source chunks with `hybrid_search_chunks` (`ai-service/app/services/embeddings/search.py`), keeps the top `TOPIC_CHUNK_LIMIT` (24, from `app/services/content_generator/context.py`) and stores them. Every notes, quiz and exam generator later reads only those chunks. If the right chunks are not in the stored 24, the generated material cannot be grounded in them.
+When the extract-topics job finds a topic, it looks up that topic's source chunks with `hybrid_search_chunks` (`ai-service/app/services/embeddings/search.py`), keeps the top `TOPIC_CHUNK_LIMIT` (24, from `app/services/content_generator/context.py`) and stores them. Every notes, quiz and exam generator later reads only those chunks. (A topic with no stored chunks, or with chunks older than the newest chunk of its project, is looked up again with the same function just before generation: `ensure_topic_mappings`.) If the right chunks are not in the stored 24, the generated material cannot be grounded in them.
 
 The harness answers: for a topic whose answer we know the location of, how many of the right chunks are in that top 24, and how high are they ranked?
 
@@ -37,7 +37,7 @@ Every run also scores two plain vector searches over the same stored chunk embed
 - query = `name: description` (the same text the app's semantic leg embeds)
 - query = `name: description Keywords: ...`
 
-They show how much the current hybrid helps or hurts compared with the simplest possible retrieval. They are not proposals.
+They show how much the app's hybrid helps or hurts compared with the simplest possible retrieval. They are not proposals. They search the stored vectors, so they move when what is embedded changes: the baseline file's reference rows were computed on vectors of the chunk text alone, the later files' rows on heading-prefixed vectors.
 
 ## Layout
 
@@ -92,7 +92,7 @@ Options:
 - `--out-dir DIR` writes results somewhere else (use this for scratch runs you do not want to commit).
 - `EVAL_DATABASE_URL` can replace `--db`.
 
-Timing on the box (CPU embeddings): about 40 s for a cold run with `--rebuild` (about 35 s is chunking and embedding the 306 chunks), about 5 s when the chunks are already stored.
+Timing on the box (CPU embeddings): about 35 s for a cold run with `--rebuild` (about 32 s is chunking and embedding the 306 chunks), about 5 s when the chunks are already stored. The eval database needs all of the app's migrations, including the HNSW and full-text indexes.
 
 Run the unit tests:
 
@@ -102,7 +102,7 @@ cd ai-service && uv run pytest ../evals/retrieval -q
 
 The PDFs are data. `fetch_corpus.py` opens them with PyMuPDF only to copy page ranges, and the harness only feeds them to the app's document extractor. Run the scripts with `python -I`, as above, and do not run anything from inside `evals/.cache/`.
 
-## Baseline (2026-10-20, current `search.py`)
+## Baseline (2026-10-20, the old `search.py`)
 
 `results/2026-10-20-baseline.md` has the full tables. In short, on this corpus the current hybrid finds nearly all the relevant chunks within 24 but ranks them badly:
 
@@ -110,11 +110,65 @@ The PDFs are data. `fetch_corpus.py` opens them with PyMuPDF only to copy page r
 - The cause is visible in the per-topic `top_scores`: the keyword score is a flat 0.8, a chunk found by both legs gets `max(0.8, similarity) * 1.1`, and most similarities are below 0.8, so about half of all returned chunks tie at exactly 0.88. The ties keep the keyword leg's order, which is `chunk_index`, so those results are in document order, not relevance order.
 - Keywords are matched with `ILIKE` against every chunk. Generic keywords (`break`, `search`, `return`, `None`, `ATP`) match chunks all over the corpus, including other documents (6% of results come from the wrong document on average, up to 54% for one Python topic).
 
+## Results with Reciprocal Rank Fusion (2026-10-20, `-rrf` files)
+
+`results/2026-10-20-rrf.md` has the full tables. The comparison with the baseline is:
+
+```bash
+python3 evals/retrieval/compare_runs.py evals/results/2026-10-20-baseline.json evals/results/2026-10-20-rrf.json
+```
+
+Macro averages over 38 topics, K = 24:
+
+| System | recall@24 | MRR | nDCG@24 | hit@5 | recall@5 |
+|---|---|---|---|---|---|
+| Baseline: old `hybrid_search_chunks` (`ILIKE` leg + vector leg, flat keyword score) | 0.935 | 0.830 | 0.777 | 0.895 | 0.437 |
+| Old `hybrid_search_chunks` re-run on the new heading-prefixed vectors (scratch run, not committed) | 0.965 | 0.831 | 0.800 | 0.921 | |
+| New: vector leg + full-text leg, RRF (the `-rrf` run) | 0.989 | 0.961 | 0.932 | 1.000 | 0.684 |
+| New search on vectors of the chunk text alone (scratch run, not committed) | 0.977 | 0.956 | 0.912 | 1.000 | |
+| Reference: pure vector, name + description + keywords (old vectors, then new vectors) | 0.927, 0.984 | 0.947, 0.934 | 0.870, 0.917 | 1.000, 1.000 | |
+
+- Fusion is the large change. The old search on the new vectors barely moves in ranking (MRR 0.831, hit@5 0.921), while the new search on the old vectors already has MRR 0.956 and hit@5 1.000.
+- Heading-prefixed vectors add a smaller, consistent gain on top: nDCG 0.912 to 0.932, recall 0.977 to 0.989. The pure-vector reference gains too (nDCG 0.870 to 0.917).
+- The new search is ahead of the pure-vector reference on the new vectors (MRR 0.961 vs 0.934, nDCG 0.932 vs 0.917, recall 0.989 vs 0.984) and stays in the right document (same-document share 0.990, was 0.938).
+
+### Variants tried
+
+Scratch runs on the same stored chunks, changing one setting at a time from the final configuration: RRF k = 60, pool of 50 per leg, similarity floor 0.55, full-text query = topic name and keywords, `ts_rank_cd` with its defaults, heading weight A over body weight B. A difference under about 0.015 MRR is one topic moving one rank; those were not used to choose.
+
+| Variant | recall@24 | MRR | nDCG@24 | hit@5 |
+|---|---|---|---|---|
+| Final | 0.989 | 0.961 | 0.932 | 1.000 |
+| RRF k = 10 / 30 / 100 | 0.989 | 0.961 | 0.931 to 0.932 | 1.000 |
+| Pool 24 / 100 per leg | 0.989 | 0.961 | 0.932 | 1.000 |
+| Floor 0 / 0.4 / 0.5 / 0.6 / 0.65 | 0.989 | 0.961 | 0.932 | 1.000 |
+| Vector leg only | 0.984 | 0.934 | 0.917 | 1.000 |
+| Full-text leg only | 0.959 | 0.912 | 0.889 | 0.974 |
+| Full-text query = name only | 0.995 | 0.928 | 0.901 | 1.000 |
+| Full-text query also ORs the description's words | 0.954 | 0.961 | 0.880 | 1.000 |
+| Embedded query without keywords | 0.989 | 0.974 | 0.935 | 1.000 |
+| `ts_rank_cd` length normalisation 1 / 4 | 0.989 | 0.974 / 0.987 | 0.937 / 0.931 | 1.000 |
+| `ts_rank` instead of `ts_rank_cd` | 0.989 | 0.974 | 0.939 | 1.000 |
+| Heading weight = body weight | 0.989 | 0.947 | 0.923 | 1.000 |
+| Heading 1.0, body 0.1 | 0.989 | 0.966 | 0.934 | 1.000 |
+
+Ranking is insensitive to k, pool size and floor on this corpus, so those use the textbook k (60), a pool about twice K, and a floor read off the similarity distributions. Adding the description's words to the full-text query is the one change that clearly hurts. The ranking-function and weight variants are within noise, so the defaults stay.
+
+The floor does not change these metrics because chunks under it seldom reach the top 24 here. It matters for topics the materials do not cover. To see its cost for a topic a student adds by hand, every topic was re-run as a bare name (no description, no keywords):
+
+| Name-only queries, floor | recall@24 | MRR | nDCG@24 |
+|---|---|---|---|
+| 0 or 0.5 | 0.961 | 0.954 | 0.883 |
+| 0.55 or 0.6 | 0.955 | 0.954 | 0.880 |
+| 0.65 | 0.905 | 0.956 | 0.858 |
+
+Chunks that explain a topic score 0.67 and up against a full query and 0.54 and up against a bare name. Half of the other chunks score under 0.55, but made-up topics ("Medieval French cuisine", "Quantum chromodynamics") still reach 0.6 to 0.7 against this corpus. bge-small compresses its scores, so a floor drops clearly unrelated chunks; it cannot reject an off-topic name outright. 0.55 is the highest value that costs almost nothing on bare names.
+
 ## Comparing runs
 
 Result files are plain JSON, so the workflow for a retrieval change is:
 
-1. On the base commit, run with `--label baseline` (the committed `2026-10-20-baseline.*` is that run for the current `search.py`).
+1. On the base commit, run with `--label baseline` (the committed `2026-10-20-baseline.*` is that run for the old `search.py`).
 2. On the branch with the change, run with a new label, for example `--label hybrid-rrf`.
 3. Diff them:
 
@@ -129,7 +183,7 @@ The per-topic entries in the JSON list the chunks returned for each topic as `do
 
 ### If retrieval changes shape
 
-Everything that touches app retrieval is in one function, `app_retrieval` in `retrieval/run_eval.py`, with `app_top_k` next to it. Today it calls `hybrid_search_chunks` with the same arguments as `jobs.py`. If a later change renames the function, changes its arguments, moves topic mapping to generation time or stores mappings differently, edit those two functions to match what the app does, and keep the return value: a list of `{"chunk_id", "score", "source"}`, best first (`score` and `source` may be `None`). Nothing else in the harness imports retrieval code. Chunking and embedding are also taken from the app, so a change there is picked up automatically (and triggers re-ingestion).
+Everything that touches app retrieval is in one function, `app_retrieval` in `retrieval/run_eval.py`, with `app_top_k` next to it. It calls `hybrid_search_chunks` with the same arguments as `jobs.py` and as `ensure_topic_mappings` (generation-time mapping). The RRF change kept that function's signature, so the adapter did not change. Ingestion in the harness does follow the app: it embeds `embedding_text(section_hierarchy, chunk_text)`, the same text the chunk job embeds. If a later change renames the function, changes its arguments, moves topic mapping to generation time or stores mappings differently, edit those two functions to match what the app does, and keep the return value: a list of `{"chunk_id", "score", "source"}`, best first (`score` and `source` may be `None`). Nothing else in the harness imports retrieval code. Chunking and embedding are also taken from the app, so a change there is picked up automatically (and triggers re-ingestion).
 
 ## Corpus and licensing
 
@@ -160,8 +214,10 @@ OpenStax republishes its PDFs from time to time. If a checksum no longer matches
 - **Small corpus.** About 300 chunks across three documents, and K = 24 is 8% of it. Recall@24 is high for almost any method, and the useful signal is in ordering (MRR, nDCG, hit@5, and the smaller cutoffs). Real projects hold more chunks, which makes weaknesses such as the keyword cap more visible than here. The corpus is also tidy: well-structured textbook prose, not scanned slides or lecture notes.
 - **38 topics, one writer.** The topics were written by one person (not generated by the topic extractor), so they are cleaner than real extractor output: well scoped, with sensible keywords. Per-topic numbers are noisy; look at averages and at the pattern in the failures.
 - **Sections are small.** Most topics have 2-12 relevant chunks, so precision@24 is capped well below 1 (see the metric table).
-- **Ties.** The result order is what `hybrid_search_chunks` returns. The app later orders by stored score and then by chunk id; chunk ids here are fixed (`eval-material-<doc>-<index>`), so within a document that matches chunk order, and runs are reproducible.
-- **One embedder.** Results are for the default local model. Switching `EMBEDDING_PROVIDER` to OpenAI would need `--rebuild` and gives different numbers.
+- **Ties.** The result order is what `hybrid_search_chunks` returns (RRF score, then vector similarity, then chunk id). Two chunks can still share an RRF score exactly, for example rank 1 in one leg and rank 2 in the other against the reverse; the app later reads stored mappings ordered by score and then chunk id. Chunk ids here are fixed (`eval-material-<doc>-<index>`), so runs are reproducible.
+- **One embedder.** Results are for the default local model. The database column is `vector(384)`, so `EMBEDDING_PROVIDER=openai` (1536 numbers) does not fit without a new migration (see the root README). The similarity floor is also calibrated on this model's score range.
+- **Tuned on this corpus.** The floor and the full-text query shape were chosen by looking at these 38 topics. The sweep below is flat across most settings, but a different corpus (lecture slides, scanned notes) may want a different floor.
+- **The full-text leg is English only** (`to_tsvector('english', ...)`).
 
 ## Generation quality (not built yet)
 
