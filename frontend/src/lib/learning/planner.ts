@@ -404,7 +404,9 @@ export async function buildNextActionsForProject(
   const quizTopicIds = new Set(quizTopics.map((topic) => topic.id))
   const voiceTopics = snapshots
     .filter((topic) => !dueTopicIds.has(topic.id) && !generationTopicIds.has(topic.id) && !quizTopicIds.has(topic.id))
-    .filter((topic) => topic.voiceAttempts < 3 || topic.mastery < 0.6)
+    // Only topics whose mastery is still low. Having no voice practice yet is not a reason:
+    // mastery is scored over the sources a student has used.
+    .filter((topic) => topic.mastery < 0.6)
     .sort((a, b) => {
       if (a.mastery !== b.mastery) return a.mastery - b.mastery
       if (a.voiceAttempts !== b.voiceAttempts) return a.voiceAttempts - b.voiceAttempts

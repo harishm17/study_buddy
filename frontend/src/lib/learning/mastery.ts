@@ -1,35 +1,9 @@
 import { prisma } from '@/lib/db/prisma'
 import { Prisma } from '@prisma/client'
+import { computeMasteryFromSignals, intervalFromMastery, type MasteryComponents } from './mastery-math'
 
-export type MasteryComponents = {
-  quiz: number
-  voice: number
-  exam: number
-  recencyPenalty: number
-  mastery: number
-}
-
-const clamp = (value: number, min = 0, max = 1) => Math.max(min, Math.min(max, value))
-
-const avg = (values: number[]) => {
-  if (values.length === 0) return 0
-  return values.reduce((sum, value) => sum + value, 0) / values.length
-}
-
-export function computeMasteryFromSignals(input: {
-  quizScores: number[]
-  voiceScores: number[]
-  examScores: number[]
-  daysSinceLastPractice: number
-}): MasteryComponents {
-  const quiz = clamp(avg(input.quizScores) / 100)
-  const voice = clamp(avg(input.voiceScores))
-  const exam = clamp(avg(input.examScores))
-  const recencyPenalty = clamp((Math.min(input.daysSinceLastPractice, 14) / 14) * 0.25, 0, 0.25)
-  const mastery = clamp(0.55 * quiz + 0.25 * voice + 0.2 * exam - recencyPenalty)
-
-  return { quiz, voice, exam, recencyPenalty, mastery }
-}
+export { computeMasteryFromSignals, intervalFromMastery }
+export type { MasteryComponents }
 
 export async function computeTopicMastery(
   userId: string,
@@ -77,27 +51,6 @@ export async function computeTopicMastery(
     examScores: examSignals.map((signal) => signal.score),
     daysSinceLastPractice,
   })
-}
-
-export function intervalFromMastery(
-  mastery: number,
-  options: { wasCorrect?: boolean; confidence?: number } = {}
-) {
-  const { wasCorrect = true, confidence } = options
-  if (!wasCorrect) return 1
-
-  let interval = 1
-  if (mastery >= 0.8) interval = 14
-  else if (mastery >= 0.6) interval = 7
-  else if (mastery >= 0.4) interval = 3
-
-  if (confidence !== undefined && confidence >= 4 && wasCorrect) {
-    if (interval === 1) interval = 3
-    else if (interval === 3) interval = 7
-    else if (interval === 7) interval = 14
-  }
-
-  return interval
 }
 
 export async function upsertReviewSchedule(input: {
