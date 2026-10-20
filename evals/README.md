@@ -112,7 +112,7 @@ The PDFs are data. `fetch_corpus.py` opens them with PyMuPDF only to copy page r
 
 ## Results with Reciprocal Rank Fusion (2026-10-20, `-rrf` files)
 
-`results/2026-10-20-rrf.md` has the full tables. The comparison with the baseline is:
+`results/2026-10-20-rrf.md` has the full tables, and `results/2026-10-20-baseline-vs-rrf.md` is the comparison with the baseline (per document, and the topics that moved most):
 
 ```bash
 python3 evals/retrieval/compare_runs.py evals/results/2026-10-20-baseline.json evals/results/2026-10-20-rrf.json
