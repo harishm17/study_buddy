@@ -155,45 +155,63 @@ class QuestionSet(BaseModel):
 
     @classmethod
     def example(cls) -> "QuestionSet":
-        return cls(
-            questions=[
+        """Enough distinct questions of every type that a mock run meets any quiz or exam plan."""
+        per_type = 6
+        questions: List[GeneratedQuestion] = []
+        for n in range(1, per_type + 1):
+            correct = "ABCD"[n % 4]
+            questions.append(
                 GeneratedQuestion(
                     question_type="multiple_choice",
-                    question_text="Which statement best describes the topic? (mock)",
+                    question_text=f"Which statement ({n}) best describes the topic? (mock)",
                     options=[
-                        ChoiceOption(id="A", text="An unrelated idea"),
-                        ChoiceOption(id="B", text="The central idea of the topic"),
-                        ChoiceOption(id="C", text="A common misconception"),
-                        ChoiceOption(id="D", text="A detail from another chapter"),
+                        ChoiceOption(
+                            id=letter,
+                            text=(
+                                f"The central idea of the topic, version {n}"
+                                if letter == correct
+                                else f"Distractor {letter} for question {n}"
+                            ),
+                        )
+                        for letter in "ABCD"
                     ],
-                    correct_answer="B",
-                    explanation="B restates the main idea. (mock output)",
+                    correct_answer=correct,
+                    explanation=f"{correct} restates the main idea. (mock output)",
                     points=2,
-                ),
+                )
+            )
+        for n in range(1, per_type + 1):
+            questions.append(
                 GeneratedQuestion(
                     question_type="true_false",
-                    question_text="The topic builds on earlier material. (mock)",
-                    correct_answer=True,
-                    explanation="It does. (mock output)",
-                ),
+                    question_text=f"Statement {n}: the topic builds on earlier material. (mock)",
+                    correct_answer=n % 2 == 1,
+                    explanation="See the course notes. (mock output)",
+                )
+            )
+        for n in range(1, per_type + 1):
+            questions.append(
                 GeneratedQuestion(
                     question_type="short_answer",
-                    question_text="Explain the key principle in two sentences. (mock)",
-                    sample_answer="The key principle links the main components. (mock)",
-                    key_points=["Names the principle", "Links the components"],
+                    question_text=f"Explain key principle {n} in two sentences. (mock)",
+                    sample_answer=f"Principle {n} links the main components. (mock)",
+                    key_points=[f"Names principle {n}", "Links the components"],
                     explanation="A full answer names the principle and how the parts relate.",
                     points=3,
-                ),
+                )
+            )
+        for n in range(1, per_type + 1):
+            questions.append(
                 GeneratedQuestion(
                     question_type="numerical",
-                    question_text="Compute 6 x 7. (mock)",
-                    correct_answer=42,
+                    question_text=f"Compute {n + 1} x 7. (mock)",
+                    correct_answer=(n + 1) * 7,
                     tolerance=0,
-                    explanation="6 x 7 = 42. (mock output)",
+                    explanation=f"{n + 1} x 7 = {(n + 1) * 7}. (mock output)",
                     points=2,
-                ),
-            ]
-        )
+                )
+            )
+        return cls(questions=questions)
 
 
 # ---------------------------------------------------------------- examples

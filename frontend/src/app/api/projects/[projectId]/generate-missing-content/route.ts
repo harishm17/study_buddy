@@ -3,7 +3,10 @@ import { requireAuth } from '@/lib/auth/get-session'
 import { prisma } from '@/lib/db/prisma'
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
 import { enqueueContentGenerationJob, TaskEnqueueError } from '@/lib/tasks/cloud-tasks'
-import { stableStringify } from '@/lib/utils/stable-json'
+import {
+  createJobOrFindActive,
+  generateContentTarget,
+} from '@/lib/jobs/active-jobs'
 import {
   apiInternal,
   apiNotFound,
@@ -17,9 +20,6 @@ const REQUIRED_CONTENT_TYPES = [
   'interactive_examples',
   'topic_quiz',
 ] as const
-
-const STALE_JOB_WINDOW_MS = 6 * 60 * 1000
-const PENDING_DISPATCH_STALE_MS = 90 * 1000
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -59,40 +59,6 @@ export async function POST(
     if (preflightError) {
       return preflightError
     }
-
-    const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS)
-    const pendingDispatchBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS)
-
-    await prisma.processingJob.updateMany({
-      where: {
-        projectId,
-        jobType: 'generate_content',
-        status: {
-          in: ['pending', 'processing'],
-        },
-        OR: [
-          {
-            createdAt: {
-              lt: staleBefore,
-            },
-          },
-          {
-            status: 'pending',
-            startedAt: null,
-            createdAt: {
-              lt: pendingDispatchBefore,
-            },
-          },
-        ],
-      },
-      data: {
-        status: 'failed',
-        errorCode: 'STALE_JOB',
-        errorMessage: 'Automatically closed stale in-flight job.',
-        retryable: true,
-        completedAt: new Date(),
-      },
-    })
 
     const [topics, activeGenerationJobs] = await Promise.all([
       prisma.topic.findMany({
@@ -166,24 +132,26 @@ export async function POST(
       }
 
       const preferences: Record<string, never> = {}
-      const idempotencyKey = `${item.topicId}:${item.contentType}:${stableStringify(preferences)}`
-
-      const job = await prisma.processingJob.create({
-        data: {
-          userId: auth.user.id,
-          projectId,
-          jobType: 'generate_content',
-          status: 'pending',
-          stage: 'generating',
-          inputData: {
-            topicId: item.topicId,
-            contentType: item.contentType,
-            preferences,
-            idempotencyKey,
-          },
-          progressPercent: 0,
+      const targetKey = generateContentTarget(item.topicId, item.contentType)
+      const { job, created } = await createJobOrFindActive({
+        userId: auth.user.id,
+        projectId,
+        jobType: 'generate_content',
+        status: 'pending',
+        stage: 'generating',
+        inputData: {
+          topicId: item.topicId,
+          contentType: item.contentType,
+          preferences,
         },
+        progressPercent: 0,
+        targetKey,
       })
+      if (!created) {
+        // Another request started this block between the check above and now.
+        skippedActive += 1
+        continue
+      }
 
       try {
         await enqueueContentGenerationJob(job.id, item.topicId, item.contentType, preferences)

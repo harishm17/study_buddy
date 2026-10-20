@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { QuizHistory, formatAnswer } from './quiz-history'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useJobPolling } from '@/hooks/useJobPolling'
+import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling'
 import { MarkdownBlock, MarkdownInline } from '@/components/ui/markdown'
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
 import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
@@ -105,6 +105,7 @@ export function QuizInterface({
   const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 180_000 })
 
   useEffect(() => {
+    isMountedRef.current = true
     return () => {
       isMountedRef.current = false
       stopPolling()
@@ -284,7 +285,7 @@ export function QuizInterface({
           router.refresh()
           return
         }
-        setError(pollResult.error || 'Failed to generate new quiz set')
+        setError(pollFailureMessage(pollResult, 'Failed to generate new quiz set'))
         setRegenerating(false)
       })()
     } catch (error) {

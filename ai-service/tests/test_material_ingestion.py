@@ -1,8 +1,9 @@
 """Reading uploads, validating them, and the validate/chunk job handlers.
 
-Storage and database calls are replaced with fakes; the real database path is covered by the
-end-to-end run described in the pull request.
+Storage is a temp folder; the job handlers run against the test Postgres (see conftest.py).
 """
+import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from app.services.document_processor.storage import StorageError, local_copy
 from app.services.document_processor.validator import validate_material
 from app.services.llm import LLMFactory
 from app.services.llm.schemas import MaterialCheck
+from tests.db_helpers import get_job, seed_job, seed_material, seed_project, seed_user
 from tests.document_fixtures import PdfBuilder, sentences
 
 
@@ -187,93 +189,95 @@ class TestValidation:
         assert ": 4." in result.notes
 
 
-class FakeDatabase:
-    """Records what the job handlers write instead of talking to Postgres."""
-
-    def __init__(self, material):
-        self.material = material
-        self.updates = []
-        self.transactions = []
-
-    async def execute_one(self, query, *args):
-        if "FROM materials" in query and "gcs_path" in query:
-            return self.material
-        return None
-
-    async def execute_update(self, query, *args):
-        self.updates.append((" ".join(query.split()), args))
-
-    async def execute_in_transaction(self, operations):
-        conn = FakeConnection()
-        self.transactions.append(conn)
-        return await operations(conn)
-
-    def updates_matching(self, fragment):
-        return [(sql, args) for sql, args in self.updates if fragment in sql]
-
-
-class FakeConnection:
-    def __init__(self):
-        self.calls = []
-
-    async def execute(self, query, *args):
-        self.calls.append(("execute", " ".join(query.split()), args))
-
-    async def executemany(self, query, records):
-        self.calls.append(("executemany", " ".join(query.split()), list(records)))
-
-
 @pytest.fixture
-def fake_db(monkeypatch):
-    def install(material):
-        database = FakeDatabase(material)
-        monkeypatch.setattr(jobs, "execute_one", database.execute_one)
-        monkeypatch.setattr(jobs, "execute_update", database.execute_update)
-        monkeypatch.setattr(jobs, "execute_in_transaction", database.execute_in_transaction)
-        return database
+def dispatched(monkeypatch):
+    """Job dispatches the handlers ask for (nothing is sent anywhere)."""
+    sent = []
 
-    return install
+    async def enqueue(job_id, *args):
+        sent.append((job_id, *args))
+
+    monkeypatch.setattr(jobs, "enqueue_chunking_job", enqueue)
+    monkeypatch.setattr(jobs, "enqueue_topic_extraction_job", enqueue)
+    return sent
 
 
-def payload(job_type: str) -> JobPayload:
-    return JobPayload(jobId="job1", jobType=job_type, data={"materialId": "m1"})
+class Setup:
+    """A user, project, material and the job that works on it."""
+
+    def __init__(self, pool):
+        self.pool = pool
+
+    @classmethod
+    async def create(cls, pool, job_type, gcs_path, filename="doc.pdf", status="pending"):
+        self = cls(pool)
+        self.user_id = await seed_user(pool)
+        self.project_id = await seed_project(pool, self.user_id)
+        self.material_id = await seed_material(pool, self.project_id, gcs_path, filename, status)
+        self.job_id = await seed_job(
+            pool, self.user_id, job_type, project_id=self.project_id,
+            input_data={"materialId": self.material_id},
+        )
+        return self
+
+    @property
+    def payload(self) -> JobPayload:
+        return JobPayload(jobId=self.job_id, jobType="", data={"materialId": self.material_id})
+
+    async def job(self):
+        return await get_job(self.pool, self.job_id)
+
+    async def material(self):
+        return await self.pool.fetchrow("SELECT * FROM materials WHERE id = $1", self.material_id)
 
 
 class TestValidateJob:
-    async def test_storage_error_fails_the_job_as_retryable_and_leaves_the_material(self, fake_db):
-        database = fake_db(
-            {"id": "m1", "gcs_path": "gs://b/u/p/gone.pdf", "filename": "gone.pdf", "category": "x"}
-        )
+    async def test_storage_error_fails_the_job_as_retryable_and_leaves_the_material(self, db):
+        s = await Setup.create(db, "validate_material", "gs://b/u/p/gone.pdf", "gone.pdf")
 
         with pytest.raises(HTTPException) as raised:
-            await jobs.validate_material_job(payload("validate_material"))
+            await jobs.validate_material_job(s.payload)
 
         assert raised.value.status_code == 500
-        assert not database.updates_matching("UPDATE materials")
-        (sql, args), = database.updates_matching("status = 'failed'")
-        assert args[2] == "STORAGE_UNAVAILABLE"
-        assert args[3] is True  # retryable
+        job = await s.job()
+        assert (job["status"], job["error_code"], job["retryable"]) == (
+            "failed", "STORAGE_UNAVAILABLE", True,
+        )
+        assert (await s.material())["validation_status"] == "pending"
 
-    async def test_corrupt_file_marks_the_material_invalid(self, fake_db, production_without_gcs):
+    async def test_corrupt_file_marks_the_material_invalid_and_starts_no_chunking(
+        self, db, production_without_gcs, dispatched
+    ):
         target = production_without_gcs / "u" / "p" / "bad.pdf"
         target.parent.mkdir(parents=True)
         target.write_bytes(b"junk")
-        database = fake_db(
-            {"id": "m1", "gcs_path": "gs://b/u/p/bad.pdf", "filename": "bad.pdf", "category": "x"}
-        )
+        s = await Setup.create(db, "validate_material", "gs://b/u/p/bad.pdf", "bad.pdf")
 
-        await jobs.validate_material_job(payload("validate_material"))
+        result = await jobs.validate_material_job(s.payload)
 
-        (sql, args), = database.updates_matching("UPDATE materials")
-        assert args[0] == "invalid"
+        assert result["status"] == "success"
+        assert (await s.material())["validation_status"] == "invalid"
+        assert (await s.job())["status"] == "completed"
+        assert dispatched == []
+
+    async def test_valid_file_completes_and_starts_one_chunking_job(
+        self, db, production_without_gcs, dispatched
+    ):
+        gcs_path = put_upload(production_without_gcs, "ok.pdf", text_pdf(3))
+        s = await Setup.create(db, "validate_material", gcs_path, "ok.pdf")
+
+        await jobs.validate_material_job(s.payload)
+
+        assert (await s.material())["validation_status"] == "valid"
+        chunk_jobs = await db.fetch("SELECT * FROM processing_jobs WHERE job_type = 'chunk_material'")
+        assert len(chunk_jobs) == 1
+        assert chunk_jobs[0]["status"] == "pending"
+        assert chunk_jobs[0]["project_id"] == s.project_id
+        assert chunk_jobs[0]["target_key"] == f"chunk:{s.material_id}"
+        assert [d[0] for d in dispatched] == [chunk_jobs[0]["id"]]
 
 
 class TestChunkJob:
-    @pytest.fixture
-    def material(self, production_without_gcs):
-        gcs_path = put_upload(production_without_gcs, "doc.pdf", text_pdf(3))
-        return {"id": "m1", "gcs_path": gcs_path, "filename": "doc.pdf", "project_id": "p1"}
-
     @staticmethod
     def fake_embeddings(monkeypatch):
         async def embed(texts):
@@ -281,86 +285,162 @@ class TestChunkJob:
 
         monkeypatch.setattr(jobs, "generate_embeddings", embed)
 
-    async def test_chunks_replace_the_old_ones_in_one_transaction_with_a_bulk_insert(
-        self, fake_db, material, monkeypatch
-    ):
-        database = fake_db(material)
+    @pytest.fixture
+    async def setup(self, db, production_without_gcs, monkeypatch):
+        gcs_path = put_upload(production_without_gcs, "doc.pdf", text_pdf(3))
         self.fake_embeddings(monkeypatch)
+        return await Setup.create(db, "chunk_material", gcs_path, "doc.pdf", status="valid")
 
-        await jobs.chunk_material_job(payload("chunk_material"))
+    async def test_chunks_are_stored_in_order_with_their_vectors(self, setup, db):
+        result = await jobs.chunk_material_job(setup.payload)
 
-        (connection,) = database.transactions
-        kinds = [(kind, sql.split()[0]) for kind, sql, _ in connection.calls]
-        assert kinds == [("execute", "DELETE"), ("executemany", "INSERT")]
-        _, _, records = connection.calls[1]
-        assert len(records) >= 3
-        # (material_id, text, vector, hierarchy, page_start, page_end, chunk_index, tokens)
-        assert [record[6] for record in records] == list(range(len(records)))
-        assert all(record[0] == "m1" and record[2].startswith("[0.5,") for record in records)
-        assert records[0][4] == 1
-        assert database.updates_matching("status = 'completed'")
+        assert result["status"] == "success"
+        rows = await db.fetch(
+            "SELECT chunk_index, page_start, chunk_embedding::text AS vec FROM material_chunks "
+            "WHERE material_id = $1 ORDER BY chunk_index",
+            setup.material_id,
+        )
+        assert len(rows) >= 3
+        assert [r["chunk_index"] for r in rows] == list(range(len(rows)))
+        assert rows[0]["page_start"] == 1
+        assert rows[0]["vec"].startswith("[0.5,")
+        job = await setup.job()
+        assert job["status"] == "completed"
+        assert json.loads(job["result_data"])["chunks_created"] == len(rows)
 
-    async def test_embedding_failure_fails_the_job_and_stores_nothing(
-        self, fake_db, material, monkeypatch
-    ):
-        database = fake_db(material)
-
+    async def test_embedding_failure_fails_the_job_and_stores_nothing(self, setup, db, monkeypatch):
         async def broken(texts):
             raise RuntimeError("embedding model failed to load")
 
         monkeypatch.setattr(jobs, "generate_embeddings", broken)
 
         with pytest.raises(HTTPException) as raised:
-            await jobs.chunk_material_job(payload("chunk_material"))
+            await jobs.chunk_material_job(setup.payload)
 
         assert raised.value.status_code == 500
-        assert database.transactions == []
-        assert not database.updates_matching("status = 'completed'")
-        (sql, args), = database.updates_matching("status = 'failed'")
-        assert args[3] is True  # retryable
+        assert await db.fetchval("SELECT count(*) FROM material_chunks") == 0
+        job = await setup.job()
+        assert (job["status"], job["retryable"]) == ("failed", True)
 
-    async def test_wrong_number_of_vectors_fails_the_job(self, fake_db, material, monkeypatch):
-        database = fake_db(material)
-
+    async def test_wrong_number_of_vectors_fails_the_job(self, setup, db, monkeypatch):
         async def short(texts):
             return [[0.1] * 384]
 
         monkeypatch.setattr(jobs, "generate_embeddings", short)
 
         with pytest.raises(HTTPException):
-            await jobs.chunk_material_job(payload("chunk_material"))
-        assert database.transactions == []
+            await jobs.chunk_material_job(setup.payload)
+        assert await db.fetchval("SELECT count(*) FROM material_chunks") == 0
 
     async def test_file_without_text_is_a_permanent_failure_and_marks_the_material_invalid(
-        self, fake_db, production_without_gcs, monkeypatch
+        self, db, production_without_gcs, monkeypatch
     ):
         gcs_path = put_upload(production_without_gcs, "blank.pdf", PdfBuilder().image_page())
-        database = fake_db(
-            {"id": "m1", "gcs_path": gcs_path, "filename": "blank.pdf", "project_id": "p1"}
-        )
         self.fake_embeddings(monkeypatch)
+        s = await Setup.create(db, "chunk_material", gcs_path, "blank.pdf", status="valid")
 
         with pytest.raises(HTTPException) as raised:
-            await jobs.chunk_material_job(payload("chunk_material"))
+            await jobs.chunk_material_job(s.payload)
 
         assert raised.value.status_code == 400
-        assert database.transactions == []
-        (sql, args), = database.updates_matching("UPDATE materials")
-        assert "invalid" in sql
-        (sql, args), = database.updates_matching("status = 'failed'")
-        assert args[2] == "NO_CONTENT"
-        assert args[3] is False  # not retryable
+        assert await db.fetchval("SELECT count(*) FROM material_chunks") == 0
+        assert (await s.material())["validation_status"] == "invalid"
+        job = await s.job()
+        assert (job["error_code"], job["retryable"]) == ("NO_CONTENT", False)
 
-    async def test_storage_error_fails_the_job_as_retryable(self, fake_db, monkeypatch):
-        database = fake_db(
-            {"id": "m1", "gcs_path": "gs://b/u/p/gone.pdf", "filename": "gone.pdf", "project_id": "p1"}
-        )
+    async def test_storage_error_fails_the_job_as_retryable(self, db, monkeypatch):
         self.fake_embeddings(monkeypatch)
+        s = await Setup.create(db, "chunk_material", "gs://b/u/p/gone.pdf", "gone.pdf", status="valid")
 
         with pytest.raises(HTTPException) as raised:
-            await jobs.chunk_material_job(payload("chunk_material"))
+            await jobs.chunk_material_job(s.payload)
 
         assert raised.value.status_code == 500
-        assert not database.updates_matching("UPDATE materials")
-        (sql, args), = database.updates_matching("status = 'failed'")
-        assert args[3] is True
+        assert (await s.material())["validation_status"] == "valid"
+        assert (await s.job())["retryable"] is True
+
+    async def test_deleted_material_fails_the_job_permanently(self, setup, db):
+        await db.execute("DELETE FROM materials WHERE id = $1", setup.material_id)
+
+        with pytest.raises(HTTPException) as raised:
+            await jobs.chunk_material_job(setup.payload)
+
+        assert raised.value.status_code == 400
+        assert (await setup.job())["error_code"] == "MATERIAL_NOT_FOUND"
+
+    async def test_rerunning_a_completed_chunk_job_changes_nothing(self, setup, db):
+        await jobs.chunk_material_job(setup.payload)
+        before = await db.fetch("SELECT id FROM material_chunks ORDER BY id")
+
+        again = await jobs.chunk_material_job(setup.payload)
+
+        assert again["status"] == "skipped"
+        assert await db.fetch("SELECT id FROM material_chunks ORDER BY id") == before
+
+
+class TestAutoTopicExtraction:
+    @pytest.fixture(autouse=True)
+    def auto_extract(self, monkeypatch, db, production_without_gcs):
+        monkeypatch.setattr(settings, "AUTO_EXTRACT_TOPICS_ON_CHUNK", True)
+        monkeypatch.setattr(settings, "LLM_PROVIDER", "mock")
+
+        async def embed(texts):
+            return [[0.5] * 384 for _ in texts]
+
+        monkeypatch.setattr(jobs, "generate_embeddings", embed)
+
+    @staticmethod
+    async def extraction_jobs(db):
+        return await db.fetch("SELECT * FROM processing_jobs WHERE job_type = 'extract_topics'")
+
+    async def test_extraction_waits_for_uploads_still_being_validated(
+        self, db, production_without_gcs, dispatched
+    ):
+        path = put_upload(production_without_gcs, "doc.pdf", text_pdf(3))
+        a = await Setup.create(db, "chunk_material", path, "doc.pdf", status="valid")
+        b_material = await seed_material(db, a.project_id, path, "doc.pdf", "pending")
+
+        await jobs.chunk_material_job(a.payload)
+        assert await self.extraction_jobs(db) == []
+
+        # Once the other file is validated (invalid here) and nothing is in flight, the next
+        # chunk job to finish starts extraction.
+        await db.execute("UPDATE materials SET validation_status = 'invalid' WHERE id = $1", b_material)
+        second = await seed_job(
+            db, a.user_id, "chunk_material", project_id=a.project_id,
+            input_data={"materialId": a.material_id},
+        )
+        await jobs.chunk_material_job(
+            JobPayload(jobId=second, jobType="", data={"materialId": a.material_id})
+        )
+
+        (extraction,) = await self.extraction_jobs(db)
+        assert extraction["target_key"] == f"extract:{a.project_id}"
+        assert dispatched == [(extraction["id"], a.project_id)]
+
+    async def test_a_valid_material_with_no_chunks_does_not_block_extraction(
+        self, db, production_without_gcs, dispatched
+    ):
+        path = put_upload(production_without_gcs, "doc.pdf", text_pdf(3))
+        a = await Setup.create(db, "chunk_material", path, "doc.pdf", status="valid")
+        await seed_material(db, a.project_id, path, "empty.pdf", "valid")  # never got chunks
+
+        await jobs.chunk_material_job(a.payload)
+
+        assert len(await self.extraction_jobs(db)) == 1
+
+    async def test_simultaneous_starts_create_a_single_extraction_job(
+        self, db, production_without_gcs, dispatched
+    ):
+        path = put_upload(production_without_gcs, "doc.pdf", text_pdf(3))
+        a = await Setup.create(db, "chunk_material", path, "doc.pdf", status="valid")
+        await jobs.chunk_material_job(a.payload)
+        await db.execute("DELETE FROM processing_jobs WHERE job_type = 'extract_topics'")
+        dispatched.clear()
+
+        await asyncio.gather(
+            *[jobs._start_topic_extraction(a.project_id, a.user_id) for _ in range(5)]
+        )
+
+        assert len(await self.extraction_jobs(db)) == 1
+        assert len(dispatched) == 1

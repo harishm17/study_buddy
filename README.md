@@ -208,9 +208,12 @@ Instead of sending whole documents to the model:
 
 #### 3. Async Job Processing
 - Long tasks (PDF processing, content generation) run asynchronously
-- With `ENABLE_CLOUD_TASKS=true`, jobs are enqueued through Google Cloud Tasks; otherwise the frontend calls the AI service directly
-- The enqueue path uses timeouts, bounded exponential backoff, and retryable/permanent error classification
-- The frontend polls job status with exponential backoff and jitter
+- With `ENABLE_CLOUD_TASKS=true` (set on both services), jobs are enqueued through Google Cloud Tasks; otherwise the services call the AI service directly at `AI_SERVICE_URL`
+- Every job endpoint claims its job with one atomic update and keeps a lease while it runs: a finished job never re-runs, a running job is not run twice, and a job whose worker died, or that was never claimed, is dispatched again by the reaper and failed with `JOB_LEASE_EXPIRED` / `JOB_DISPATCH_FAILED` once its attempts run out (`POST /jobs/reap`, also run every `JOB_REAPER_INTERVAL_SECONDS`)
+- The AI service answers 400 for failures a retry cannot fix, 500 for transient ones and 200 `skipped` for jobs already handled; dispatchers retry only network errors and 5xx
+- Each job stores its LLM tokens and estimated cost; `DAILY_LLM_BUDGET_USD` caps what one user's jobs may cost per UTC day
+- A partial unique index allows one pending/processing job per target (topic extraction per project, content generation per topic and type)
+- The browser follows jobs with one hook (`useJobPolling`): per-job pollers, 1 s to 10 s backoff, paused while the tab is hidden, and resumed after a refresh through `GET /api/jobs?active=1`
 - Long jobs do not block the UI
 
 #### 4. Concept-Only Voice Coach

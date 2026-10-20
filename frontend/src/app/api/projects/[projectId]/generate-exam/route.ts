@@ -14,8 +14,6 @@ import {
 } from '@/lib/api/errors';
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight';
 
-const STALE_JOB_WINDOW_MS = 12 * 60 * 1000;
-const PENDING_DISPATCH_STALE_MS = 90 * 1000;
 
 const generateExamSchema = z.object({
   topicIds: z.array(z.string()).min(1, 'At least one topic must be selected'),
@@ -118,39 +116,6 @@ export async function POST(
     };
 
     const idempotencyKey = `${projectId}:${uniqueTopicIds.sort().join(',')}:${stableStringify(config)}`;
-    const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS);
-    const pendingDispatchBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS);
-
-    await prisma.processingJob.updateMany({
-      where: {
-        userId: session.user.id,
-        projectId,
-        jobType: 'generate_exam',
-        status: { in: ['pending', 'processing'] },
-        OR: [
-          {
-            createdAt: { lt: staleBefore },
-          },
-          {
-            status: 'pending',
-            startedAt: null,
-            createdAt: { lt: pendingDispatchBefore },
-          },
-        ],
-        inputData: {
-          path: ['idempotencyKey'],
-          equals: idempotencyKey,
-        },
-      },
-      data: {
-        status: 'failed',
-        errorCode: 'STALE_JOB',
-        errorMessage: 'Automatically closed stale in-flight job. Please retry.',
-        retryable: true,
-        completedAt: new Date(),
-      },
-    });
-
     const existingJob = await prisma.processingJob.findFirst({
       where: {
         userId: session.user.id,

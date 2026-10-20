@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { formatBytes, isValidStudyMaterial, isValidFileSize } from '@/lib/utils'
-import { useJobPolling } from '@/hooks/useJobPolling'
+import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling'
 
 interface MaterialUploadProps {
   projectId: string
@@ -42,7 +42,8 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
   const [isExtractingTopics, setIsExtractingTopics] = useState(false)
   const [postUploadMessage, setPostUploadMessage] = useState<string | null>(null)
   const isMountedRef = useRef(true)
-  const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 90_000 })
+  const [resumedCount, setResumedCount] = useState(0)
+  const { pollJob, stopPolling, resumeActiveJobs } = useJobPolling({ timeoutMs: 90_000 })
 
   const hasInFlightUploads = uploadingFiles.some(
     (file) => file.status === 'uploading' || file.status === 'validating' || file.status === 'processing'
@@ -92,11 +93,32 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
   }, [pollJob, projectId, router])
 
   useEffect(() => {
+    isMountedRef.current = true
     return () => {
       isMountedRef.current = false
       stopPolling()
     }
   }, [stopPolling])
+
+  // Uploads from before a refresh are still being validated or chunked: follow them again.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const active = await resumeActiveJobs({
+        projectId,
+        jobTypes: ['validate_material', 'chunk_material'],
+      }).catch(() => [])
+      if (cancelled || active.length === 0) return
+      setResumedCount(active.length)
+      await Promise.all(active.map((job) => pollJob(job.id)))
+      if (cancelled || !isMountedRef.current) return
+      setResumedCount(0)
+      router.refresh()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [pollJob, projectId, resumeActiveJobs, router])
 
   const uploadFile = useCallback(async (uploadingFile: UploadingFile) => {
     try {
@@ -150,7 +172,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
 
       if (!isMountedRef.current) return
       if (pollResult.state === 'completed') {
-        const resultData = (pollResult.job?.raw?.resultData || null) as Record<string, unknown> | null
+        const resultData = pollResult.job?.resultData ?? null
         const validationStatus =
           typeof resultData?.validation_status === 'string'
             ? resultData.validation_status.toLowerCase()
@@ -221,7 +243,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
                         ? {
                             ...f,
                             status: 'error',
-                            error: chunkingPollResult.error || 'Processing failed. Please retry.'
+                            error: pollFailureMessage(chunkingPollResult, chunkingPollResult.error || 'Processing failed. Please retry.')
                           }
                         : f
                     )
@@ -264,7 +286,7 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
         setUploadingFiles(prev =>
           prev.map(f =>
             f.id === uploadingFile.id
-              ? { ...f, status: 'error', error: pollResult.error || 'Validation failed. Please retry.' }
+              ? { ...f, status: 'error', error: pollFailureMessage(pollResult, pollResult.error || 'Validation failed. Please retry.') }
               : f
           )
         )
@@ -331,8 +353,9 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
 
       setUploadingFiles(prev => [...prev, uploadingFile])
 
-      // Start upload
-      await uploadFile(uploadingFile)
+      // Start the upload without waiting for it to be processed: every file has its own job
+      // and its own poller, so files dropped later never wait for (or cancel) earlier ones.
+      void uploadFile(uploadingFile)
     }
   }, [selectedCategory, uploadFile])
 
@@ -434,6 +457,15 @@ export function MaterialUpload({ projectId }: MaterialUploadProps) {
           </div>
         </CardContent>
       </Card>
+
+      {resumedCount > 0 && (
+        <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-white/75 p-4 text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>
+            {resumedCount} earlier upload{resumedCount === 1 ? ' is' : 's are'} still being processed.
+          </span>
+        </div>
+      )}
 
       {/* Uploading Files */}
       {uploadingFiles.length > 0 && (

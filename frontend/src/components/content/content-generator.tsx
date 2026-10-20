@@ -59,17 +59,13 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
   const [jobStatusText, setJobStatusText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const isMountedRef = useRef(true)
-  const batchPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 180_000 })
+  const { pollJob, stopPolling, resumeActiveJobs } = useJobPolling({ timeoutMs: 180_000 })
 
   useEffect(() => {
+    isMountedRef.current = true
     return () => {
       isMountedRef.current = false
       stopPolling()
-      if (batchPollingRef.current) {
-        clearInterval(batchPollingRef.current)
-        batchPollingRef.current = null
-      }
     }
   }, [stopPolling])
 
@@ -106,6 +102,48 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
     checkExistingContent()
   }, [checkExistingContent])
 
+  // Generation jobs for this topic that were running before a refresh: follow them again.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const active = await resumeActiveJobs({ jobTypes: ['generate_content'] }).catch(() => [])
+      const prefix = `content:${topic.id}:`
+      const mine = active.filter(
+        (job) => typeof job.raw.targetKey === 'string' && job.raw.targetKey.startsWith(prefix)
+      )
+      if (cancelled || mine.length === 0) return
+
+      setIsGeneratingAll(true)
+      setJobStatusText('Content generation is still running. Monitoring progress...')
+      try {
+        await pollBatchJobs(
+          mine.map((job) => ({
+            contentType: String(job.raw.targetKey).slice(prefix.length),
+            jobId: job.id,
+            status: job.status,
+            progressPercent: job.progressPercent,
+            stage: job.stage ?? null,
+            errorMessage: null,
+          }))
+        )
+        if (cancelled || !isMountedRef.current) return
+        await checkExistingContent()
+        setJobStatusText('Content generation finished.')
+      } finally {
+        if (isMountedRef.current) {
+          setIsGeneratingAll(false)
+          setBatchProgress(null)
+          setBatchJobs(null)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // pollBatchJobs and checkExistingContent change identity every render; resume runs once per topic.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topic.id, resumeActiveJobs])
+
   const contentTypeLabels: Record<string, string> = {
     section_notes: 'Section Notes',
     solved_examples: 'Solved Examples',
@@ -139,74 +177,40 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
     return data.jobId as string
   }
 
+  // Follow every job in the batch on its own poller, and return when all have finished.
   const pollBatchJobs = async (jobs: BatchJobStatus[]) => {
-    if (batchPollingRef.current) {
-      clearInterval(batchPollingRef.current)
-      batchPollingRef.current = null
+    let current = jobs
+    setBatchJobs(current)
+    setBatchProgress({ current: 0, total: current.length })
+
+    const update = (jobId: string, patch: Partial<BatchJobStatus>) => {
+      current = current.map((job) => (job.jobId === jobId ? { ...job, ...patch } : job))
+      if (!isMountedRef.current) return
+      setBatchJobs(current)
+      setBatchProgress({
+        current: current.filter((job) => job.status === 'completed' || job.status === 'failed').length,
+        total: current.length,
+      })
     }
 
-    setBatchJobs(jobs)
-    setBatchProgress({ current: 0, total: jobs.length })
-
-    const pollOnce = async (): Promise<boolean> => {
-      if (!isMountedRef.current) return true
-
-      const results = await Promise.allSettled(
-        jobs.map(async (job) => {
-          const response = await fetch(`/api/jobs/${job.jobId}`)
-          if (!response.ok) {
-            throw new Error(`Failed to fetch job ${job.jobId}`)
-          }
-          return response.json()
-        })
-      )
-
-      const nextJobs = jobs.map((job, index) => {
-        const result = results[index]
-        if (result.status !== 'fulfilled') {
-          return job
-        }
-        const payload = result.value as Record<string, any>
-        const status = String(payload.status || 'queued') as BatchJobStatus['status']
-        return {
-          ...job,
-          status,
-          progressPercent: Number(payload.progressPercent || 0),
-          stage: payload.stage ?? null,
-          errorMessage: payload.errorMessage ?? null,
+    await Promise.all(
+      jobs.map(async (job) => {
+        const result = await pollJob(job.jobId, (polled) =>
+          update(job.jobId, {
+            status: polled.status,
+            progressPercent: polled.progressPercent,
+            stage: polled.stage ?? null,
+            errorMessage: polled.errorMessage ?? null,
+          })
+        )
+        if (result.state !== 'completed') {
+          update(job.jobId, {
+            status: 'failed',
+            errorMessage: result.error || 'Content generation failed',
+          })
         }
       })
-
-      if (!isMountedRef.current) return true
-
-      setBatchJobs(nextJobs)
-      jobs = nextJobs
-
-      const completedCount = nextJobs.filter((job) =>
-        job.status === 'completed' || job.status === 'failed'
-      ).length
-      setBatchProgress({ current: completedCount, total: nextJobs.length })
-
-      const allDone = completedCount === nextJobs.length
-      if (allDone && batchPollingRef.current) {
-        clearInterval(batchPollingRef.current)
-        batchPollingRef.current = null
-      }
-      return allDone
-    }
-
-    const done = await pollOnce()
-    if (done) {
-      return
-    }
-
-    batchPollingRef.current = setInterval(async () => {
-      const finished = await pollOnce()
-      if (finished && batchPollingRef.current) {
-        clearInterval(batchPollingRef.current)
-        batchPollingRef.current = null
-      }
-    }, 1500)
+    )
   }
 
   const pollContentJob = async (
@@ -364,11 +368,6 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
       }))
 
       await pollBatchJobs(initialJobs)
-
-      // Wait for all jobs to complete.
-      while (batchPollingRef.current) {
-        await new Promise((resolve) => setTimeout(resolve, 400))
-      }
 
       await checkExistingContent()
       setJobStatusText(

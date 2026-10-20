@@ -9,6 +9,8 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str
+    DB_POOL_MAX_SIZE: int = 20
+    DB_COMMAND_TIMEOUT_SECONDS: float = 60.0
 
     # LLM: Claude for all text generation and grading.
     # "mock" returns schema-valid placeholder output with no API calls (local dev, e2e runs).
@@ -43,6 +45,26 @@ class Settings(BaseSettings):
     ENABLE_PROCESSING: bool = True
     AUTO_EXTRACT_TOPICS_ON_CHUNK: bool = True
 
+    # Jobs. A job is claimed with a lease that its handler keeps extending; the reaper
+    # takes over jobs whose lease ran out. 0 turns the periodic reaper off (POST /jobs/reap
+    # still works).
+    JOB_REAPER_INTERVAL_SECONDS: float = 60.0
+    # A job still pending (never claimed) this long after creation is dispatched again, then
+    # again after twice, three times this long, and so on. After JOB_MAX_REDISPATCHES
+    # re-dispatches it is failed with JOB_DISPATCH_FAILED.
+    JOB_PENDING_REDISPATCH_SECONDS: float = 120.0
+    JOB_MAX_REDISPATCHES: int = 3
+    # Most an LLM-backed job may spend per user per UTC day, from the stored job costs.
+    # 0 turns the cap off.
+    DAILY_LLM_BUDGET_USD: float = 3.00
+
+    # Dispatching jobs to this service. With ENABLE_CLOUD_TASKS the service creates Cloud
+    # Tasks (project, location and queue below); otherwise it posts to AI_SERVICE_URL itself.
+    ENABLE_CLOUD_TASKS: bool = False
+    CLOUD_TASKS_PROJECT_ID: str = ""  # falls back to GCS_PROJECT_ID
+    CLOUD_TASKS_LOCATION: str = "us-central1"
+    CLOUD_TASKS_QUEUE: str = "studybuddy-jobs"
+
     # GCP (optional, can use local storage)
     GCS_BUCKET: str = ""
     GCS_BUCKET_NAME: str = ""  # Alternative name used in some configs
@@ -65,6 +87,10 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Check if running in development."""
         return self.ENVIRONMENT == "development"
+
+    @property
+    def cloud_tasks_project(self) -> str:
+        return self.CLOUD_TASKS_PROJECT_ID or self.GCS_PROJECT_ID
 
     @property
     def gcs_configured(self) -> bool:

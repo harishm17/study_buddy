@@ -10,7 +10,7 @@ import ExamInterface from './exam-interface';
 import ExamHistory from './exam-history';
 import { ArrowLeft, Clock, BarChart3, BookOpen, Play, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useJobPolling } from '@/hooks/useJobPolling';
+import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling';
 import { PageHeader } from '@/components/ui/page-shell';
 
 interface ExamQuestion {
@@ -51,6 +51,7 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
   const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 300_000 });
 
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       stopPolling();
@@ -73,7 +74,7 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit exam');
+        throw new Error('Failed to submit exam. Please try again.');
       }
 
       const data = await response.json();
@@ -83,14 +84,20 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
       // Poll for grading completion
       const pollResult = await pollJob(data.jobId);
       if (pollResult.state !== 'completed') {
-        throw new Error(pollResult.error || 'Grading did not complete');
+        throw new Error(
+          pollFailureMessage(pollResult, 'Failed to submit exam. Please try again.')
+        );
       }
       if (!isMountedRef.current) return;
       setIsSubmitting(false);
       router.refresh();
     } catch (error) {
       console.error('Error submitting exam:', error);
-      setError('Failed to submit exam. Please try again.');
+      setError(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Failed to submit exam. Please try again.'
+      );
       setIsSubmitting(false);
     }
   };

@@ -38,7 +38,8 @@ def test_job_and_voice_routes_are_all_listed():
     assert "/jobs/grade-exam" in paths
     assert "/voice/realtime/token" in paths
     assert "/grade/quiz" in paths
-    assert len(PROTECTED) == 9
+    assert "/jobs/reap" in paths
+    assert len(PROTECTED) == 10
 
 
 @pytest.mark.parametrize("method,path", PROTECTED)
@@ -53,7 +54,23 @@ def test_wrong_token_is_refused(client, token, method, path):
     assert resp.status_code == 401
 
 
-@pytest.mark.parametrize("method,path", PROTECTED)
+# /jobs/reap takes no body, so there is no validation step to stop at.
+BODY_ROUTES = [route for route in PROTECTED if route[1] != "/jobs/reap"]
+
+
+def test_right_token_reaches_the_reaper(client, token, monkeypatch):
+    from app.api.routes import jobs
+
+    async def reap():
+        return {"failed": 0, "redispatched": 0}
+
+    monkeypatch.setattr(jobs, "reap_expired_jobs", reap)
+    resp = client.post("/jobs/reap", headers={HEADER: token})
+    assert resp.status_code == 200
+    assert resp.json() == {"failed": 0, "redispatched": 0}
+
+
+@pytest.mark.parametrize("method,path", BODY_ROUTES)
 def test_right_token_reaches_request_validation(client, token, method, path):
     # A list body fails validation (422) only after the token check has passed, so the
     # handler never runs and nothing calls a model or the database.
@@ -110,4 +127,5 @@ async def test_self_calls_send_the_token(monkeypatch):
     monkeypatch.setattr(settings, "ENVIRONMENT", "development")
     monkeypatch.setattr(cloud_tasks.httpx, "AsyncClient", lambda *a, **k: FakeClient())
     await cloud_tasks.enqueue_task("/jobs/extract-topics", {"jobId": "j1", "data": {}})
+    await cloud_tasks.wait_for_background_tasks()
     assert sent["headers"][HEADER] == "s3cret-token"
