@@ -28,7 +28,8 @@ class Settings(BaseSettings):
 
     # Embeddings. "local" runs a small ONNX model in-process (no API key, no per-call cost);
     # "openai" uses text-embedding-3-small and needs OPENAI_API_KEY.
-    # Changing the provider or model changes the vector size: re-embed with scripts/reembed_chunks.py.
+    # The chunk column is vector(384) (EMBEDDING_DIMENSIONS in embeddings/generator.py), so only
+    # 384-number models fit; after changing the model, re-embed with scripts/reembed_chunks.py.
     EMBEDDING_PROVIDER: str = "local"
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_CACHE_DIR: str = ""

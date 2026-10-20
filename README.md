@@ -82,7 +82,7 @@ Progress bars, attempt history, and per-attempt scores shown inline
 ### Prerequisites
 - **Node.js** 24+ and **npm**
 - **Python** 3.13+ and [uv](https://docs.astral.sh/uv/)
-- **PostgreSQL** 15+ with **pgvector** extension
+- **PostgreSQL** 15+ with the **pgvector** extension, version 0.5 or newer (the chunk index is HNSW)
 - **Anthropic API Key** ([Get one here](https://console.anthropic.com/settings/keys))
 - **OpenAI API Key** (optional, only for the Voice Coach)
 
