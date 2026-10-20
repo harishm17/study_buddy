@@ -32,6 +32,8 @@ export default defineRailway(() => {
       : {};
   // Watch paths are relative to the repository, so they only make sense for GitHub deploys.
   const watch = (folder: string) => (AUTO_DEPLOY_FROM_GITHUB ? { watchPatterns: [`/${folder}/**`] } : {});
+  // Public site address (custom domain on the web service; www redirects here).
+  const SITE_URL = "https://studymargins.com";
   // The web app reaches the AI service over the private network only.
   const aiServiceUrl = "http://${{ai.RAILWAY_PRIVATE_DOMAIN}}:8000";
 
@@ -49,7 +51,7 @@ export default defineRailway(() => {
       DATABASE_URL: Postgres.env.DATABASE_URL,
       PORT: "8000",
       AI_SERVICE_URL: aiServiceUrl,
-      FRONTEND_URL: "https://${{web.RAILWAY_PUBLIC_DOMAIN}}",
+      FRONTEND_URL: SITE_URL,
       ...s3,
     },
   });
@@ -65,7 +67,10 @@ export default defineRailway(() => {
     env: {
       ENVIRONMENT: "production",
       NEXTAUTH_SECRET: preserve(),
-      NEXTAUTH_URL: "https://${{web.RAILWAY_PUBLIC_DOMAIN}}",
+      NEXTAUTH_URL: SITE_URL,
+      // Google sign-in (OAuth client "Margins web" in the Google Cloud project "studybuddy").
+      GOOGLE_OAUTH_CLIENT_ID: preserve(),
+      GOOGLE_OAUTH_CLIENT_SECRET: preserve(),
       DATABASE_URL: Postgres.env.DATABASE_URL,
       PORT: "3000",
       AI_SERVICE_URL: aiServiceUrl,
