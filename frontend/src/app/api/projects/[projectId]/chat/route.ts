@@ -22,7 +22,7 @@ import {
   titleFromQuestion,
   toHistoryTurns,
 } from '@/lib/chat/server'
-import { relayChatStream, type ChatStorage } from '@/lib/chat/stream'
+import { relayChatStream, type ChatStorage, type UsageInfo } from '@/lib/chat/stream'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -153,35 +153,59 @@ export async function POST(
   }
   const activeThread = thread
 
+  // The ledger row is written in the same transaction as the message it pays for. The daily
+  // budget sums the ledger, not the messages, so deleting a thread cannot lower it.
+  const ledgerRow = (usage: UsageInfo, sourceId: string) => ({
+    userId,
+    projectId,
+    source: 'chat',
+    sourceId,
+    models: usage.model,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    costUsd: usage.costUsd.toFixed(6),
+    createdAt: new Date(),
+  })
+
   const storage: ChatStorage = {
     async saveAnswer(record) {
-      const message = await prisma.chatMessage.create({
-        data: {
-          threadId: activeThread.id,
-          role: 'assistant',
-          content: record.text,
-          citations: toStoredCitations(record.sources, record.marks) as unknown as Prisma.InputJsonValue,
-          llmInputTokens: record.usage.inputTokens,
-          llmOutputTokens: record.usage.outputTokens,
-          llmCostUsd: record.usage.costUsd.toFixed(6),
-        },
-        select: { id: true },
+      return prisma.$transaction(async (tx) => {
+        const message = await tx.chatMessage.create({
+          data: {
+            threadId: activeThread.id,
+            role: 'assistant',
+            content: record.text,
+            citations: toStoredCitations(record.sources, record.marks) as unknown as Prisma.InputJsonValue,
+            llmInputTokens: record.usage.inputTokens,
+            llmOutputTokens: record.usage.outputTokens,
+            llmCostUsd: record.usage.costUsd.toFixed(6),
+          },
+          select: { id: true },
+        })
+        if (record.usage.costUsd > 0 || record.usage.inputTokens > 0 || record.usage.outputTokens > 0) {
+          await tx.llmUsageEvent.create({ data: ledgerRow(record.usage, message.id) })
+        }
+        await tx.chatThread.update({ where: { id: activeThread.id }, data: { updatedAt: new Date() } })
+        return message.id
       })
-      await prisma.chatThread.update({ where: { id: activeThread.id }, data: { updatedAt: new Date() } })
-      return message.id
     },
     async recordFailure(code, usage) {
       if (usage && usage.costUsd > 0) {
-        // The model ran and was billed. Keep a note so the cost counts toward the daily budget.
-        await prisma.chatMessage.create({
-          data: {
-            threadId: activeThread.id,
-            role: 'error',
-            content: chatErrorMessage(code).message,
-            llmInputTokens: usage.inputTokens,
-            llmOutputTokens: usage.outputTokens,
-            llmCostUsd: usage.costUsd.toFixed(6),
-          },
+        // The model ran and was billed. Keep a note, and a ledger row, so the cost counts
+        // toward the daily budget.
+        await prisma.$transaction(async (tx) => {
+          const note = await tx.chatMessage.create({
+            data: {
+              threadId: activeThread.id,
+              role: 'error',
+              content: chatErrorMessage(code).message,
+              llmInputTokens: usage.inputTokens,
+              llmOutputTokens: usage.outputTokens,
+              llmCostUsd: usage.costUsd.toFixed(6),
+            },
+            select: { id: true },
+          })
+          await tx.llmUsageEvent.create({ data: ledgerRow(usage, note.id) })
         })
         return
       }

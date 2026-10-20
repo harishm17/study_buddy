@@ -26,7 +26,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.db.connection import UTC_NOW, execute_one
 from app.models.jobs import JobPayload
-from app.services.budget import over_budget_message
+from app.services.budget import over_budget_message, record_usage_event
 from app.services.content_generator.context import NoSourceMaterialError
 from app.services.document_processor.chunker import NoContentError
 from app.services.document_processor.storage import StorageError
@@ -232,8 +232,24 @@ def _usage_columns(usages) -> tuple[Dict[str, object], int, int, float]:
     )
 
 
+async def _record_ledger(job: JobContext, summary, input_tokens: int, output_tokens: int, cost: float) -> None:
+    """Add this attempt's spend to the budget ledger, whether or not the job still holds its claim:
+    the model was called and billed either way."""
+    await record_usage_event(
+        user_id=job.user_id,
+        project_id=job.project_id,
+        source="job",
+        source_id=job.id,
+        models=",".join(summary["models"]),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cost_usd=cost,
+    )
+
+
 async def _complete(job: JobContext, outcome: JobOutcome, usages) -> None:
     summary, input_tokens, output_tokens, cost = _usage_columns(usages)
+    await _record_ledger(job, summary, input_tokens, output_tokens, cost)
     result = dict(outcome.result)
     if usages:
         result["usage"] = summary
@@ -266,7 +282,8 @@ async def _complete(job: JobContext, outcome: JobOutcome, usages) -> None:
 
 
 async def _fail(job: JobContext, error_code: str, retryable: bool, message: str, usages) -> None:
-    _, input_tokens, output_tokens, cost = _usage_columns(usages)
+    summary, input_tokens, output_tokens, cost = _usage_columns(usages)
+    await _record_ledger(job, summary, input_tokens, output_tokens, cost)
     await execute_one(
         f"""
         UPDATE processing_jobs

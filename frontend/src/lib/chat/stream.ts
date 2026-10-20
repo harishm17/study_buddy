@@ -10,7 +10,7 @@ import { createLineSplitter, parseChatEvent } from './events'
 import { chatErrorMessage } from './errors'
 import type { ChatSource, CitationMark } from './citations'
 
-export type UsageInfo = { inputTokens: number; outputTokens: number; costUsd: number }
+export type UsageInfo = { model: string; inputTokens: number; outputTokens: number; costUsd: number }
 
 export type AnswerRecord = {
   text: string
@@ -35,6 +35,7 @@ export function parseUsage(value: unknown): UsageInfo | null {
   const raw = value as Record<string, unknown>
   const number = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0)
   return {
+    model: typeof raw.model === 'string' ? raw.model : '',
     inputTokens: Math.round(number(raw.input_tokens)),
     outputTokens: Math.round(number(raw.output_tokens)),
     costUsd: number(raw.cost_usd),
@@ -96,7 +97,7 @@ export function relayChatStream(args: {
 
             if (event.type === 'done') {
               finished = true
-              const usage = parseUsage(raw.usage) ?? { inputTokens: 0, outputTokens: 0, costUsd: 0 }
+              const usage = parseUsage(raw.usage) ?? { model: '', inputTokens: 0, outputTokens: 0, costUsd: 0 }
               // The browser sees the finished answer before the database write.
               send({ ...raw, usage: undefined })
               let messageId: string | null = null

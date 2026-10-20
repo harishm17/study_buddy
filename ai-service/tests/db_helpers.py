@@ -134,3 +134,18 @@ async def seed_chat_message(pool, thread_id: str, *, role: str = "assistant", co
         cost,
     )
     return message_id
+
+
+async def seed_usage(pool, user_id: str, cost: float, *, source: str = "job",
+                     project_id: Optional[str] = None,
+                     created_at: str = "SQL:(NOW() AT TIME ZONE 'UTC')") -> str:
+    """One row of the LLM usage ledger (what the daily budget sums)."""
+    event_id = new_id()
+    await pool.execute(
+        f"""
+        INSERT INTO llm_usage_events (id, user_id, project_id, source, source_id, cost_usd, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, {created_at[4:]})
+        """,
+        event_id, user_id, project_id, source, new_id(), cost,
+    )
+    return event_id

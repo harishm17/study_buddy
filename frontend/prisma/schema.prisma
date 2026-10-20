@@ -37,6 +37,7 @@ model User {
   learningSignals     LearningSignal[]
   reviewSchedules     ReviewSchedule[]
   chatThreads         ChatThread[]
+  llmUsageEvents      LlmUsageEvent[]
 
   @@index([oauthProvider, oauthId])
   @@map("users")
@@ -552,8 +553,8 @@ model ChatMessage {
   // Assistant messages only: { sources: [...], marks: [{ offset, marker }] }. The shape is
   // documented in src/lib/chat/citations.ts.
   citations Json?
-  // Assistant messages only. The AI service adds llmCostUsd to the per-user daily budget,
-  // together with the processing job costs.
+  // Assistant messages (and billed failure notes). The cost is also written to llm_usage_events,
+  // which is what the daily budget sums; these columns are for display and auditing.
   llmInputTokens  Int      @default(0) @map("llm_input_tokens")
   llmOutputTokens Int      @default(0) @map("llm_output_tokens")
   llmCostUsd      Decimal  @default(0) @map("llm_cost_usd") @db.Decimal(12, 6)
@@ -564,4 +565,31 @@ model ChatMessage {
 
   @@index([threadId, createdAt])
   @@map("chat_messages")
+}
+
+// ============================================
+// LLM usage ledger (the daily budget)
+// ============================================
+
+// Append-only: one row per LLM spend (a job attempt, a chat answer or a billed chat failure),
+// written when the cost is known and never updated or deleted by the app. The per-user daily
+// budget sums this table, so deleting a thread, a project or its jobs cannot lower it. Only
+// deleting the user removes their rows. projectId and sourceId are plain columns on purpose:
+// they have no foreign keys, so they outlive what they point at.
+model LlmUsageEvent {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  projectId    String?  @map("project_id")
+  source       String // job|chat
+  sourceId     String   @map("source_id") // processing job id or chat message id
+  models       String   @default("") // comma-separated
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  costUsd      Decimal  @default(0) @map("cost_usd") @db.Decimal(12, 6)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("llm_usage_events")
 }
