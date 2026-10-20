@@ -1,0 +1,65 @@
+{
+  "description": "Chapters of OpenStax textbooks, used as a fixed retrieval corpus. The PDFs are downloaded by fetch_corpus.py into evals/.cache/ and are not committed.",
+  "license_note": "All three books state on their copyright page: 'licensed under a Creative Commons Attribution Non-Commercial ShareAlike 4.0 International License (CC BY-NC-SA 4.0)'. This is non-commercial use only. The text is never committed to this repository.",
+  "sources": {
+    "openstax-intro-python": {
+      "title": "Introduction to Python Programming",
+      "publisher": "OpenStax, Rice University",
+      "authors": "Udayan Das, Aubrey Lawson, Chris Mayfield, Narges Norouzi",
+      "details_url": "https://openstax.org/details/books/introduction-python-programming",
+      "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Introduction_to_Python_Programming-WEB.pdf",
+      "sha256": "e1298e4fcfe541a8fc3bb786c5756d3d2be8e6ffc07997f1bc1e0ac270be383d",
+      "license": "CC BY-NC-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+    },
+    "openstax-biology-2e": {
+      "title": "Biology 2e",
+      "publisher": "OpenStax, Rice University",
+      "authors": "Mary Ann Clark, Matthew Douglas, Jung Choi",
+      "details_url": "https://openstax.org/details/books/biology-2e",
+      "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Biology-2e_-_WEB.pdf",
+      "sha256": "4d1f413fd779f114838cdaeab7859dcb2922ca7529230d3bfd7d36a77b4e27b6",
+      "license": "CC BY-NC-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+    },
+    "openstax-psychology-2e": {
+      "title": "Psychology 2e",
+      "publisher": "OpenStax, Rice University",
+      "authors": "Rose M. Spielman, William J. Jenkins, Marilyn D. Lovett",
+      "details_url": "https://openstax.org/details/books/psychology-2e",
+      "url": "https://assets.openstax.org/oscms-prodcms/media/documents/Psychology2e_WEB.pdf",
+      "sha256": "2f08113c78127bc684922ad6a819db22bd4705ce9fcf28a07f36a2041b1474e2",
+      "license": "CC BY-NC-SA 4.0",
+      "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+    }
+  },
+  "documents": [
+    {
+      "id": "python-loops-functions",
+      "source": "openstax-intro-python",
+      "subject": "computer science",
+      "filename": "intro-python-ch5-loops-ch6-functions.pdf",
+      "chapters": "Chapter 5 Loops; Chapter 6 Functions",
+      "pages": [[125, 142], [147, 171]],
+      "note": "PDF page numbers of the source book. End-of-chapter summaries, quizzes and answer keys are left out."
+    },
+    {
+      "id": "biology-cellular-respiration",
+      "source": "openstax-biology-2e",
+      "subject": "science",
+      "filename": "biology-2e-ch7-cellular-respiration.pdf",
+      "chapters": "Chapter 7 Cellular Respiration",
+      "pages": [[207, 230]],
+      "note": "Stops before Key Terms, so summaries and review questions are left out."
+    },
+    {
+      "id": "psychology-learning-memory",
+      "source": "openstax-psychology-2e",
+      "subject": "social science",
+      "filename": "psychology-2e-ch6-learning-ch8-memory.pdf",
+      "chapters": "Chapter 6 Learning; Chapter 8 Memory",
+      "pages": [[193, 218], [259, 284]],
+      "note": "Stops before Key Terms in each chapter, so summaries and review questions are left out."
+    }
+  ]
+}

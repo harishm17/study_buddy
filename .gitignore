@@ -46,3 +46,6 @@ htmlcov/
 .vercel
 
 .claude
+
+# Retrieval eval downloads (OpenStax PDFs are not committed)
+evals/.cache/
