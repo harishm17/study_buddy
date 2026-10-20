@@ -311,11 +311,12 @@ export default function Dashboard({ projects, user }: DashboardProps) {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {projects.map((project) => (
-              <Card
+              <Link
                 key={project.id}
-                className="cursor-pointer transition-all hover:-translate-y-0.5 hover:border-primary/35"
-                onClick={() => router.push(`/projects/${project.id}`)}
+                href={`/projects/${project.id}`}
+                className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
+              <Card className="h-full transition-all hover:-translate-y-0.5 hover:border-primary/35">
                 <CardHeader>
                   <div className="flex items-start justify-between">
                     <CardTitle className="text-lg">{project.name}</CardTitle>
@@ -354,6 +355,7 @@ export default function Dashboard({ projects, user }: DashboardProps) {
                   </div>
                 </CardContent>
               </Card>
+              </Link>
             ))}
           </div>
         )}

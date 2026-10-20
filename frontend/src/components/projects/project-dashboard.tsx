@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { TabList, tabPanelProps, tabProps } from '@/components/ui/tabs';
 import {
   ArrowLeft,
   FileText,
@@ -23,6 +24,9 @@ import {
   Trash2,
   Mic,
   LogOut,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
@@ -97,6 +101,9 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
   const [deletingMaterialId, setDeletingMaterialId] = useState<string | null>(null);
   const [confirmingTopics, setConfirmingTopics] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [projectName, setProjectName] = useState(project.name);
+  const [savingName, setSavingName] = useState(false);
   const validMaterialsCount = project.materials.filter(
     (material) => material.validationStatus === 'valid'
   ).length;
@@ -125,6 +132,45 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
     } finally {
       setDeletingMaterialId(null);
     }
+  };
+
+  const handleRenameProject = async () => {
+    const name = projectName.trim();
+    if (!name) return;
+    if (name === project.name) {
+      setRenaming(false);
+      return;
+    }
+    setSavingName(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to rename project');
+      }
+      setRenaming(false);
+      router.refresh();
+    } catch (renameError) {
+      console.error('Error renaming project:', renameError);
+      setError('Failed to rename the project. Please try again.');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    setError(null);
+    const response = await fetch(`/api/projects/${project.id}`, { method: 'DELETE' });
+    if (!response.ok) {
+      setError('Failed to delete the project. Please try again.');
+      return;
+    }
+    router.push('/dashboard');
+    router.refresh();
   };
 
   const handleQuickConfirmTopics = async () => {
@@ -262,7 +308,79 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">
               Project Overview
             </div>
-            <h1 className="text-4xl font-semibold tracking-tight">{project.name}</h1>
+            {renaming ? (
+              <form
+                className="flex flex-wrap items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleRenameProject();
+                }}
+              >
+                <input
+                  type="text"
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      setRenaming(false);
+                      setProjectName(project.name);
+                    }
+                  }}
+                  aria-label="Project name"
+                  maxLength={255}
+                  autoFocus
+                  className="min-w-[16rem] rounded-xl border border-input/80 bg-white/90 px-3 py-2 text-2xl font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  variant="outline"
+                  disabled={savingName || !projectName.trim()}
+                  aria-label="Save project name"
+                >
+                  <Check className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    setRenaming(false);
+                    setProjectName(project.name);
+                  }}
+                  aria-label="Cancel renaming"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </form>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-4xl font-semibold tracking-tight">{project.name}</h1>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => {
+                    setProjectName(project.name);
+                    setRenaming(true);
+                  }}
+                  aria-label="Rename project"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <ConfirmDialog
+                  title="Delete project?"
+                  description={`"${project.name}" and everything in it will be removed permanently: uploaded materials, topics, generated content, exams and progress. This cannot be undone.`}
+                  confirmLabel="Delete project"
+                  variant="destructive"
+                  onConfirm={handleDeleteProject}
+                  trigger={
+                    <Button size="icon" variant="ghost" aria-label="Delete project">
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  }
+                />
+              </div>
+            )}
             {project.description && (
               <p className="max-w-2xl text-muted-foreground">{project.description}</p>
             )}
@@ -356,38 +474,24 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
 
       {/* Tabs */}
       <div className="mx-auto w-full max-w-6xl">
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setActiveTab('materials')}
-            className={`tab-pill ${
-              activeTab === 'materials'
-                ? 'tab-pill-active'
-                : ''
-            }`}
-          >
-            Materials ({project.materials.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('topics')}
-            className={`tab-pill ${
-              activeTab === 'topics'
-                ? 'tab-pill-active'
-                : ''
-            }`}
-          >
-            Topics ({project.topics.length})
-          </button>
-          <button
-            onClick={() => setActiveTab('exams')}
-            className={`tab-pill ${
-              activeTab === 'exams'
-                ? 'tab-pill-active'
-                : ''
-            }`}
-          >
-            Exams ({project.exams.length})
-          </button>
-        </div>
+        <TabList label="Project sections" className="flex flex-wrap gap-2">
+          {(
+            [
+              { id: 'materials', label: `Materials (${project.materials.length})` },
+              { id: 'topics', label: `Topics (${project.topics.length})` },
+              { id: 'exams', label: `Exams (${project.exams.length})` },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              {...tabProps('project', tab.id, activeTab === tab.id)}
+              onClick={() => setActiveTab(tab.id)}
+              className={`tab-pill ${activeTab === tab.id ? 'tab-pill-active' : ''}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </TabList>
       </div>
 
       <div className="mx-auto w-full max-w-6xl space-y-4">
@@ -395,7 +499,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
 
         {/* Materials Tab */}
         {activeTab === 'materials' && (
-          <div className="space-y-4">
+          <div className="space-y-4" {...tabPanelProps('project', 'materials')}>
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">Study Materials</h2>
             <Button onClick={() => router.push(`/projects/${project.id}/upload`)}>
@@ -500,7 +604,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
 
         {/* Topics Tab */}
         {activeTab === 'topics' && (
-          <div className="space-y-4">
+          <div className="space-y-4" {...tabPanelProps('project', 'topics')}>
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-2xl font-bold">Learning Topics</h2>
@@ -577,11 +681,12 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
               {project.topics.map((topic) => {
                 const progress = getTopicProgress(topic);
                 return (
-                  <Card
+                  <Link
                     key={topic.id}
-                    className="cursor-pointer transition hover:-translate-y-0.5 hover:border-primary/35"
-                    onClick={() => router.push(`/projects/${project.id}/topics/${topic.id}`)}
+                    href={`/projects/${project.id}/topics/${topic.id}`}
+                    className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                   >
+                  <Card className="transition hover:-translate-y-0.5 hover:border-primary/35">
                     <CardContent className="py-5 md:py-5">
                       <div className="space-y-3">
                         <div className="flex items-start justify-between">
@@ -630,6 +735,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
                       </div>
                     </CardContent>
                   </Card>
+                  </Link>
                 );
               })}
             </div>
@@ -639,7 +745,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
 
         {/* Exams Tab */}
         {activeTab === 'exams' && (
-          <div className="space-y-4">
+          <div className="space-y-4" {...tabPanelProps('project', 'exams')}>
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold">Sample Exams</h2>
             <Button onClick={() => router.push(`/projects/${project.id}/generate-exam`)}>
@@ -662,11 +768,12 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
           ) : (
             <div className="space-y-3">
               {project.exams.map((exam) => (
-                <Card
+                <Link
                   key={exam.id}
-                  className="cursor-pointer transition hover:-translate-y-0.5 hover:border-primary/35"
-                  onClick={() => router.push(`/exams/${exam.id}`)}
+                  href={`/exams/${exam.id}`}
+                  className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
+                <Card className="transition hover:-translate-y-0.5 hover:border-primary/35">
                   <CardContent className="py-5 md:py-5">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -704,6 +811,7 @@ export default function ProjectDashboard({ project, initialTab }: ProjectDashboa
                     </div>
                   </CardContent>
                 </Card>
+                </Link>
               ))}
             </div>
           )}

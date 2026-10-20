@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, BookOpen, Code, HelpCircle, ClipboardList, C
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
+import { TabList, tabPanelProps, tabProps } from '@/components/ui/tabs'
 import dynamic from 'next/dynamic'
 
 // Each tab loads when it is first opened, so the topic page does not ship the viewers,
@@ -453,27 +454,31 @@ export function TopicLearningInterface({ topic, allTopics, userId, initialTab = 
       <Card className="overflow-hidden border-primary/15 bg-white/80">
         <CardContent className="py-4 md:py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
+            <TabList label="Study sections" className="flex flex-wrap items-center gap-2">
               {visibleTabs.map((tab) => {
                 const Icon = tab.icon
                 return (
                   <Button
                     key={tab.id}
                     variant="ghost"
+                    {...tabProps('topic', tab.id, activeTab === tab.id)}
                     onClick={() => handleSelectTab(tab.id)}
                     disabled={!tab.available && activeTab !== tab.id}
                     className={`tab-pill flex items-center gap-2 ${activeTab === tab.id ? 'tab-pill-active' : ''} ${!tab.available && activeTab !== tab.id ? 'opacity-60 grayscale' : ''}`}
                     title={!tab.available ? 'Generate this content first' : tab.label}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-4 w-4" aria-hidden="true" />
                     {tab.label}
                     {tab.completed && tab.id !== 'generate' && (
-                      <CheckCircle className="h-3 w-3 text-green-500" />
+                      <>
+                        <CheckCircle className="h-3 w-3 text-green-500" aria-hidden="true" />
+                        <span className="sr-only">(completed)</span>
+                      </>
                     )}
                   </Button>
                 )
               })}
-            </div>
+            </TabList>
             <div className="rounded-full border border-border/70 bg-white/70 px-3 py-1 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
               {missingCoreCount > 0
                 ? `${missingCoreCount} block${missingCoreCount === 1 ? '' : 's'} missing`
@@ -484,7 +489,7 @@ export function TopicLearningInterface({ topic, allTopics, userId, initialTab = 
       </Card>
 
       {/* Content Area */}
-      <div ref={contentAreaRef} className="min-h-[600px]">
+      <div ref={contentAreaRef} className="min-h-[600px]" {...tabPanelProps('topic', activeTab)}>
         {activeTab === 'notes' && sectionNotes && (
           <SectionNotesViewer
             content={sectionNotes.contentData}
