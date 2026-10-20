@@ -1,12 +1,26 @@
 /**
  * API route for material uploads
- * POST /api/projects/[projectId]/materials
+ * POST /api/projects/[projectId]/materials?category=lecture_notes&filename=notes.pdf
+ *
+ * The request body is the file itself (not multipart), so it can be checked and streamed to
+ * storage without being held in memory. The size limit (MAX_UPLOAD_MB, default 25) is judged
+ * from Content-Length before any of the body is read.
  */
 
+import { Readable } from 'stream'
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
-import { uploadFile, generateMaterialPath, deleteFile } from '@/lib/storage/gcs'
+import { uploadStream, generateMaterialPath, deleteFile } from '@/lib/storage/gcs'
+import {
+  IncompleteUploadError,
+  InvalidSignatureError,
+  UploadTooLargeError,
+  checkContentLength,
+  createSignatureCheck,
+  createSizeLimiter,
+  maxUploadBytes,
+} from '@/lib/storage/upload-limits'
 import { enqueueValidationJob, TaskEnqueueError } from '@/lib/tasks/cloud-tasks'
 import { z } from 'zod'
 
@@ -22,24 +36,14 @@ function getExtension(filename: string): string {
   return filename.slice(dotIndex).toLowerCase()
 }
 
-function hasZipMagicHeader(buffer: Buffer): boolean {
-  if (buffer.length < 4) return false
-  const h0 = buffer[0]
-  const h1 = buffer[1]
-  const h2 = buffer[2]
-  const h3 = buffer[3]
-  return (
-    h0 === 0x50 &&
-    h1 === 0x4b &&
-    ((h2 === 0x03 && h3 === 0x04) || (h2 === 0x05 && h3 === 0x06) || (h2 === 0x07 && h3 === 0x08))
-  )
-}
-
-function hasOleMagicHeader(buffer: Buffer): boolean {
-  if (buffer.length < 8) return false
-  const signature = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
-  return buffer.subarray(0, 8).equals(signature)
-}
+const ALLOWED_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/msword',
+  'application/octet-stream', // Common fallback from browsers/OS integrations
+  '',
+])
 
 export async function POST(
   request: NextRequest,
@@ -65,85 +69,80 @@ export async function POST(
       )
     }
 
-    // 3. Parse form data
-    const formData = await request.formData()
-    const file = formData.get('file')
-    const category = formData.get('category') as string
-
-    if (!(file instanceof File)) {
-      return NextResponse.json(
-        { error: 'No file provided' },
-        { status: 400 }
-      )
-    }
-
-    // 4. Validate input
-    const validation = uploadSchema.safeParse({ category })
+    // 3. Validate input from the URL and headers: nothing here touches the body.
+    const query = request.nextUrl.searchParams
+    const filename = (query.get('filename') || '').trim()
+    const validation = uploadSchema.safeParse({ category: query.get('category') })
     if (!validation.success) {
       return NextResponse.json(
         { error: 'Invalid category', details: validation.error },
         { status: 400 }
       )
     }
+    if (!filename) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    }
 
-    // 5. Validate file
-    const extension = getExtension(file.name)
+    const mimeType = (request.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+    if (mimeType.startsWith('multipart/')) {
+      return NextResponse.json(
+        { error: 'Send the file as the request body, not as a form' },
+        { status: 415 }
+      )
+    }
+
+    const extension = getExtension(filename)
     if (!SUPPORTED_EXTENSIONS.has(extension)) {
       return NextResponse.json(
         { error: 'Unsupported file type. Supported: PDF, DOCX, PPTX, DOC' },
         { status: 400 }
       )
     }
-    const allowedMimeTypes = new Set([
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'application/msword',
-      'application/octet-stream', // Common fallback from browsers/OS integrations
-      '',
-    ])
-    if (!allowedMimeTypes.has(file.type)) {
+    if (!ALLOWED_MIME_TYPES.has(mimeType)) {
       return NextResponse.json(
         { error: 'Invalid MIME type for selected document' },
         { status: 400 }
       )
     }
 
-    const maxSize = 10 * 1024 * 1024 // 10MB
-    if (file.size > maxSize) {
-      return NextResponse.json(
-        { error: 'File size must be less than 10MB' },
-        { status: 400 }
-      )
+    // 4. Judge the size from Content-Length, before reading any of the body.
+    const maxBytes = maxUploadBytes()
+    const lengthCheck = checkContentLength(request.headers.get('content-length'), maxBytes)
+    if (!lengthCheck.ok) {
+      return NextResponse.json({ error: lengthCheck.message }, { status: lengthCheck.status })
+    }
+    if (!request.body) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // 6. Generate material ID upfront for GCS path
+    // 5. Stream the body to storage, checking the size and the file signature on the way.
+    // Storage is written first so a failed upload leaves no orphaned database record.
     const { randomUUID } = await import('crypto')
     const materialId = randomUUID()
+    const gcsPath = generateMaterialPath(session.user.id, projectId, materialId, filename)
+    const limiter = createSizeLimiter(maxBytes, lengthCheck.length)
 
-    // 7. Validate file signature and upload to storage first.
-    const buffer = Buffer.from(await file.arrayBuffer())
-    const pdfMagic = buffer.subarray(0, 5).toString('ascii')
-    const isValidSignature =
-      (extension === '.pdf' && pdfMagic === '%PDF-') ||
-      ((extension === '.docx' || extension === '.pptx') && hasZipMagicHeader(buffer)) ||
-      (extension === '.doc' && hasOleMagicHeader(buffer))
-
-    if (!isValidSignature) {
-      return NextResponse.json(
-        { error: `Uploaded file failed signature validation for ${extension.toUpperCase()}` },
-        { status: 400 }
+    let fullGcsPath: string
+    try {
+      fullGcsPath = await uploadStream(
+        Readable.fromWeb(request.body as import('stream/web').ReadableStream),
+        gcsPath,
+        mimeType,
+        [createSignatureCheck(extension), limiter.stream]
       )
+    } catch (error) {
+      if (error instanceof UploadTooLargeError) {
+        return NextResponse.json({ error: error.message }, { status: 413 })
+      }
+      if (error instanceof InvalidSignatureError) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      if (error instanceof IncompleteUploadError) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+      throw error
     }
-
-    // This prevents orphaned DB records if upload fails.
-    const gcsPath = generateMaterialPath(
-      session.user.id,
-      projectId,
-      materialId,
-      file.name
-    )
-    const fullGcsPath = await uploadFile(buffer, gcsPath, file.type)
+    const fileSize = limiter.bytesSeen()
 
     // 8. Create material record with correct GCS path
     // Only after successful upload to prevent orphaned records
@@ -152,12 +151,12 @@ export async function POST(
         id: materialId,
         projectId,
         category: validation.data.category,
-        filename: file.name,
-        sizeBytes: BigInt(file.size),
+        filename,
+        sizeBytes: BigInt(fileSize),
         validationStatus: 'pending',
         gcsPath: fullGcsPath,
         metadata: {
-          mimeType: file.type || null,
+          mimeType: mimeType || null,
           extension,
         },
       },
