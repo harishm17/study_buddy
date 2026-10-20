@@ -30,12 +30,14 @@ export default defineRailway(() => {
     AUTO_DEPLOY_FROM_GITHUB
       ? { source: github("harishm17/study_buddy", { branch: "main", rootDirectory, checkSuites: true }) }
       : {};
+  // Watch paths are relative to the repository, so they only make sense for GitHub deploys.
+  const watch = (folder: string) => (AUTO_DEPLOY_FROM_GITHUB ? { watchPatterns: [`/${folder}/**`] } : {});
   // The web app reaches the AI service over the private network only.
   const aiServiceUrl = "http://${{ai.RAILWAY_PRIVATE_DOMAIN}}:8000";
 
   const ai = service("ai", {
     ...fromGithub("ai-service"),
-    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", watchPatterns: ["/ai-service/**"] },
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", ...watch("ai-service") },
     healthcheck: "/health",
     healthcheckTimeout: 120,
     replicas: { "us-west2": 1 },
@@ -54,7 +56,7 @@ export default defineRailway(() => {
 
   const web = service("web", {
     ...fromGithub("frontend"),
-    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", watchPatterns: ["/frontend/**"] },
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", ...watch("frontend") },
     // Apply database migrations before the new version takes traffic.
     preDeploy: ["prisma migrate deploy"],
     healthcheck: "/login",
