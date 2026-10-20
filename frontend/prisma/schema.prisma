@@ -465,6 +465,21 @@ model ProcessingJob {
   startedAt       DateTime? @map("started_at")
   completedAt     DateTime? @map("completed_at")
 
+  // The AI service claims a job with an atomic UPDATE and extends leaseUntil while it
+  // works. A job still "processing" after leaseUntil has lost its worker.
+  maxAttempts     Int       @default(3) @map("max_attempts")
+  leaseUntil      DateTime? @map("lease_until")
+
+  // What the job acts on, e.g. "extract:<projectId>" or "content:<topicId>:<contentType>".
+  // A partial unique index (see the job_reliability migration; Prisma cannot express it)
+  // allows one pending/processing job per targetKey.
+  targetKey       String?   @map("target_key")
+
+  // Summed over every attempt. llmCostUsd feeds the per-user daily budget.
+  llmInputTokens  Int       @default(0) @map("llm_input_tokens")
+  llmOutputTokens Int       @default(0) @map("llm_output_tokens")
+  llmCostUsd      Decimal   @default(0) @map("llm_cost_usd") @db.Decimal(12, 6)
+
   // Relations
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -474,5 +489,7 @@ model ProcessingJob {
   @@index([createdAt])
   @@index([projectId, status])
   @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, leaseUntil])
   @@map("processing_jobs")
 }
