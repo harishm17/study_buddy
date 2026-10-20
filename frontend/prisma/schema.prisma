@@ -36,6 +36,7 @@ model User {
   voiceDrillAttempts  VoiceDrillAttempt[]
   learningSignals     LearningSignal[]
   reviewSchedules     ReviewSchedule[]
+  chatThreads         ChatThread[]
 
   @@index([oauthProvider, oauthId])
   @@map("users")
@@ -64,6 +65,7 @@ model Project {
   voiceDrillSessions VoiceDrillSession[]
   learningSignals LearningSignal[]
   reviewSchedules ReviewSchedule[]
+  chatThreads    ChatThread[]
 
   @@index([userId])
   @@index([status])
@@ -518,4 +520,48 @@ model ProcessingJob {
   @@index([userId, createdAt])
   @@index([status, leaseUntil])
   @@map("processing_jobs")
+}
+
+// ============================================
+// Ask your materials (chat grounded in a project's materials)
+// ============================================
+
+model ChatThread {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  projectId String   @map("project_id")
+  title     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([projectId, userId, updatedAt])
+  @@index([userId])
+  @@map("chat_threads")
+}
+
+model ChatMessage {
+  id       String @id @default(uuid())
+  threadId String @map("thread_id")
+  role     String // user|assistant
+  content  String
+  // Assistant messages only: { sources: [...], marks: [{ offset, marker }] }. The shape is
+  // documented in src/lib/chat/citations.ts.
+  citations Json?
+  // Assistant messages only. The AI service adds llmCostUsd to the per-user daily budget,
+  // together with the processing job costs.
+  llmInputTokens  Int      @default(0) @map("llm_input_tokens")
+  llmOutputTokens Int      @default(0) @map("llm_output_tokens")
+  llmCostUsd      Decimal  @default(0) @map("llm_cost_usd") @db.Decimal(12, 6)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  // Relations
+  thread ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("chat_messages")
 }
