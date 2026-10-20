@@ -5,6 +5,9 @@ on:
     branches: ['**']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -26,6 +29,7 @@ jobs:
       - run: npm run db:generate
       - run: npx prisma validate
       - run: npm run lint
+      - run: npx tsc --noEmit
       - run: npm run build
 
   ai-service:
@@ -44,3 +48,25 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m compileall app
       - run: pytest -q
+
+  ai-service-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t studybuddy-ai ai-service
+      - name: Image runs as a non-root user
+        run: |
+          uid="$(docker run --rm --entrypoint id studybuddy-ai -u)"
+          echo "uid=$uid"
+          test "$uid" != "0"
+      - name: Image starts and answers health checks
+        run: |
+          docker run -d --name ai -p 8000:8000 \
+            -e DATABASE_URL=postgresql://u:p@127.0.0.1:1/db -e OPENAI_API_KEY=test-key \
+            studybuddy-ai
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 1
+          done
+          docker logs ai
+          exit 1

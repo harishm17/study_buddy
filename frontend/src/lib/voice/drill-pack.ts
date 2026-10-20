@@ -6,9 +6,9 @@ import {
   normalizeVoiceQuestion,
   VoiceQuestion,
 } from '@/lib/voice/concept'
+import { aiServiceHeaders } from '@/lib/ai-service/headers'
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000'
-const AI_INTERNAL_TOKEN = process.env.AI_INTERNAL_TOKEN
 const MAX_NOTES_CHARS = 24000
 
 const dedupeQuestions = (questions: VoiceQuestion[]) => {
@@ -29,10 +29,7 @@ const buildConceptQuestionsFromNotes = async (
   const response = await fetch(`${AI_SERVICE_URL}/voice/generate-drill`, {
     method: 'POST',
     signal: AbortSignal.timeout(20000),
-    headers: {
-      'Content-Type': 'application/json',
-      ...(AI_INTERNAL_TOKEN ? { 'x-ai-internal-token': AI_INTERNAL_TOKEN } : {}),
-    },
+    headers: aiServiceHeaders(),
     body: JSON.stringify({
       topic: topicName,
       notes: notesText.slice(0, MAX_NOTES_CHARS),

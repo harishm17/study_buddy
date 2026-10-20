@@ -1,0 +1,111 @@
+"""Every AI-service route except health checks requires the shared internal token."""
+import pytest
+from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
+
+from app.config import settings
+from app.main import app
+
+PUBLIC_PATHS = {"/", "/health", "/health/dependencies"}
+HEADER = "x-ai-internal-token"
+
+
+def _protected_routes():
+    for route in app.routes:
+        if isinstance(route, APIRoute) and route.path not in PUBLIC_PATHS:
+            for method in route.methods:
+                yield method, route.path
+
+
+PROTECTED = sorted(_protected_routes())
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def token(monkeypatch):
+    monkeypatch.setattr(settings, "AI_INTERNAL_TOKEN", "s3cret-token")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    return "s3cret-token"
+
+
+def test_job_and_voice_routes_are_all_listed():
+    paths = {path for _, path in PROTECTED}
+    assert "/jobs/grade-exam" in paths
+    assert "/voice/realtime/token" in paths
+    assert len(PROTECTED) == 8
+
+
+@pytest.mark.parametrize("method,path", PROTECTED)
+def test_missing_token_is_refused(client, token, method, path):
+    resp = client.request(method, path, json={})
+    assert resp.status_code == 401
+
+
+@pytest.mark.parametrize("method,path", PROTECTED)
+def test_wrong_token_is_refused(client, token, method, path):
+    resp = client.request(method, path, json={}, headers={HEADER: "s3cret-tokeX"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.parametrize("method,path", PROTECTED)
+def test_right_token_reaches_request_validation(client, token, method, path):
+    # A list body fails validation (422) only after the token check has passed, so the
+    # handler never runs and nothing calls a model or the database.
+    resp = client.request(method, path, json=[], headers={HEADER: token})
+    assert resp.status_code == 422
+
+
+@pytest.mark.parametrize("environment", ["production", "staging", "test"])
+@pytest.mark.parametrize("method,path", PROTECTED)
+def test_unset_token_outside_development_fails_closed(
+    client, monkeypatch, environment, method, path
+):
+    monkeypatch.setattr(settings, "AI_INTERNAL_TOKEN", "")
+    monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+    resp = client.request(method, path, json={})
+    assert resp.status_code == 503
+
+
+def test_unset_token_in_development_is_allowed(client, monkeypatch):
+    monkeypatch.setattr(settings, "AI_INTERNAL_TOKEN", "")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    resp = client.post("/jobs/grade-exam", json=[])
+    assert resp.status_code == 422
+
+
+def test_health_needs_no_token(client, token):
+    assert client.get("/health").status_code == 200
+    assert client.get("/").status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_self_calls_send_the_token(monkeypatch):
+    from app.services import cloud_tasks
+
+    sent = {}
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, url, json=None, headers=None, timeout=None):
+            sent["headers"] = headers
+
+            class Resp:
+                status_code = 200
+                text = "ok"
+
+            return Resp()
+
+    monkeypatch.setattr(settings, "AI_INTERNAL_TOKEN", "s3cret-token")
+    monkeypatch.setattr(settings, "ENVIRONMENT", "development")
+    monkeypatch.setattr(cloud_tasks.httpx, "AsyncClient", lambda *a, **k: FakeClient())
+    await cloud_tasks.enqueue_task("/jobs/extract-topics", {"jobId": "j1", "data": {}})
+    assert sent["headers"][HEADER] == "s3cret-token"

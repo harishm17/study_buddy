@@ -209,6 +209,7 @@ Instead of sending whole documents to the model:
 - **AI Service (FastAPI)**: LLM calls, PDF processing, embeddings, content generation
 - **Database (PostgreSQL + pgvector)**: User data, materials, vectors, progress
 - The services can be deployed separately
+- Only the frontend can call the AI service: every route except the health checks needs the shared `AI_INTERNAL_TOKEN`, and outside local development the AI service refuses all calls if the token isn't set
 
 ---
 
@@ -279,7 +280,7 @@ NEXTAUTH_URL=http://localhost:3000
 
 # Services
 AI_SERVICE_URL=http://localhost:8000
-AI_INTERNAL_TOKEN=replace-with-shared-secret
+AI_INTERNAL_TOKEN=<generate with: openssl rand -hex 32; same value in both services>
 ```
 
 **Optional:**

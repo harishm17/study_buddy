@@ -10,6 +10,7 @@ build
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 
@@ -32,6 +33,7 @@ htmlcov/
 Thumbs.db
 
 # Development
+.env
 .env*.local
 .env.development
 *.log

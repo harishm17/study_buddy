@@ -2,9 +2,10 @@
 from contextlib import asynccontextmanager
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.internal_auth import require_internal_token
 from app.api.routes import health
 from app.config import settings
 from app.logging_utils import configure_sensitive_data_redaction
@@ -93,16 +94,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include routers. Health checks are public; every other route needs the internal token.
+internal_only = [Depends(require_internal_token)]
 app.include_router(health.router, tags=["Health"])
 
 # Import jobs router
 from app.api.routes import jobs
-app.include_router(jobs.router, tags=["Jobs"])
+app.include_router(jobs.router, tags=["Jobs"], dependencies=internal_only)
 
 # Voice coach routes
 from app.api.routes import voice
-app.include_router(voice.router, tags=["Voice"])
+app.include_router(voice.router, tags=["Voice"], dependencies=internal_only)
 
 if __name__ == "__main__":
     import uvicorn

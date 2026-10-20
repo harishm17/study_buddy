@@ -1,10 +1,12 @@
 name: Deploy to GCP Cloud Run
 
+# Manual only: the GCP project has billing turned off, so every push to main failed here.
+# Run it by hand once hosting is back.
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch: # Allows manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -13,8 +15,23 @@ env:
   AI_SERVICE: studybuddy-ai-service
 
 jobs:
+  check-secrets:
+    name: Check required secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: AI_INTERNAL_TOKEN must be set
+        env:
+          AI_INTERNAL_TOKEN: ${{ secrets.AI_INTERNAL_TOKEN }}
+        run: |
+          # Without it the AI service refuses every job and voice request.
+          if [ -z "$AI_INTERNAL_TOKEN" ]; then
+            echo "::error::Set the AI_INTERNAL_TOKEN repository secret (openssl rand -hex 32)."
+            exit 1
+          fi
+
   setup-database:
     name: Setup Database (pgvector extension)
+    needs: [check-secrets]
     runs-on: ubuntu-latest
 
     steps:
@@ -46,6 +63,7 @@ jobs:
 
   deploy-frontend:
     name: Deploy Frontend to Cloud Run
+    needs: [check-secrets]
     runs-on: ubuntu-latest
 
     steps:
@@ -108,6 +126,7 @@ jobs:
             --set-env-vars "NEXTAUTH_SECRET=${{ secrets.NEXTAUTH_SECRET }}" \
             --set-env-vars "NEXTAUTH_URL=${{ secrets.NEXTAUTH_URL }}" \
             --set-env-vars "AI_SERVICE_URL=${{ secrets.AI_SERVICE_URL }}" \
+            --set-env-vars "AI_INTERNAL_TOKEN=${{ secrets.AI_INTERNAL_TOKEN }}" \
             --set-env-vars "NODE_ENV=production" \
             --set-env-vars "GCS_PROJECT_ID=$PROJECT_ID" \
             --set-env-vars "GCS_BUCKET=${{ secrets.GCS_BUCKET_NAME }}" \
@@ -190,6 +209,7 @@ jobs:
             --set-env-vars "DATABASE_URL=$DATABASE_URL" \
             --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
             --set-env-vars "ENVIRONMENT=production" \
+            --set-env-vars "AI_INTERNAL_TOKEN=${{ secrets.AI_INTERNAL_TOKEN }}" \
             --set-env-vars "LLM_PROVIDER=${LLM_PROVIDER}" \
             --set-env-vars "OPENAI_MODEL=${OPENAI_MODEL}" \
             --set-env-vars "OPENAI_MINI_MODEL=${OPENAI_MINI_MODEL}" \

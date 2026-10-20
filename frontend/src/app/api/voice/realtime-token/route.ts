@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/get-session'
 import { prisma } from '@/lib/db/prisma'
 import { z } from 'zod'
+import { aiServiceHeaders } from '@/lib/ai-service/headers'
 
 const tokenSchema = z.object({
   sessionId: z.string(),
@@ -17,7 +18,6 @@ const aiRealtimeTokenSchema = z.object({
 })
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000'
-const AI_INTERNAL_TOKEN = process.env.AI_INTERNAL_TOKEN
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,10 +39,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch(`${AI_SERVICE_URL}/voice/realtime/token`, {
       method: 'POST',
       signal: AbortSignal.timeout(15000),
-      headers: {
-        'Content-Type': 'application/json',
-        ...(AI_INTERNAL_TOKEN ? { 'x-ai-internal-token': AI_INTERNAL_TOKEN } : {}),
-      },
+      headers: aiServiceHeaders(),
       body: JSON.stringify({
         session_id: voiceSession.id,
         language: voiceSession.language,

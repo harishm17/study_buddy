@@ -3,6 +3,8 @@
  * Handles enqueueing async jobs to the AI service
  */
 
+import { aiServiceHeaders } from '@/lib/ai-service/headers'
+
 let CloudTasksClient: any
 let client: any = null
 
@@ -79,7 +81,7 @@ async function callAiServiceWithRetry(endpoint: string, payload: TaskPayload): P
     try {
       const response = await fetch(`${AI_SERVICE_URL}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: aiServiceHeaders(),
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(DIRECT_TASK_TIMEOUT_MS),
       })
@@ -199,9 +201,7 @@ export async function enqueueTask(
     httpRequest: {
       httpMethod: 'POST' as const,
       url: `${AI_SERVICE_URL}${endpoint}`,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: aiServiceHeaders(),
       body: Buffer.from(JSON.stringify(payload)).toString('base64'),
     },
   }

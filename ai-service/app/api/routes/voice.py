@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 import re
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import settings
@@ -16,13 +16,6 @@ MATH_PATTERN = re.compile(
     r"(\d+|=|±|sqrt|integral|derive|calculate|solve|equation|formula|sum|delta|percent|percentage|compute)",
     re.IGNORECASE,
 )
-
-
-def _verify_internal_token(token: Optional[str]) -> None:
-    if settings.is_production and not settings.AI_INTERNAL_TOKEN:
-        raise HTTPException(status_code=500, detail="AI_INTERNAL_TOKEN is not configured")
-    if settings.AI_INTERNAL_TOKEN and token != settings.AI_INTERNAL_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def _is_conceptual_text(value: Optional[str]) -> bool:
@@ -82,11 +75,8 @@ class DrillGenerateRequest(BaseModel):
 @router.post("/realtime/token")
 async def create_realtime_token(
     payload: RealtimeTokenRequest,
-    x_ai_internal_token: Optional[str] = Header(default=None),
 ):
     """Mint a Realtime client secret via OpenAI."""
-    _verify_internal_token(x_ai_internal_token)
-
     voice = payload.voice or settings.OPENAI_REALTIME_VOICE
     session = {
         "type": "realtime",
@@ -164,11 +154,8 @@ async def create_realtime_token(
 @router.post("/generate-drill")
 async def generate_concept_drill(
     payload: DrillGenerateRequest,
-    x_ai_internal_token: Optional[str] = Header(default=None),
 ):
     """Generate concept-only oral drill questions from notes."""
-    _verify_internal_token(x_ai_internal_token)
-
     llm = LLMFactory.get_provider()
     topic_label = payload.topic or "the study topic"
 
