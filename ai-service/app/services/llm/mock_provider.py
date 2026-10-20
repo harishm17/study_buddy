@@ -1,8 +1,15 @@
 """Placeholder provider for local runs and end-to-end tests: no API calls, no cost."""
+import asyncio
 import logging
-from typing import List, Type
+import re
+from typing import AsyncIterator, List, Optional, Type
 
 from app.services.llm.base import (
+    AnswerCitation,
+    AnswerDone,
+    AnswerEvent,
+    AnswerText,
+    Excerpt,
     LLMMessage,
     LLMOutputError,
     LLMProvider,
@@ -40,6 +47,13 @@ It records zero token usage, so the daily budget is never reached.
 """
 
 
+def _first_sentence(text: str, limit: int = 220) -> str:
+    flat = re.sub(r"\s+", " ", text).strip()
+    match = re.search(r"[.!?](\s|$)", flat)
+    sentence = flat[: match.end()].strip() if match else flat
+    return sentence if len(sentence) <= limit else sentence[: limit - 1].rstrip() + "..."
+
+
 class MockProvider(LLMProvider):
     """Returns each schema's `example()` and fixed markdown, and records zero usage."""
 
@@ -72,3 +86,47 @@ class MockProvider(LLMProvider):
             raise LLMOutputError(f"MockProvider has no example for {schema.__name__}")
         record_usage(LLMUsage(model=self.model_for(tier), purpose=purpose))
         return example()
+
+    async def stream_cited_answer(
+        self,
+        *,
+        system: str,
+        history: List[LLMMessage],
+        question: str,
+        excerpts: List[Excerpt],
+        tier: Tier = "main",
+        effort: Optional[str] = None,
+        max_tokens: int = 4000,
+        purpose: str = "chat",
+    ) -> AsyncIterator[AnswerEvent]:
+        """A fixed-shape answer that quotes the first two excerpts and cites each."""
+        if not excerpts:
+            raise LLMOutputError("The mock provider needs at least one excerpt")
+        parts: List[tuple[str, Optional[Excerpt]]] = [
+            (f"Mock answer to \"{question[:80]}\" (LLM_PROVIDER is mock, no model was called). ", None)
+        ]
+        for index, excerpt in enumerate(excerpts[:2]):
+            lead = "The materials say: " if index == 0 else " It also covers: "
+            parts.append((f"{lead}{_first_sentence(excerpt.text)}", excerpt))
+
+        text = ""
+        citations: List[AnswerCitation] = []
+        for chunk, excerpt in parts:
+            for word in re.findall(r"\S+\s*", chunk):
+                text += word
+                yield AnswerText(text=word)
+                await asyncio.sleep(0.005)
+            if excerpt is not None:
+                citation = AnswerCitation(
+                    ref=excerpt.ref,
+                    cited_text=excerpt.text.strip().split("\n\n")[0],
+                    start_block_index=0,
+                    end_block_index=1,
+                    offset=len(text),
+                )
+                citations.append(citation)
+                yield citation
+
+        usage = LLMUsage(model=self.model_for(tier), purpose=purpose)
+        record_usage(usage)
+        yield AnswerDone(text=text, citations=citations, stop_reason="end_turn", usage=usage)
