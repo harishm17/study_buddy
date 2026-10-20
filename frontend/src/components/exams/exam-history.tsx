@@ -1,10 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Clock, Award, TrendingUp, Calendar } from 'lucide-react';
+import { Clock, Award, TrendingUp, Calendar, ChevronRight } from 'lucide-react';
+import { useJobPolling } from '@/hooks/useJobPolling';
 import { format } from 'date-fns';
 
 interface Submission {
@@ -31,10 +33,20 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+  const { pollJob, stopPolling, resumeActiveJobs } = useJobPolling({ timeoutMs: 300_000 });
 
-  const fetchHistory = useCallback(async () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      stopPolling();
+    };
+  }, [stopPolling]);
+
+  const fetchHistory = useCallback(async (background = false) => {
     try {
-      setIsLoading(true);
+      if (!background) setIsLoading(true);
       const response = await fetch(`/api/exams/${examId}/submissions`);
 
       if (!response.ok) {
@@ -42,19 +54,40 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
       }
 
       const data = await response.json();
-      setSubmissions(data.submissions || []);
+      if (!mountedRef.current) return [];
+      const rows: Submission[] = data.submissions || [];
+      setSubmissions(rows);
       setStats(data.stats);
+      return rows;
     } catch (err: any) {
       console.error('Error fetching history:', err);
-      setError(err.message || 'Failed to load exam history');
+      if (mountedRef.current) setError(err.message || 'Failed to load exam history');
+      return [];
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) setIsLoading(false);
     }
   }, [examId]);
 
+  // Attempts still being graded (including after a refresh): follow their grading jobs, then
+  // reload so the scores appear.
   useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+    let cancelled = false;
+    void (async () => {
+      const rows = await fetchHistory();
+      if (cancelled || !rows.some((row) => row.isPending)) return;
+      const pendingTargets = new Set(rows.filter((row) => row.isPending).map((row) => `grade:${row.id}`));
+      const active = await resumeActiveJobs({ jobTypes: ['grade_exam'] }).catch(() => []);
+      const mine = active.filter(
+        (job) => typeof job.raw.targetKey === 'string' && pendingTargets.has(job.raw.targetKey)
+      );
+      if (cancelled || mine.length === 0) return;
+      await Promise.all(mine.map((job) => pollJob(job.id)));
+      if (!cancelled) await fetchHistory(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchHistory, pollJob, resumeActiveJobs]);
 
   const sortedSubmissions = useMemo(() => {
     return [...submissions].sort(
@@ -145,15 +178,17 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
         <CardHeader>
           <CardTitle>Recent Attempts</CardTitle>
           <CardDescription>
-            {submissions.length} attempt{submissions.length !== 1 ? 's' : ''} total
+            {submissions.length} attempt{submissions.length !== 1 ? 's' : ''} total. Open one to see each question, the correct answers and feedback.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {sortedSubmissions.slice(0, 5).map((submission, index) => (
-              <div
+            {sortedSubmissions.slice(0, 10).map((submission) => (
+              <Link
                 key={submission.id}
-                className="flex items-center justify-between rounded-xl border border-border/70 bg-white/70 p-4 transition hover:border-primary/30 hover:bg-white"
+                href={`/exams/${examId}/results/${submission.id}`}
+                aria-label={`Open results for the attempt on ${format(new Date(submission.submittedAt), 'MMM dd, yyyy h:mm a')}`}
+                className="flex items-center justify-between rounded-xl border border-border/70 bg-white/70 p-4 transition hover:border-primary/30 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <div className="flex items-center gap-4">
                   <div className="flex flex-col">
@@ -201,14 +236,15 @@ export default function ExamHistory({ examId }: ExamHistoryProps) {
                   ) : (
                     <span className="text-sm text-muted-foreground">Not graded</span>
                   )}
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 
-          {sortedSubmissions.length > 5 && (
+          {sortedSubmissions.length > 10 && (
             <p className="text-xs text-muted-foreground text-center mt-4">
-              Showing 5 of {sortedSubmissions.length} attempts
+              Showing 10 of {sortedSubmissions.length} attempts
             </p>
           )}
         </CardContent>
