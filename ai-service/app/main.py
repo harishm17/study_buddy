@@ -134,6 +134,10 @@ app.include_router(voice.router, tags=["Voice"], dependencies=internal_only)
 from app.api.routes import grading
 app.include_router(grading.router, tags=["Grading"], dependencies=internal_only)
 
+# "Ask your materials" chat answers (streamed to the Next.js server)
+from app.api.routes import chat
+app.include_router(chat.router, tags=["Chat"], dependencies=internal_only)
+
 if __name__ == "__main__":
     import uvicorn
 
