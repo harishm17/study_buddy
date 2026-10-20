@@ -756,10 +756,12 @@ async def grade_exam_job(payload: JobPayload, job: JobContext) -> JobOutcome:
         FROM exam_submissions es
         JOIN sample_exams se ON se.id = es.sample_exam_id
         WHERE es.id = $1
+          AND es.status = 'submitted'
         """,
         submission_id,
     )
     if not submission:
+        # Missing, or an attempt still in progress: only submitted attempts are graded.
         raise PermanentJobError("Exam submission not found", "SUBMISSION_NOT_FOUND")
 
     questions = _json_value(submission["questions"])

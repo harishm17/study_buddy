@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from app.api.routes import jobs
 from app.models.jobs import JobPayload
@@ -237,6 +238,16 @@ class TestGradeExam:
         graded = await db.fetchrow("SELECT ai_grading, graded_at FROM exam_submissions WHERE id = $1", submission.id)
         assert json.loads(graded["ai_grading"])["overall_score"] == 50
         assert graded["graded_at"] is not None
+
+    async def test_an_attempt_in_progress_is_not_graded(self, db, world, submission):
+        await db.execute("UPDATE exam_submissions SET status = 'in_progress' WHERE id = $1", submission.id)
+
+        with pytest.raises(HTTPException) as excinfo:
+            await self.grade(db, world, submission)
+
+        assert excinfo.value.status_code == 400
+        assert "questions" not in submission.seen
+        assert await db.fetchval("SELECT ai_grading FROM exam_submissions WHERE id = $1", submission.id) is None
 
     async def test_regrading_replaces_the_learning_signals(self, db, world, submission):
         await self.grade(db, world, submission)
