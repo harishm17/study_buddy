@@ -109,7 +109,10 @@ async def validate_material_job(payload: JobPayload, job: JobContext) -> JobOutc
         input_data.materialId,
     )
 
-    async def start_chunking():
+    # The chunking job is created before this one is marked completed, so a client that sees
+    # validation finish can already find it. It is dispatched once this job is completed.
+    start_chunking = None
+    if validation_result.status == "valid":
         chunk_job_id, created = await create_job(
             user_id=job.user_id,
             project_id=job.project_id,
@@ -118,21 +121,22 @@ async def validate_material_job(payload: JobPayload, job: JobContext) -> JobOutc
             input_data={"materialId": input_data.materialId},
             target_key=f"chunk:{input_data.materialId}",
         )
-        if not created:
+        if created:
+            async def start_chunking():
+                try:
+                    await enqueue_chunking_job(chunk_job_id, input_data.materialId)
+                except Exception as exc:
+                    logger.error("Could not dispatch chunking job %s: %s", chunk_job_id, exc)
+                    await mark_undelivered(chunk_job_id, str(exc))
+        else:
             logger.info("Chunking job %s already active for %s", chunk_job_id, input_data.materialId)
-            return
-        try:
-            await enqueue_chunking_job(chunk_job_id, input_data.materialId)
-        except Exception as exc:
-            logger.error("Could not dispatch chunking job %s: %s", chunk_job_id, exc)
-            await mark_undelivered(chunk_job_id, str(exc))
 
     return JobOutcome(
         result={
             "validation_status": validation_result.status,
             "notes": validation_result.notes,
         },
-        after=start_chunking if validation_result.status == "valid" else None,
+        after=start_chunking,
     )
 
 
