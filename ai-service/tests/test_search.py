@@ -10,6 +10,7 @@ from app.services.embeddings.search import (
     fulltext_query_sql,
     fuse_rankings,
     hybrid_search_chunks,
+    topic_is_covered,
     topic_query_text,
 )
 from tests.db_helpers import add_chunk, seed_material, seed_project, seed_user, unit
@@ -258,3 +259,30 @@ class TestHybridSearch:
 
         assert [str(r["id"]) for r in result] == [chunk]
         assert result[0]["relevance_source"] == SOURCE_FULLTEXT
+
+
+class TestCoverage:
+    """Off-topic topics are rejected before any chunk is kept."""
+
+    @pytest.mark.parametrize(
+        "best,text_hits,covered",
+        [
+            (0.72, 0, True),   # a real topic with no full-text match (eval minimum 0.725)
+            (0.68, 3, True),   # a bare custom name that also matches in full text
+            (0.676, 0, False),  # gibberish and off-topic names top out here
+            (0.62, 1, False),  # an off-topic name with one stray word match
+        ],
+    )
+    def test_thresholds(self, best, text_hits, covered):
+        vector_rows = [{"similarity": best}, {"similarity": best - 0.1}]
+        assert topic_is_covered(vector_rows, [{}] * text_hits) is covered
+
+    def test_no_vectors_is_not_covered(self):
+        assert topic_is_covered([], [{}]) is False
+
+    async def test_an_off_topic_name_returns_nothing(self, db, project, query_vector):
+        material = await seed_material(db, project, status="valid")
+        # Similar enough to pass the per-chunk floor, not enough to count as covered.
+        await add_chunk(db, material, 0, "loops and functions", unit(0.66, 0.75))
+
+        assert await hybrid_search_chunks(project, "Medieval cuisine", "", [], limit=10) == []

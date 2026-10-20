@@ -35,6 +35,17 @@ CANDIDATE_POOL = 50
 # The model compresses scores, so the floor removes clearly unrelated chunks, not near misses.
 MIN_SIMILARITY = 0.55
 
+# Whether the materials cover a topic at all, decided before any chunk is kept. bge-small
+# gives even gibberish a best match around 0.67, so the per-chunk floor above cannot reject
+# an off-topic topic. Measured on the eval corpus (38 topics, each as a full query and as a
+# bare name, plus 10 off-topic names): real topics have a best similarity of 0.677 or more,
+# and 0.725 or more when nothing matches in full text; off-topic ones top out at 0.61-0.676
+# with at most one full-text hit. A topic is covered when its best chunk reaches
+# COVERED_SIMILARITY, or COVERED_SIMILARITY_WITH_TEXT_MATCH with at least one full-text match.
+# Set between the two groups, leaning towards keeping a topic.
+COVERED_SIMILARITY = 0.70
+COVERED_SIMILARITY_WITH_TEXT_MATCH = 0.65
+
 # Keywords beyond this many are ignored by the full-text leg.
 MAX_FULLTEXT_PHRASES = 12
 
@@ -231,6 +242,14 @@ async def _fulltext_leg(
     return [dict(row) for row in rows]
 
 
+def topic_is_covered(vector_rows: Sequence[Dict], fulltext_rows: Sequence[Dict]) -> bool:
+    """Whether the best chunks are close enough to say the materials cover the topic."""
+    best = max((float(row["similarity"]) for row in vector_rows if row.get("similarity") is not None), default=0.0)
+    if best >= COVERED_SIMILARITY:
+        return True
+    return bool(fulltext_rows) and best >= COVERED_SIMILARITY_WITH_TEXT_MATCH
+
+
 async def hybrid_search_chunks(
     project_id: str,
     topic_name: str,
@@ -266,6 +285,12 @@ async def hybrid_search_chunks(
     fulltext_rows = await _fulltext_leg(
         project_id, fulltext_phrases(topic_name, keywords), query_embedding, CANDIDATE_POOL
     )
+
+    # Judged only when chunks have vectors: right after a model change, before re-embedding,
+    # full text is all there is.
+    if vector_rows and not topic_is_covered(vector_rows, fulltext_rows):
+        logger.info("Topic '%s' is not covered by project %s's materials", topic_name, project_id)
+        return []
 
     chunks = fuse_rankings(
         vector_rows,
