@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import type { Prisma } from '@prisma/client'
+import { toPublicContentData } from '@/lib/learning/quiz-questions'
 
 export async function GET(
   request: NextRequest,
@@ -42,7 +43,7 @@ export async function GET(
     }
 
     // Fetch content
-    const content = await prisma.topicContent.findMany({
+    const rows = await prisma.topicContent.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       select: {
@@ -54,6 +55,12 @@ export async function GET(
         updatedAt: true,
       },
     })
+
+    // Quiz answer keys stay on the server until the student submits.
+    const content = rows.map((row) => ({
+      ...row,
+      contentData: toPublicContentData(row.contentType, row.contentData),
+    }))
 
     // If specific type requested, return single object
     if (contentType) {

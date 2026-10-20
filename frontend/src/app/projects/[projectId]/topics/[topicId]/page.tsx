@@ -8,6 +8,7 @@ import { requireAuth } from '@/lib/auth/get-session'
 import { prisma } from '@/lib/db/prisma'
 import { TopicLearningInterface } from '@/components/learning/topic-learning-interface'
 import { PageShell } from '@/components/ui/page-shell'
+import { toPublicContentData, toPublicQuestions } from '@/lib/learning/quiz-questions'
 
 type TopicTab =
   | 'notes'
@@ -101,10 +102,23 @@ export default async function TopicPage({ params, searchParams }: TopicPageProps
     },
   })
 
+  // Quiz answer keys stay on the server until the student submits (see quiz-attempts).
+  const publicTopic = {
+    ...topic,
+    content: topic.content.map((item) => ({
+      ...item,
+      contentData: toPublicContentData(item.contentType, item.contentData),
+    })),
+    topicQuizzes: topic.topicQuizzes.map((quiz) => ({
+      ...quiz,
+      questions: toPublicQuestions(quiz.questions),
+    })),
+  }
+
   return (
     <PageShell>
       <TopicLearningInterface
-        topic={topic}
+        topic={publicTopic}
         allTopics={allTopics}
         userId={session.user.id}
         initialTab={(resolvedSearchParams?.tab as TopicTab | undefined) ?? null}
