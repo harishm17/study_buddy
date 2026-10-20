@@ -218,7 +218,7 @@ Instead of sending whole documents to the model:
 ### Frontend
 | Technology | Purpose |
 |------------|---------|
-| [Next.js 15](https://nextjs.org/) | React framework with App Router |
+| [Next.js 16](https://nextjs.org/) and React 19 | React framework with App Router |
 | [TypeScript](https://www.typescriptlang.org/) | Type-safe JavaScript |
 | [Prisma](https://www.prisma.io/) | Type-safe ORM for PostgreSQL |
 | [NextAuth.js](https://next-auth.js.org/) | Authentication (email/password and Google OAuth) |
