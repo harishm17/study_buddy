@@ -31,7 +31,6 @@ const parsePositiveInt = (value: string | undefined, fallback: number): number =
 }
 const DIRECT_TASK_TIMEOUT_MS = parsePositiveInt(process.env.DIRECT_TASK_TIMEOUT_MS, 10 * 60 * 1000)
 const DIRECT_TASK_MAX_RETRIES = parsePositiveInt(process.env.DIRECT_TASK_MAX_RETRIES, 3)
-const NON_RETRYABLE_STATUSES = new Set([400, 401, 403, 404, 422])
 const INLINE_DIRECT_JOB_TYPES = new Set(
   String(process.env.DIRECT_INLINE_JOB_TYPES || '')
     .split(',')
@@ -59,10 +58,12 @@ export class TaskEnqueueError extends Error {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// The AI service answers 400 for failures a retry cannot fix (missing or rejected API key,
-// no credit, no source material) and 5xx for transient ones.
-function isPermanentTaskFailure(status: number): boolean {
-  return NON_RETRYABLE_STATUSES.has(status)
+// The AI service answers 200 for finished jobs and for jobs it skipped as already handled
+// ({"status": "skipped"}), 400 for failures a retry cannot fix (missing or rejected API
+// key, no credit, no source material, over the daily budget) and 5xx for transient ones.
+// Only transient failures are worth another call: network errors and 5xx.
+function isTransientTaskFailure(status: number): boolean {
+  return status >= 500
 }
 
 async function callAiServiceWithRetry(endpoint: string, payload: TaskPayload): Promise<void> {
@@ -81,7 +82,7 @@ async function callAiServiceWithRetry(endpoint: string, payload: TaskPayload): P
 
       if (!response.ok) {
         const message = await response.text()
-        const retryable = !isPermanentTaskFailure(response.status)
+        const retryable = isTransientTaskFailure(response.status)
         throw new TaskEnqueueError(
           `[DEV] Task execution failed (${response.status}): ${message}`,
           retryable,
@@ -113,10 +114,17 @@ async function markJobFailed(
 ): Promise<void> {
   try {
     const { prisma } = await import('@/lib/db/prisma')
+    // Only a job the AI service has not recorded a result for: never started, or running
+    // on a lease that has run out. A terminal state it wrote itself is left alone, and so
+    // is a job still working under a live lease.
+    const now = new Date()
     await prisma.processingJob.updateMany({
       where: {
         id: payload.jobId,
-        status: { in: ['pending', 'processing'] },
+        OR: [
+          { status: 'pending' },
+          { status: 'processing', OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] },
+        ],
       },
       data: {
         status: 'failed',
@@ -276,24 +284,21 @@ export async function enqueueChunkingJob(
 }
 
 /**
- * Enqueue an exam grading job
+ * Enqueue an exam grading job. The AI service loads the questions and answers from the
+ * submission, so the task body stays small.
  * @param jobId - Processing job ID
  * @param submissionId - Exam submission ID
  * @param examId - Exam ID
- * @param questions - Exam questions
- * @param answers - Student answers
  * @returns Task name
  */
 export async function enqueueExamGradingJob(
   jobId: string,
   submissionId: string,
-  examId: string,
-  questions: any[],
-  answers: Record<string, any>
+  examId: string
 ): Promise<string> {
   return enqueueTask('/jobs/grade-exam', {
     jobId,
     jobType: 'grade_exam',
-    data: { submissionId, examId, questions, answers },
+    data: { submissionId, examId },
   })
 }

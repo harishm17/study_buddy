@@ -14,7 +14,6 @@ import {
 } from '@/lib/api/errors';
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight';
 
-const STALE_JOB_WINDOW_MS = 12 * 60 * 1000;
 const PENDING_DISPATCH_STALE_MS = 90 * 1000;
 
 const generateExamSchema = z.object({
@@ -118,7 +117,6 @@ export async function POST(
     };
 
     const idempotencyKey = `${projectId}:${uniqueTopicIds.sort().join(',')}:${stableStringify(config)}`;
-    const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS);
     const pendingDispatchBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS);
 
     await prisma.processingJob.updateMany({
@@ -126,17 +124,11 @@ export async function POST(
         userId: session.user.id,
         projectId,
         jobType: 'generate_exam',
-        status: { in: ['pending', 'processing'] },
-        OR: [
-          {
-            createdAt: { lt: staleBefore },
-          },
-          {
-            status: 'pending',
-            startedAt: null,
-            createdAt: { lt: pendingDispatchBefore },
-          },
-        ],
+        // A job the AI service never picked up. Running jobs are left alone: the service
+        // keeps a lease on them and its reaper recovers the ones whose worker died.
+        status: 'pending',
+        startedAt: null,
+        createdAt: { lt: pendingDispatchBefore },
         inputData: {
           path: ['idempotencyKey'],
           equals: idempotencyKey,

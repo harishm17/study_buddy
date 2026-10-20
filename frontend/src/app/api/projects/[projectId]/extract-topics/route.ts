@@ -15,9 +15,11 @@ import {
   isUnauthorizedError,
 } from '@/lib/api/errors'
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
-
-const STALE_JOB_WINDOW_MS = 8 * 60 * 1000
-const PENDING_DISPATCH_STALE_MS = 90 * 1000
+import {
+  closeUndispatchedJobs,
+  createJobOrFindActive,
+  extractTopicsTarget,
+} from '@/lib/jobs/active-jobs'
 
 export async function POST(
   request: NextRequest,
@@ -77,75 +79,30 @@ export async function POST(
       return preflightError
     }
 
-    const idempotencyKey = `${projectId}:extract_topics`
-    const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS)
-    const pendingDispatchBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS)
+    // One extraction per project at a time, including the one the AI service starts itself
+    // after chunking: the unique target key hands every caller the same job.
+    const targetKey = extractTopicsTarget(projectId)
+    await closeUndispatchedJobs({ targetKey })
 
-    await prisma.processingJob.updateMany({
-      where: {
-        projectId,
-        userId: session.user.id,
-        jobType: 'extract_topics',
-        status: { in: ['pending', 'processing'] },
-        OR: [
-          {
-            createdAt: { lt: staleBefore },
-          },
-          {
-            status: 'pending',
-            startedAt: null,
-            createdAt: { lt: pendingDispatchBefore },
-          },
-        ],
-        inputData: {
-          path: ['idempotencyKey'],
-          equals: idempotencyKey,
-        },
-      },
-      data: {
-        status: 'failed',
-        errorCode: 'STALE_JOB',
-        errorMessage: 'Automatically closed stale in-flight job. Please retry.',
-        retryable: true,
-        completedAt: new Date(),
-      },
+    const { job, created } = await createJobOrFindActive({
+      userId: session.user.id,
+      projectId,
+      jobType: 'extract_topics',
+      status: 'pending',
+      stage: 'extracting',
+      inputData: { projectId },
+      progressPercent: 0,
+      targetKey,
     })
 
-    const existingJob = await prisma.processingJob.findFirst({
-      where: {
-        projectId,
-        userId: session.user.id,
-        jobType: 'extract_topics',
-        status: { in: ['pending', 'processing'] },
-        inputData: {
-          path: ['idempotencyKey'],
-          equals: idempotencyKey,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    if (existingJob) {
+    if (!created) {
       return NextResponse.json({
-        jobId: existingJob.id,
-        status: existingJob.status === 'processing' ? 'processing' : 'queued',
+        jobId: job.id,
+        status: job.status === 'processing' ? 'processing' : 'queued',
         message: 'Topic extraction already in progress',
         estimatedSeconds: 45,
       })
     }
-
-    // Create processing job
-    const job = await prisma.processingJob.create({
-      data: {
-        userId: session.user.id,
-        projectId,
-        jobType: 'extract_topics',
-        status: 'pending',
-        stage: 'extracting',
-        inputData: { projectId, idempotencyKey },
-        progressPercent: 0,
-      },
-    })
 
     // Enqueue topic extraction task
     try {

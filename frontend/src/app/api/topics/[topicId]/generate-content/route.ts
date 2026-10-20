@@ -8,7 +8,6 @@ import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import { enqueueContentGenerationJob, TaskEnqueueError } from '@/lib/tasks/cloud-tasks'
 import { z } from 'zod'
-import { stableStringify } from '@/lib/utils/stable-json'
 import {
   apiInternal,
   apiInvalidInput,
@@ -19,9 +18,11 @@ import {
   zodDetails,
 } from '@/lib/api/errors'
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
-
-const STALE_JOB_WINDOW_MS = 6 * 60 * 1000
-const PENDING_DISPATCH_STALE_MS = 90 * 1000
+import {
+  closeUndispatchedJobs,
+  createJobOrFindActive,
+  generateContentTarget,
+} from '@/lib/jobs/active-jobs'
 
 const generateContentSchema = z.object({
   contentType: z.enum(['section_notes', 'solved_examples', 'interactive_examples', 'topic_quiz']),
@@ -75,10 +76,6 @@ export async function POST(
     }
 
     const { contentType, preferences } = validation.data
-    const idempotencyKey = `${topicId}:${contentType}:${stableStringify(preferences || {})}`
-    const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS)
-    const pendingDispatchBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS)
-
     // Check if content already exists for this type
     const existingContent = await prisma.topicContent.findFirst({
       where: {
@@ -87,118 +84,35 @@ export async function POST(
       },
     })
 
-    // Auto-close stale in-flight jobs so new attempts are never blocked forever.
-    await prisma.processingJob.updateMany({
-      where: {
-        projectId: topic.projectId,
-        jobType: 'generate_content',
-        status: {
-          in: ['pending', 'processing'],
-        },
-        OR: [
-          {
-            createdAt: {
-              lt: staleBefore,
-            },
-          },
-          {
-            status: 'pending',
-            startedAt: null,
-            createdAt: {
-              lt: pendingDispatchBefore,
-            },
-          },
-        ],
-        AND: [
-          {
-            inputData: {
-              path: ['topicId'],
-              equals: topicId,
-            },
-          },
-          {
-            inputData: {
-              path: ['contentType'],
-              equals: contentType,
-            },
-          },
-          {
-            inputData: {
-              path: ['idempotencyKey'],
-              equals: idempotencyKey,
-            },
-          },
-        ],
+    // One generation per topic and content type at a time (a unique target key), so a
+    // double click or a second tab gets the job that is already running.
+    const targetKey = generateContentTarget(topicId, contentType)
+    await closeUndispatchedJobs({ targetKey })
+
+    const { job, created } = await createJobOrFindActive({
+      userId: session.user.id,
+      projectId: topic.projectId,
+      jobType: 'generate_content',
+      status: 'pending',
+      stage: 'generating',
+      inputData: {
+        topicId,
+        contentType,
+        preferences: preferences || {},
       },
-      data: {
-        status: 'failed',
-        errorCode: 'STALE_JOB',
-        errorMessage: 'Automatically closed stale in-flight job. Please retry.',
-        retryable: true,
-        completedAt: new Date(),
-      },
+      progressPercent: 0,
+      targetKey,
     })
 
-    // Check for existing pending/processing jobs for the same topic + contentType
-    const existingJob = await prisma.processingJob.findFirst({
-      where: {
-        projectId: topic.projectId,
-        jobType: 'generate_content',
-        status: {
-          in: ['pending', 'processing'],
-        },
-        AND: [
-          {
-            inputData: {
-              path: ['topicId'],
-              equals: topicId,
-            },
-          },
-          {
-            inputData: {
-              path: ['contentType'],
-              equals: contentType,
-            },
-          },
-          {
-            inputData: {
-              path: ['idempotencyKey'],
-              equals: idempotencyKey,
-            },
-          },
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    if (existingJob) {
-      // Job already in progress, return existing job ID
+    if (!created) {
       return NextResponse.json({
-        jobId: existingJob.id,
-        status: existingJob.status === 'processing' ? 'processing' : 'queued',
+        jobId: job.id,
+        status: job.status === 'processing' ? 'processing' : 'queued',
         message: 'Content generation already in progress',
         estimatedSeconds: 60,
         replacingExisting: !!existingContent,
       })
     }
-
-    // Create processing job
-    const job = await prisma.processingJob.create({
-      data: {
-        userId: session.user.id,
-        projectId: topic.projectId,
-        jobType: 'generate_content',
-        status: 'pending',
-        stage: 'generating',
-        inputData: {
-          topicId,
-          contentType,
-          preferences: preferences || {},
-          idempotencyKey,
-        },
-        progressPercent: 0,
-      },
-    })
 
     // Enqueue content generation task
     try {

@@ -12,12 +12,18 @@ import {
   zodDetails,
 } from '@/lib/api/errors';
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight';
+import { createJobOrFindActive, gradeExamTarget } from '@/lib/jobs/active-jobs';
 
 const submitExamSchema = z.object({
   answers: z.record(
     z.union([z.string(), z.number(), z.boolean(), z.null()])
   ), // Map of questionIndex -> answer
 });
+
+const submissionIdOf = (inputData: unknown): string | null =>
+  inputData && typeof inputData === 'object'
+    ? ((inputData as { submissionId?: string }).submissionId ?? null)
+    : null;
 
 export async function POST(
   req: NextRequest,
@@ -41,7 +47,6 @@ export async function POST(
       },
       select: {
         id: true,
-        questions: true,
         projectId: true,
       },
     });
@@ -68,7 +73,6 @@ export async function POST(
     }
 
     const { answers } = validation.data;
-    const questionsPayload = Array.isArray(exam.questions) ? exam.questions : [];
     const answersFingerprint = createHash('sha256')
       .update(stableStringify(answers))
       .digest('hex');
@@ -90,9 +94,7 @@ export async function POST(
 
     if (existingJob) {
       return NextResponse.json({
-        submissionId: existingJob.inputData && typeof existingJob.inputData === 'object'
-          ? (existingJob.inputData as { submissionId?: string }).submissionId
-          : null,
+        submissionId: submissionIdOf(existingJob.inputData),
         jobId: existingJob.id,
         status: existingJob.status === 'processing' ? 'processing' : 'queued',
         message: 'Exam grading already in progress',
@@ -109,34 +111,39 @@ export async function POST(
       },
     });
 
-    // Create processing job for AI grading
-    const job = await prisma.processingJob.create({
-      data: {
-        userId: session.user.id,
-        projectId: exam.projectId,
-        jobType: 'grade_exam',
-        status: 'pending',
-        stage: 'grading',
-        inputData: {
-          submissionId: submission.id,
-          examId,
-          answers,
-          questions: questionsPayload,
-          idempotencyKey,
-        },
+    // Create processing job for AI grading. The input holds ids only: the grading task
+    // loads the questions and answers itself, so nothing large travels in the task body or
+    // sits in the job row that the status API reads.
+    const { job, created } = await createJobOrFindActive({
+      userId: session.user.id,
+      projectId: exam.projectId,
+      jobType: 'grade_exam',
+      status: 'pending',
+      stage: 'grading',
+      inputData: {
+        submissionId: submission.id,
+        examId,
+        idempotencyKey,
       },
+      targetKey: gradeExamTarget(session.user.id, idempotencyKey),
     });
+
+    if (!created) {
+      // The same answers were submitted a moment ago; grade that submission, not this copy.
+      await prisma.examSubmission.delete({ where: { id: submission.id } });
+      return NextResponse.json({
+        submissionId: submissionIdOf(job.inputData),
+        jobId: job.id,
+        status: job.status === 'processing' ? 'processing' : 'queued',
+        message: 'Exam grading already in progress',
+        estimatedSeconds: 90,
+      });
+    }
 
     // Enqueue grading task via Cloud Tasks (or direct call in dev)
     try {
       const { enqueueExamGradingJob } = await import('@/lib/tasks/cloud-tasks');
-      await enqueueExamGradingJob(
-        job.id,
-        submission.id,
-        examId,
-        questionsPayload as Record<string, unknown>[],
-        answers
-      );
+      await enqueueExamGradingJob(job.id, submission.id, examId);
     } catch (error) {
       console.error('Error enqueuing grading job:', error);
       const retryable = typeof (error as { retryable?: unknown })?.retryable === 'boolean'
