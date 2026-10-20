@@ -62,7 +62,7 @@ Click **"Add Examples"** or **"Practice More"** to generate new problems. Each r
 - Progress tracking across attempts
 
 ### Voice Coach
-- **Real-time voice interaction** via WebRTC (OpenAI Realtime API, optional)
+- **Spoken conversation**: the browser transcribes and speaks (Web Speech API); Claude (fast tier) coaches over text and calls the drill tools
 - **Three learning styles**: Oral Q&A, guided notes, or free conversation
 - **Concept-only focus**: a regex filter and prompt instructions steer sessions away from math and calculations
 - **Topic Drill** or **Voice Sprint** modes for targeted practice
@@ -328,11 +328,7 @@ ANTHROPIC_MODEL=claude-opus-5-5     # notes, examples, quizzes, exams
 ANTHROPIC_FAST_MODEL=claude-haiku-5-5  # validation, topics, short-answer grading
 EMBEDDING_PROVIDER=local            # openai gives 1536-number vectors; the column is vector(384), see Upgrading
 
-# Voice Coach (AI service; without OPENAI_API_KEY the voice coach is off)
-OPENAI_API_KEY=sk-proj-...
-OPENAI_REALTIME_MODEL=gpt-realtime-mini
-OPENAI_REALTIME_VOICE=marin
-OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+# Voice Coach (a Claude conversation on the fast model; the browser does speech-to-text and text-to-speech)
 VOICE_DAILY_MINUTES=30            # per-user voice minutes per 24 hours (frontend setting)
 
 # Uploads (frontend setting)

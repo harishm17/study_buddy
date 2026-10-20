@@ -29,6 +29,10 @@ from app.services.llm.base import (
     LLMUsage,
     SchemaT,
     Tier,
+    TurnDone,
+    TurnEvent,
+    TurnText,
+    TurnToolUse,
 )
 from app.services.llm.usage import estimate_cost_usd, record_usage
 
@@ -190,6 +194,27 @@ def _answer_conversation(
     else:
         conversation.append({"role": "user", "content": final})
     return conversation
+
+
+def _content_block_param(block: Any) -> Optional[Dict[str, Any]]:
+    """An assistant content block as the request format wants it back, or None to leave it out.
+
+    Only the fields the API accepts on input are kept (a response block can carry more).
+    Thinking blocks stay: a tool-use turn must be sent back whole.
+    """
+    kind = getattr(block, "type", None)
+    if kind == "text":
+        return {"type": "text", "text": block.text}
+    if kind == "tool_use":
+        return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
+    if kind == "thinking":
+        return {"type": "thinking", "thinking": block.thinking, "signature": block.signature}
+    if kind == "redacted_thinking":
+        return {"type": "redacted_thinking", "data": block.data}
+    if kind == "fallback":
+        return None
+    dump = getattr(block, "model_dump", None)
+    return dump(exclude_none=True) if dump else None
 
 
 def _translate_api_error(exc: anthropic.APIError) -> Exception:
@@ -454,6 +479,98 @@ class AnthropicProvider(LLMProvider):
             return
         error.usage = usage
         raise error
+
+    async def stream_turn(
+        self,
+        *,
+        system: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        tier: Tier = "fast",
+        effort: Optional[str] = None,
+        max_tokens: int = 800,
+        purpose: str = "voice",
+    ) -> AsyncIterator[TurnEvent]:
+        if not messages:
+            raise LLMRequestError("A turn needs at least one message")
+        model = self._models[tier]
+        used_effort = effort or self._efforts[tier]
+
+        params: Dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+        }
+        if system:
+            # Tools render before the system prompt, so this one breakpoint caches both.
+            params["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+        if tools:
+            # tool_choice stays auto: forced tool use is not supported on these models.
+            params["tools"] = tools
+            params["tool_choice"] = {"type": "auto"}
+        if used_effort:
+            params["output_config"] = {"effort": used_effort}
+        if _supports_server_fallback(model):
+            params["betas"] = [_SERVER_FALLBACK_BETA]
+            params["fallbacks"] = "default"
+
+        try:
+            async with self.client.beta.messages.stream(**params) as stream:
+                async for event in stream:
+                    if getattr(event, "type", None) != "content_block_delta":
+                        continue
+                    delta = event.delta
+                    if delta.type == "text_delta" and delta.text:
+                        yield TurnText(text=delta.text)
+                final = await stream.get_final_message()
+        except anthropic.APIError as exc:
+            raise _translate_api_error(exc) from exc
+
+        usage = LLMUsage(
+            model=final.model or model,
+            purpose=purpose,
+            input_tokens=final.usage.input_tokens or 0,
+            output_tokens=final.usage.output_tokens or 0,
+            cache_read_input_tokens=final.usage.cache_read_input_tokens or 0,
+            cache_creation_input_tokens=final.usage.cache_creation_input_tokens or 0,
+        )
+        record_usage(usage)
+        cost = estimate_cost_usd(usage)
+        logger.info(
+            "llm turn purpose=%s model=%s stop=%s in=%s out=%s cache_read=%s cache_write=%s "
+            "tools=%s cost_usd=%s request_id=%s",
+            purpose or "-",
+            usage.model,
+            final.stop_reason,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_read_input_tokens,
+            usage.cache_creation_input_tokens,
+            len(tools),
+            f"{cost:.5f}" if cost is not None else "?",
+            getattr(final, "_request_id", None),
+        )
+
+        stop_reason = final.stop_reason or ""
+        if stop_reason == "refusal":
+            details = final.stop_details
+            category = getattr(details, "category", None) if details else None
+            error: LLMError = LLMRefusalError(
+                f"Claude declined the request (category: {category or 'unspecified'})"
+            )
+            error.usage = usage
+            raise error
+
+        content = [param for param in map(_content_block_param, final.content) if param is not None]
+        tool_uses = [block for block in content if block["type"] == "tool_use"]
+        has_text = any(block["type"] == "text" and block["text"].strip() for block in content)
+        if not tool_uses and not has_text:
+            error = LLMOutputError(f"Claude returned no text or tool call ({purpose})")
+            error.usage = usage
+            raise error
+        for block in tool_uses:
+            yield TurnToolUse(id=block["id"], name=block["name"], input=block["input"] or {})
+        yield TurnDone(stop_reason=stop_reason, content=content, usage=usage)
 
 
 def _to_answer_citation(citation: Any, refs: List[str], offset: int) -> Optional[AnswerCitation]:

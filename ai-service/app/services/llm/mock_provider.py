@@ -1,8 +1,9 @@
 """Placeholder provider for local runs and end-to-end tests: no API calls, no cost."""
 import asyncio
+import json
 import logging
 import re
-from typing import AsyncIterator, List, Optional, Type
+from typing import Any, AsyncIterator, Dict, List, Optional, Type
 
 from app.services.llm.base import (
     AnswerCitation,
@@ -17,6 +18,10 @@ from app.services.llm.base import (
     LLMUsage,
     SchemaT,
     Tier,
+    TurnDone,
+    TurnEvent,
+    TurnText,
+    TurnToolUse,
 )
 from app.services.llm.usage import record_usage
 
@@ -62,6 +67,80 @@ def _first_sentence(text: str, limit: int = 220) -> str:
     match = re.search(r"[.!?](\s|$)", flat)
     sentence = flat[: match.end()].strip() if match else flat
     return sentence if len(sentence) <= limit else sentence[: limit - 1].rstrip() + "..."
+
+
+def _blocks(message: Dict[str, Any]) -> List[Dict[str, Any]]:
+    content = message.get("content")
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}]
+    return [block for block in content or [] if isinstance(block, dict)]
+
+
+def _tool_calls(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every tool_use block in the conversation, oldest first."""
+    return [
+        block
+        for message in messages
+        if message.get("role") == "assistant"
+        for block in _blocks(message)
+        if block.get("type") == "tool_use"
+    ]
+
+
+def _latest_question_index(messages: List[Dict[str, Any]], call: Dict[str, Any], default: int) -> int:
+    """The question_index in the tool result for `call` (a get_next_question), or `default`."""
+    for message in messages:
+        for block in _blocks(message):
+            if block.get("type") == "tool_result" and block.get("tool_use_id") == call.get("id"):
+                content = block.get("content")
+                if isinstance(content, list):
+                    content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+                try:
+                    index = json.loads(content or "{}").get("question_index")
+                except (TypeError, ValueError, AttributeError):
+                    return default
+                return index if isinstance(index, int) else default
+    return default
+
+
+def _mock_turn(messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> tuple[str, Optional[Dict[str, Any]]]:
+    """(text, tool call) for the next reply: deterministic, driven only by the conversation.
+
+    With tools: the first turn asks for a question (get_next_question); the next plain user
+    message is treated as the answer (record_answer for the latest question); a tool result is
+    answered with one short sentence. Without tools it is a short scripted reply.
+    """
+    last = _blocks(messages[-1]) if messages else []
+    results = [block for block in last if block.get("type") == "tool_result"]
+    available = {tool.get("name") for tool in tools}
+    calls = _tool_calls(messages)
+
+    if results:
+        called = {call.get("id"): call for call in calls}
+        call = called.get(results[-1].get("tool_use_id"), {})
+        name = call.get("name")
+        if name == "get_next_question":
+            return "Here is your question. Take your time and answer out loud.", None
+        if name == "record_answer":
+            return "Thanks, I have noted that. Say next when you are ready for another question.", None
+        if name == "get_hint":
+            return "Here is a nudge. Think about how the key ideas connect.", None
+        return "Okay.", None
+
+    utterance = " ".join(block.get("text", "") for block in last if block.get("type") == "text").strip()
+    if "get_next_question" in available:
+        asked = [call for call in calls if call.get("name") == "get_next_question"]
+        recorded = [call for call in calls if call.get("name") == "record_answer"]
+        if asked and len(recorded) < len(asked):
+            return "", {
+                "name": "record_answer",
+                "input": {"question_index": _latest_question_index(messages, asked[-1], len(recorded)),
+                          "user_answer": utterance or "no answer"},
+            }
+        return "", {"name": "get_next_question", "input": {}}
+    if utterance:
+        return f"Mock coach here. You said: {utterance[:80]}. Tell me more.", None
+    return "Hi, I am your mock coach. What would you like to talk about?", None
 
 
 class MockProvider(LLMProvider):
@@ -140,3 +219,34 @@ class MockProvider(LLMProvider):
         usage = LLMUsage(model=self.model_for(tier), purpose=purpose)
         record_usage(usage)
         yield AnswerDone(text=text, citations=citations, stop_reason="end_turn", usage=usage)
+
+    async def stream_turn(
+        self,
+        *,
+        system: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        tier: Tier = "fast",
+        effort: Optional[str] = None,
+        max_tokens: int = 800,
+        purpose: str = "voice",
+    ) -> AsyncIterator[TurnEvent]:
+        """A scripted reply (see _mock_turn). Reports a few nominal tokens, at no cost."""
+        text, call = _mock_turn(messages, tools)
+        content: List[Dict[str, Any]] = []
+        if text:
+            for word in re.findall(r"\s*\S+\s*", text):
+                yield TurnText(text=word)
+                await asyncio.sleep(0.005)
+            content.append({"type": "text", "text": text})
+        if call is not None:
+            tool_id = f"toolu_mock_{sum(1 for m in messages if m.get('role') == 'assistant') + 1}"
+            content.append({"type": "tool_use", "id": tool_id, "name": call["name"], "input": call["input"]})
+            yield TurnToolUse(id=tool_id, name=call["name"], input=call["input"])
+
+        # Nominal counts so the usage ledger gets a row; the model name is unpriced, so it costs $0.
+        usage = LLMUsage(model=self.model_for(tier), purpose=purpose, input_tokens=100, output_tokens=20)
+        record_usage(usage)
+        yield TurnDone(
+            stop_reason="tool_use" if call is not None else "end_turn", content=content, usage=usage
+        )
