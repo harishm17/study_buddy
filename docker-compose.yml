@@ -77,11 +77,8 @@ services:
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-5-5}
       - ANTHROPIC_FAST_MODEL=${ANTHROPIC_FAST_MODEL:-claude-haiku-5-5}
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-local}
-      # Optional: only the realtime voice coach (and the openai embedding provider) use it
+      # Optional: only the openai embedding provider uses it
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_REALTIME_MODEL=${OPENAI_REALTIME_MODEL:-gpt-realtime-mini}
-      - OPENAI_REALTIME_VOICE=${OPENAI_REALTIME_VOICE:-marin}
-      - OPENAI_TRANSCRIPTION_MODEL=${OPENAI_TRANSCRIPTION_MODEL:-gpt-4o-mini-transcribe}
       - ENABLE_PROCESSING=${ENABLE_PROCESSING:-true}
       - AUTO_EXTRACT_TOPICS_ON_CHUNK=${AUTO_EXTRACT_TOPICS_ON_CHUNK:-false}
       - GCS_BUCKET=${GCS_BUCKET:-local-materials}

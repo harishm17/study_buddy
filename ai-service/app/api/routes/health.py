@@ -46,14 +46,14 @@ async def dependency_health_check():
     else:
         checks.append({"name": "llm_key", "status": "fail", "message": "ANTHROPIC_API_KEY missing"})
 
-    # OpenAI key: only the realtime voice coach uses it
+    # The voice coach is a Claude conversation: it is on whenever the LLM is configured
     if settings.voice_enabled:
-        checks.append({"name": "voice", "status": "pass", "message": "OPENAI_API_KEY configured"})
+        checks.append({"name": "voice", "status": "pass", "message": "Voice coach available (LLM configured)"})
     else:
         checks.append({
             "name": "voice",
             "status": "warn",
-            "message": "OPENAI_API_KEY missing: the voice coach is turned off",
+            "message": "LLM not configured: the voice coach is turned off",
         })
 
     # Internal auth token for frontend -> AI bridge

@@ -22,8 +22,6 @@ async def _run_startup_checks() -> None:
     logger.info("LLM Provider: %s", settings.LLM_PROVIDER)
     if not settings.llm_configured:
         logger.warning("ANTHROPIC_API_KEY is not set: generation, grading and validation calls will fail")
-    if not settings.voice_enabled:
-        logger.info("OPENAI_API_KEY is not set: the realtime voice coach is turned off")
     db_info = settings.DATABASE_URL.split('@')[1] if '@' in settings.DATABASE_URL else 'configured'
     logger.info("Database: %s", db_info)
 

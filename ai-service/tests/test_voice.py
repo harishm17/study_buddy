@@ -1,4 +1,4 @@
-"""Voice coach: drill filtering and the optional OpenAI dependency."""
+"""Voice coach: drill filtering."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -37,12 +37,3 @@ async def test_drill_tops_up_after_filtering():
     assert result["total"] == 3
     assert "6 questions" in llm.generate_structured.call_args.args[0][-1].content
     assert llm.generate_structured.call_args.kwargs["tier"] == "fast"
-
-
-def test_realtime_token_is_off_without_openai_key(test_client):
-    from app.config import settings
-
-    with patch.object(settings, "OPENAI_API_KEY", ""), patch.object(settings, "AI_INTERNAL_TOKEN", ""):
-        response = test_client.post("/voice/realtime/token", json={})
-    assert response.status_code == 503
-    assert "OPENAI_API_KEY" in response.json()["detail"]

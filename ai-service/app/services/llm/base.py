@@ -1,6 +1,6 @@
 """Provider-neutral LLM interface, errors and usage records."""
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, List, Literal, Optional, Type, TypeVar, Union
+from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Type, TypeVar, Union
 
 from pydantic import BaseModel
 
@@ -151,6 +151,35 @@ class AnswerDone(BaseModel):
 AnswerEvent = Union[AnswerText, AnswerCitation, AnswerReset, AnswerDone]
 
 
+class TurnText(BaseModel):
+    """A piece of the reply, as it is written."""
+
+    type: Literal["text"] = "text"
+    text: str
+
+
+class TurnToolUse(BaseModel):
+    """The model wants a tool run. The caller runs it and sends a tool_result next turn."""
+
+    type: Literal["tool_use"] = "tool_use"
+    id: str
+    name: str
+    input: Dict[str, Any]
+
+
+class TurnDone(BaseModel):
+    """The last event: why the model stopped, the assistant content blocks exactly as
+    returned (to append to the conversation), and what the call cost."""
+
+    type: Literal["done"] = "done"
+    stop_reason: str
+    content: List[Dict[str, Any]]
+    usage: LLMUsage
+
+
+TurnEvent = Union[TurnText, TurnToolUse, TurnDone]
+
+
 class LLMProvider(ABC):
     """Interface every provider implements."""
 
@@ -198,6 +227,31 @@ class LLMProvider(ABC):
         answer is empty or cut off (both with `usage` set). Free text only: search result
         citations cannot be combined with structured outputs.
         """
+
+    async def stream_turn(
+        self,
+        *,
+        system: str,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        tier: Tier = "fast",
+        effort: Optional[str] = None,
+        max_tokens: int = 800,
+        purpose: str = "voice",
+    ) -> AsyncIterator[TurnEvent]:
+        """One model call of a text conversation that may use tools.
+
+        `messages` are Anthropic-format messages (content may hold tool_use and tool_result
+        blocks) and `tools` are Anthropic tool definitions; tool_choice is always auto.
+        Yields TurnText pieces as they arrive, one TurnToolUse per tool call, and ends with
+        one TurnDone. Raises LLMRefusalError when the model declines (with `usage` set) and
+        LLMOutputError when it returned neither text nor a tool call.
+
+        Not abstract: a provider without a conversation mode (a test double) need not
+        implement it.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support voice turns")
+        yield  # pragma: no cover  (makes this an async generator)
 
     def model_for(self, tier: Tier) -> Optional[str]:
         """The model a tier maps to, for logging."""

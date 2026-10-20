@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 180.0
     LLM_MAX_RETRIES: int = 2
 
+    # Voice coach turns (POST /voice/turn): the fast tier at low effort, short replies. The browser
+    # does speech-to-text and text-to-speech; the model only sees text.
+    VOICE_EFFORT: str = "low"
+    VOICE_MAX_TOKENS: int = 800
+
     # "Ask your materials" chat. Answers are written by the CHAT_TIER model at CHAT_EFFORT.
     CHAT_TIER: str = "main"  # main or fast
     CHAT_EFFORT: str = "low"
@@ -49,13 +54,9 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     EMBEDDING_CACHE_DIR: str = ""
 
-    # OpenAI: only the realtime voice coach (and the optional "openai" embedding provider).
-    # Voice is turned off when this is empty.
+    # OpenAI: only the optional "openai" embedding provider.
     OPENAI_API_KEY: str = ""
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    OPENAI_REALTIME_MODEL: str = "gpt-realtime-mini"
-    OPENAI_REALTIME_VOICE: str = "marin"
-    OPENAI_TRANSCRIPTION_MODEL: str = "gpt-4o-mini-transcribe"
 
     # Processing control
     ENABLE_PROCESSING: bool = True
@@ -128,8 +129,8 @@ class Settings(BaseSettings):
 
     @property
     def voice_enabled(self) -> bool:
-        """The realtime voice coach needs an OpenAI key."""
-        return bool(self.OPENAI_API_KEY)
+        """The voice coach is a Claude conversation, so it needs the LLM to be configured."""
+        return self.llm_configured
 
 
 # Global settings instance
