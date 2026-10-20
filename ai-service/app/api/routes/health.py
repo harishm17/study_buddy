@@ -71,7 +71,13 @@ async def dependency_health_check():
         })
 
     # Cloud storage mode sanity
-    if settings.GCS_PROJECT_ID:
+    if settings.S3_ACCESS_KEY_ID and settings.S3_SECRET_ACCESS_KEY:
+        checks.append({
+            "name": "s3_config",
+            "status": "pass",
+            "message": "S3 credentials configured",
+        })
+    elif settings.GCS_PROJECT_ID:
         checks.append({
             "name": "gcs_config",
             "status": "pass",
@@ -81,7 +87,7 @@ async def dependency_health_check():
         checks.append({
             "name": "gcs_config",
             "status": "warn",
-            "message": "GCS_PROJECT_ID missing (local file mode expected if frontend uses local storage)",
+            "message": "No S3 credentials or GCS_PROJECT_ID (local file mode expected if frontend uses local storage)",
         })
 
     has_fail = any(check["status"] == "fail" for check in checks)

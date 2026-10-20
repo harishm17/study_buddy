@@ -131,6 +131,55 @@ class TestStorage:
         assert not os.path.exists(temp_dir)
 
 
+    async def test_malformed_s3_path_is_a_storage_error(self):
+        with pytest.raises(StorageError, match="Invalid S3 path"):
+            async with local_copy("s3://only-a-bucket"):
+                pass
+
+
+@pytest.fixture
+def s3_bucket(monkeypatch):
+    """A mocked S3 bucket the storage module talks to through boto3."""
+    import boto3
+    from moto import mock_aws
+
+    monkeypatch.setattr(settings, "S3_ENDPOINT", "")
+    monkeypatch.setattr(settings, "S3_REGION", "us-east-1")
+    monkeypatch.setattr(settings, "S3_ACCESS_KEY_ID", "test")
+    monkeypatch.setattr(settings, "S3_SECRET_ACCESS_KEY", "test")
+    with mock_aws():
+        client = boto3.client("s3", region_name="us-east-1")
+        client.create_bucket(Bucket="materials")
+        yield client
+
+
+class TestS3Storage:
+    async def test_object_is_downloaded_and_the_copy_removed_afterwards(self, s3_bucket, tmp_path):
+        source = tmp_path / "notes.pdf"
+        text_pdf(2).save(source)
+        s3_bucket.upload_file(str(source), "materials", "user/project/materials/m1/notes.pdf")
+
+        async with local_copy("s3://materials/user/project/materials/m1/notes.pdf") as path:
+            assert path.endswith(".pdf")
+            assert Path(path).read_bytes() == source.read_bytes()
+        assert not Path(path).exists()
+        assert not Path(path).parent.exists()
+
+    async def test_missing_object_is_a_storage_error(self, s3_bucket):
+        with pytest.raises(StorageError, match="Could not download s3://materials/missing.pdf"):
+            async with local_copy("s3://materials/missing.pdf"):
+                pass
+
+    async def test_local_uploads_are_not_consulted_for_s3_paths(self, s3_bucket, tmp_path, monkeypatch):
+        # A file with the same key on local disk must not stand in for the bucket's copy.
+        monkeypatch.setattr(settings, "LOCAL_UPLOADS_DIR", str(tmp_path))
+        (tmp_path / "a.pdf").write_bytes(b"local")
+
+        with pytest.raises(StorageError):
+            async with local_copy("s3://materials/a.pdf"):
+                pass
+
+
 class TestValidation:
     async def test_local_pdf_validates_in_production(self, production_without_gcs):
         gcs_path = put_upload(production_without_gcs, "ok.pdf", text_pdf())

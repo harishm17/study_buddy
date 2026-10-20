@@ -1,9 +1,17 @@
 /**
- * Google Cloud Storage client wrapper
- * Handles file uploads and downloads with signed URLs
+ * Material file storage: an S3-compatible bucket (S3_BUCKET set), Google Cloud Storage
+ * (ENABLE_GCS_STORAGE=true) or the local uploads folder.
  */
 
 import type { Readable, Transform } from 'stream'
+import {
+  deleteS3Object,
+  deleteS3Prefix,
+  openS3Object,
+  parseS3Path,
+  s3Configured,
+  uploadStreamToS3,
+} from './s3'
 
 // Lazy-load Storage to avoid credential errors in development
 let storageInstance: any = null
@@ -135,6 +143,10 @@ export async function uploadStream(
   contentType?: string,
   transforms: Transform[] = []
 ): Promise<string> {
+  if (s3Configured()) {
+    return uploadStreamToS3(source, storagePath, inferContentType(storagePath, contentType), transforms)
+  }
+
   const storage = await getStorage()
 
   if (!storage) {
@@ -196,6 +208,12 @@ export async function getSignedUrl(
  * @param gcsPath - Full GCS path (gs://bucket/path)
  */
 export async function deleteFile(gcsPath: string): Promise<void> {
+  const s3Path = parseS3Path(gcsPath)
+  if (s3Path) {
+    await deleteS3Object(s3Path.bucket, s3Path.key)
+    return
+  }
+
   const storage = await getStorage()
   
   if (!storage) {
@@ -247,6 +265,9 @@ export async function deleteProjectFolder(userId: string, projectId: string): Pr
   try {
     // Uploads can be on local disk even with GCS on (the upload fallback), so sweep both.
     await deleteLocalFolder(folder)
+    if (s3Configured()) {
+      await deleteS3Prefix(folder)
+    }
     const storage = await getStorage()
     if (storage) {
       await storage.bucket(BUCKET_NAME).deleteFiles({ prefix: folder, force: true })
@@ -289,6 +310,11 @@ export type StoredFile = {
  * bucket. Returns null when the file is in neither place.
  */
 export async function openStoredFile(gcsPath: string): Promise<StoredFile | null> {
+  const s3Path = parseS3Path(gcsPath)
+  if (s3Path) {
+    return openS3Object(s3Path.bucket, s3Path.key)
+  }
+
   const match = /^gs:\/\/([^/]+)\/(.+)$/.exec(gcsPath)
   if (!match) return null
   const [, bucketName, blobPath] = match
