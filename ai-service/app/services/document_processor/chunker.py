@@ -1,398 +1,324 @@
-"""Document chunking service with semantic section detection."""
+"""Split extracted pages into chunks for embedding and retrieval.
+
+The text is markdown. It is cut into sections at headings, and each section is split by a
+recursive, token-based splitter: paragraphs first, then lines, sentences, words and finally
+raw characters, so CJK text or an unbroken string still ends up in pieces. Chunks are about
+`CHUNK_TOKENS` long (cl100k_base tokens) and each one starts with the tail of the previous
+one (`OVERLAP_TOKENS`). Headings stay in the chunk text; `section_hierarchy` is the heading
+path. Every chunk knows the pages it covers.
+
+The embedding model takes 512 tokens, so chunks have a hard character cap as well: a string
+with no spaces can be a lot of characters per token or very few.
+"""
+import bisect
+import functools
 import logging
 import re
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
+
+import tiktoken
 from pydantic import BaseModel
-import pymupdf  # PyMuPDF
+
 from app.services.document_processor.extractors import (
-    extract_document_text,
-    infer_extension,
+    ExtractedPage,
+    extract_document,
 )
 
 logger = logging.getLogger(__name__)
 
+CHUNK_TOKENS = 350
+OVERLAP_TOKENS = 50
+CHUNK_CHARS = 2000  # hard cap on a chunk, overlap included
+OVERLAP_CHARS = 400
+# Pieces are split down to this size before packing, so a piece plus the overlap always fits.
+PIECE_TOKENS = CHUNK_TOKENS - OVERLAP_TOKENS
+PIECE_CHARS = CHUNK_CHARS - OVERLAP_CHARS
+# An overlap shorter than this starts mid-sentence instead of at a sentence boundary.
+MIN_SENTENCE_OVERLAP_TOKENS = 20
+MAX_HEADING_CHARS = 120
+
+HEADING_LINE = re.compile(r"^(#{1,6})[ \t]+(\S.*)$")
+# "2", "2.1", "2.1.3." followed by a space. Bounded groups keep this linear.
+NUMBERED_HEADING = re.compile(r"^(\d{1,3}(?:\.\d{1,3})*)\.?\s+")
+CODE_FENCE = re.compile(r"^\s*(```|~~~)")
+PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n\s*")
+SENTENCE_END = re.compile(r"[.!?][\"')\]]*\s+|[。！？]|\n")
+WHITESPACE_RUN = re.compile(r"\s+")
+
 
 class Chunk(BaseModel):
-    """Represents a semantic chunk of text from a material."""
+    """A piece of a material, ready to embed."""
 
     chunk_text: str
-    section_hierarchy: Optional[str] = None  # e.g., "Chapter 3 > Section 3.2 > Photosynthesis"
-    page_start: int
-    page_end: int
+    section_hierarchy: Optional[str] = None  # e.g. "Chapter 2 > 2.1 Hashing"
+    page_start: Optional[int] = None  # 1-indexed; None for formats without pages
+    page_end: Optional[int] = None
     chunk_index: int
     token_count: int
 
 
-def estimate_tokens(text: str) -> int:
+class NoContentError(ValueError):
+    """The file produced no text to chunk. A content problem, so retrying will not help."""
+
+    code = "NO_CONTENT"
+
+
+@functools.lru_cache(maxsize=1)
+def _encoding() -> tiktoken.Encoding:
+    return tiktoken.get_encoding("cl100k_base")
+
+
+def count_tokens(text: str) -> int:
+    # Material text may contain strings like "<|endoftext|>"; count them as plain text.
+    return len(_encoding().encode(text, disallowed_special=()))
+
+
+# Sections
+
+class _Section:
+    """A heading and the text under it, with the page each line came from."""
+
+    def __init__(self, path: Tuple[str, ...]):
+        self.path = path
+        self.lines: List[Tuple[Optional[int], str]] = []
+        self.has_body = False
+        self.heading_level = 0
+
+    def add_line(self, page: Optional[int], line: str, is_heading: bool = False) -> None:
+        if not line.strip() and (not self.lines or not self.lines[-1][1].strip()):
+            return  # no leading or doubled blank lines
+        self.lines.append((page, line))
+        if line.strip() and not is_heading:
+            self.has_body = True
+
+    def text_and_pages(self) -> Tuple[str, List[int], List[Optional[int]]]:
+        """Section text, plus the offset where each line starts and that line's page."""
+        offsets, pages, parts, position = [], [], [], 0
+        for page, line in self.lines:
+            offsets.append(position)
+            pages.append(page)
+            parts.append(line)
+            position += len(line) + 1
+        return "\n".join(parts), offsets, pages
+
+
+def _clean_heading(text: str) -> str:
+    text = text.strip().rstrip("#").strip()
+    text = re.sub(r"^[*_]+|[*_]+$", "", text).strip()
+    text = text.replace("**", "").replace("__", "")
+    if len(text) > MAX_HEADING_CHARS:
+        text = text[: MAX_HEADING_CHARS - 1].rstrip() + "…"
+    return text
+
+
+def _nested_numbered_level(
+    text: str, level: int, stack: List[Tuple[int, str]]
+) -> int:
+    """Deepen a numbered heading ("2.1.1") that sits at the same level as its parent ("2.1").
+
+    Some PDFs set every heading in one font size, so the parser gives them all one level.
     """
-    Rough estimation of tokens (1 token ≈ 4 characters).
-
-    Args:
-        text: Text to estimate
-
-    Returns:
-        Estimated token count
-    """
-    return len(text) // 4
-
-
-def detect_heading(block: dict, page_height: float) -> Optional[tuple[int, str]]:
-    """
-    Detect if a text block is a heading based on font size and position.
-
-    Args:
-        block: PyMuPDF text block
-        page_height: Page height for position analysis
-
-    Returns:
-        Tuple of (heading_level, text) or None
-    """
-    if block.get("type") != 0:  # Only text blocks
-        return None
-
-    lines = block.get("lines", [])
-    if not lines:
-        return None
-
-    # Get first span (assumes heading is in first line)
-    first_line = lines[0]
-    spans = first_line.get("spans", [])
-    if not spans:
-        return None
-
-    first_span = spans[0]
-    font_size = first_span.get("size", 0)
-    text = first_span.get("text", "").strip()
-
-    # Skip empty or very short text
-    if len(text) < 3:
-        return None
-
-    # Heading detection heuristics
-    is_bold = "bold" in first_span.get("font", "").lower()
-    is_large = font_size > 12
-    is_title_case = text[0].isupper()
-
-    # Check for numbered headings (1., 1.1, Chapter 1, etc.)
-    has_numbering = bool(re.match(r'^(\d+\.?)+\s+', text)) or \
-                   bool(re.match(r'^(Chapter|Section|Part)\s+\d+', text, re.IGNORECASE))
-
-    # Determine heading level
-    if has_numbering:
-        # Count dots to determine depth (1 = h1, 1.1 = h2, 1.1.1 = h3)
-        dots = text.split()[0].count('.')
-        level = min(dots + 1, 3)
-        return (level, text)
-    elif is_bold and is_large and is_title_case:
-        # Larger font = higher level heading
-        if font_size > 16:
-            return (1, text)
-        elif font_size > 14:
-            return (2, text)
-        else:
-            return (3, text)
-
-    return None
+    if not stack:
+        return level
+    parent_level, parent_text = stack[-1]
+    current, parent = NUMBERED_HEADING.match(text), NUMBERED_HEADING.match(parent_text)
+    if not current or not parent or parent_level != level:
+        return level
+    if current.group(1).startswith(parent.group(1) + "."):
+        return min(level + 1, 6)
+    return level
 
 
-def build_section_hierarchy(headings: List[tuple[int, str]]) -> str:
-    """
-    Build hierarchical section path from heading stack.
+def _split_sections(pages: Sequence[ExtractedPage]) -> List[_Section]:
+    sections: List[_Section] = []
+    stack: List[Tuple[int, str]] = []
+    current = _Section(path=())
+    in_code = False
 
-    Args:
-        headings: List of (level, text) tuples
+    def start_section(page: Optional[int], level: int, heading_line: str) -> None:
+        nonlocal current
+        # A heading with nothing under it yet is kept with the next, deeper heading, so a
+        # chapter title does not become a chunk of its own.
+        absorb = current.lines and not current.has_body and level > current.heading_level
+        if not absorb:
+            if current.lines:
+                sections.append(current)
+            current = _Section(path=())
+        current.path = tuple(text for _, text in stack)
+        current.heading_level = level
+        current.add_line(page, heading_line, is_heading=True)
 
-    Returns:
-        Formatted hierarchy string (e.g., "Chapter 3 > Section 3.2 > Photosynthesis")
-    """
-    return " > ".join([h[1] for h in headings])
-
-
-def chunk_pdf(pdf_path: str, target_chunk_size: int = 800) -> List[Chunk]:
-    """
-    Chunk a PDF into semantic sections.
-
-    Strategy:
-    1. Parse PDF and detect headings
-    2. Group content under headings
-    3. Split large sections into chunks (~500-1000 tokens)
-    4. Preserve section hierarchy for context
-
-    Args:
-        pdf_path: Path to PDF file
-        target_chunk_size: Target tokens per chunk (default: 800)
-
-    Returns:
-        List of Chunk objects
-    """
-    logger.info(f"Chunking PDF: {pdf_path}")
-
-    try:
-        doc = pymupdf.open(pdf_path)
-        chunks = []
-        chunk_index = 0
-
-        # Track current section hierarchy
-        heading_stack = []  # [(level, text), ...]
-        current_section_text = []
-        current_section_start_page = 0
-
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            page_height = page.rect.height
-
-            # Get text blocks with structure
-            blocks = page.get_text("dict")["blocks"]
-
-            for block in blocks:
-                if block.get("type") != 0:  # Skip non-text blocks
-                    continue
-
-                # Extract block text
-                block_text = ""
-                for line in block.get("lines", []):
-                    for span in line.get("spans", []):
-                        block_text += span.get("text", "") + " "
-                block_text = block_text.strip()
-
-                if not block_text:
-                    continue
-
-                # Check if this is a heading
-                heading = detect_heading(block, page_height)
-
-                if heading:
-                    level, heading_text = heading
-
-                    # Save previous section as chunk(s) if we have content
-                    if current_section_text:
-                        section_text = "\n".join(current_section_text)
-                        section_chunks = split_into_chunks(
-                            section_text,
-                            build_section_hierarchy(heading_stack),
-                            current_section_start_page,
-                            page_num - 1,
-                            chunk_index,
-                            target_chunk_size
-                        )
-                        chunks.extend(section_chunks)
-                        chunk_index += len(section_chunks)
-                        current_section_text = []
-
-                    # Update heading stack
-                    # Remove headings at same or lower level
-                    heading_stack = [(l, t) for l, t in heading_stack if l < level]
-                    heading_stack.append((level, heading_text))
-
-                    current_section_start_page = page_num
-                else:
-                    # Regular text - add to current section
-                    current_section_text.append(block_text)
-
-        # Process final section
-        if current_section_text:
-            section_text = "\n".join(current_section_text)
-            section_chunks = split_into_chunks(
-                section_text,
-                build_section_hierarchy(heading_stack),
-                current_section_start_page,
-                len(doc) - 1,
-                chunk_index,
-                target_chunk_size
-            )
-            chunks.extend(section_chunks)
-
-        doc.close()
-
-        logger.info(f"Created {len(chunks)} chunks from PDF")
-        return chunks
-
-    except Exception as e:
-        logger.error(f"Error chunking PDF: {e}")
-        raise
+    for page in pages:
+        if current.lines and current.lines[-1][1].strip():
+            current.add_line(page.number, "")  # a page break ends the paragraph
+        for raw_line in page.text.split("\n"):
+            line = raw_line.rstrip()
+            if CODE_FENCE.match(line):
+                in_code = not in_code
+            heading = None if in_code else HEADING_LINE.match(line)
+            heading_text = _clean_heading(heading.group(2)) if heading else ""
+            if heading and heading_text:
+                level = _nested_numbered_level(heading_text, len(heading.group(1)), stack)
+                while stack and stack[-1][0] >= level:
+                    stack.pop()
+                stack.append((level, heading_text))
+                start_section(page.number, level, f"{'#' * level} {heading_text}")
+            else:
+                current.add_line(page.number, line)
+    if current.lines:
+        sections.append(current)
+    return sections
 
 
-def chunk_document(file_path: str, filename: str, target_chunk_size: int = 800) -> List[Chunk]:
-    """Chunk any supported material format.
+# Splitting
 
-    PDFs use layout-aware heading parsing. Other formats use extracted text chunks.
-    """
-    extension = infer_extension(filename)
-    if extension == ".pdf":
-        return chunk_pdf(file_path, target_chunk_size=target_chunk_size)
-
-    extracted = extract_document_text(file_path, filename)
-    if not extracted.text.strip():
-        return []
-
-    section = f"{filename}"
-    return split_into_chunks(
-        text=extracted.text,
-        section_hierarchy=section,
-        page_start=0,
-        page_end=max(extracted.page_count - 1, 0),
-        start_index=0,
-        target_size=target_chunk_size,
-    )
+def _boundaries(text: str, lo: int, hi: int, pattern: "re.Pattern[str]") -> List[Tuple[int, int]]:
+    """Cut [lo, hi) after every match of `pattern`; the pieces cover the range exactly."""
+    pieces, start = [], lo
+    for match in pattern.finditer(text, lo, hi):
+        if lo < match.end() < hi:
+            pieces.append((start, match.end()))
+            start = match.end()
+    pieces.append((start, hi))
+    return pieces
 
 
-def split_into_chunks(
-    text: str,
-    section_hierarchy: str,
-    page_start: int,
-    page_end: int,
-    start_index: int,
-    target_size: int = 800,
-    overlap_ratio: float = 0.15
-) -> List[Chunk]:
-    """
-    Split long text into chunks of approximately target_size tokens with overlap.
+class _Splitter:
+    """Splits one section's text into pieces, then packs them into overlapping chunks."""
 
-    Args:
-        text: Text to split
-        section_hierarchy: Section path
-        page_start: Starting page number
-        page_end: Ending page number
-        start_index: Starting chunk index
-        target_size: Target tokens per chunk
-        overlap_ratio: Ratio of overlap between chunks (default 0.15 = 15%)
+    def __init__(self, text: str):
+        self.text = text
 
-    Returns:
-        List of Chunk objects
-    """
-    chunks = []
+    def _hard_cut(self, lo: int, hi: int) -> List[Tuple[int, int, int]]:
+        pieces = []
+        while lo < hi:
+            size = min(PIECE_CHARS, hi - lo)
+            tokens = count_tokens(self.text[lo : lo + size])
+            while size > 1 and tokens > PIECE_TOKENS:
+                size = max(1, size * 3 // 4)
+                tokens = count_tokens(self.text[lo : lo + size])
+            pieces.append((lo, lo + size, tokens))
+            lo += size
+        return pieces
 
-    # If text fits in one chunk, return it
-    token_count = estimate_tokens(text)
-    if token_count <= target_size * 1.2:  # Allow 20% overflow
-        return [
-            Chunk(
-                chunk_text=text,
-                section_hierarchy=section_hierarchy,
-                page_start=page_start,
-                page_end=page_end,
-                chunk_index=start_index,
-                token_count=token_count
-            )
-        ]
+    def pieces(self, lo: int, hi: int, level: int = 0) -> List[Tuple[int, int, int]]:
+        """(start, end, tokens) pieces of [lo, hi), each within the piece limits."""
+        if hi - lo <= PIECE_CHARS:
+            tokens = count_tokens(self.text[lo:hi])
+            if tokens <= PIECE_TOKENS:
+                return [(lo, hi, tokens)]
+        if level >= len(_LEVELS):
+            return self._hard_cut(lo, hi)
+        result = []
+        for start, end in _LEVELS[level](self.text, lo, hi):
+            result.extend(self.pieces(start, end, level + 1))
+        return result
 
-    # Split by paragraphs (double newline)
-    paragraphs = text.split("\n\n")
+    def _overlap_start(self, chunk_start: int, chunk_end: int) -> Optional[int]:
+        """Where the next chunk starts so that it repeats the tail of this one."""
+        text = self.text
+        # Earliest position whose tail fits the overlap limits (tokens grow as it moves left).
+        low, high = max(chunk_start + 1, chunk_end - OVERLAP_CHARS), chunk_end
+        while low < high:
+            middle = (low + high) // 2
+            if count_tokens(text[middle:chunk_end]) <= OVERLAP_TOKENS:
+                high = middle
+            else:
+                low = middle + 1
+        earliest = low
+        if earliest >= chunk_end or not text[earliest:chunk_end].strip():
+            return None
 
-    def split_long_paragraph(paragraph: str) -> List[str]:
-        para = paragraph.strip()
-        if not para:
-            return []
-        if estimate_tokens(para) <= target_size:
-            return [para]
+        # Prefer a sentence or line start, then a word start, over cutting mid-word.
+        for match in SENTENCE_END.finditer(text, earliest, chunk_end):
+            start = match.end()
+            if start < chunk_end and text[start:chunk_end].strip():
+                if count_tokens(text[start:chunk_end]) >= MIN_SENTENCE_OVERLAP_TOKENS:
+                    return start
+                break
+        if earliest > chunk_start and not text[earliest - 1].isspace():
+            word_start = WHITESPACE_RUN.search(text, earliest, chunk_end)
+            if word_start and word_start.end() < chunk_end:
+                return word_start.end()
+        return earliest
 
-        # First try sentence boundaries.
-        sentence_segments = re.split(r'(?<=[.!?])\s+', para)
-        sentence_segments = [segment.strip() for segment in sentence_segments if segment.strip()]
-        if not sentence_segments:
-            sentence_segments = [para]
+    def chunks(self) -> List[Tuple[int, int]]:
+        """(start, end) character ranges of the chunks, each overlapping the one before."""
+        pieces = self.pieces(0, len(self.text))
+        ranges: List[Tuple[int, int]] = []
+        if not pieces:
+            return ranges
 
-        chunks_local: List[str] = []
-        current_parts: List[str] = []
-        current_tokens_local = 0
-
-        def flush_current() -> None:
-            nonlocal current_parts, current_tokens_local
-            if current_parts:
-                chunks_local.append(" ".join(current_parts).strip())
-                current_parts = []
-                current_tokens_local = 0
-
-        for sentence in sentence_segments:
-            sentence_tokens = estimate_tokens(sentence)
-
-            # If a single sentence is too long, split by words.
-            if sentence_tokens > target_size:
-                flush_current()
-                words = sentence.split()
-                word_parts: List[str] = []
-                word_tokens = 0
-                for word in words:
-                    token_len = estimate_tokens(word) + 1
-                    if word_parts and word_tokens + token_len > target_size:
-                        chunks_local.append(" ".join(word_parts).strip())
-                        word_parts = [word]
-                        word_tokens = token_len
-                    else:
-                        word_parts.append(word)
-                        word_tokens += token_len
-                if word_parts:
-                    chunks_local.append(" ".join(word_parts).strip())
+        start, content_start, end, tokens = pieces[0][0], pieces[0][0], pieces[0][1], pieces[0][2]
+        for piece_start, piece_end, piece_tokens in pieces[1:]:
+            if tokens + piece_tokens <= CHUNK_TOKENS and piece_end - start <= CHUNK_CHARS:
+                end, tokens = piece_end, tokens + piece_tokens
                 continue
 
-            if current_parts and current_tokens_local + sentence_tokens > target_size:
-                flush_current()
+            if self.text[content_start:end].strip():
+                ranges.append((start, end))
+            overlap = self._overlap_start(start, end)
+            overlap_tokens = count_tokens(self.text[overlap:end]) if overlap is not None else 0
+            if (
+                overlap is not None
+                and overlap_tokens + piece_tokens <= CHUNK_TOKENS
+                and piece_end - overlap <= CHUNK_CHARS
+            ):
+                start, tokens = overlap, overlap_tokens + piece_tokens
+            else:
+                start, tokens = piece_start, piece_tokens
+            content_start, end = piece_start, piece_end
 
-            current_parts.append(sentence)
-            current_tokens_local += sentence_tokens
+        if self.text[content_start:end].strip():
+            ranges.append((start, end))
+        return ranges
 
-        flush_current()
-        return chunks_local
 
-    segments: List[str] = []
-    for paragraph in paragraphs:
-        segments.extend(split_long_paragraph(paragraph))
+_LEVELS = (
+    lambda text, lo, hi: _boundaries(text, lo, hi, PARAGRAPH_BREAK),
+    lambda text, lo, hi: _boundaries(text, lo, hi, re.compile(r"\n")),
+    lambda text, lo, hi: _boundaries(text, lo, hi, SENTENCE_END),
+    lambda text, lo, hi: _boundaries(text, lo, hi, WHITESPACE_RUN),
+)
 
-    current_chunk = []
-    current_tokens = 0
-    chunk_idx = start_index
-    overlap_size = int(target_size * overlap_ratio)
 
-    for para in segments:
-        para_tokens = estimate_tokens(para)
+# Public API
 
-        # If adding this paragraph exceeds target, save current chunk
-        if current_tokens + para_tokens > target_size and current_chunk:
-            chunk_text = "\n\n".join(current_chunk)
+def chunk_pages(pages: Sequence[ExtractedPage]) -> List[Chunk]:
+    """Chunk markdown pages. Raises `NoContentError` when there is no text."""
+    chunks: List[Chunk] = []
+    for section in _split_sections(pages):
+        text, line_offsets, line_pages = section.text_and_pages()
+        hierarchy = " > ".join(section.path) or None
+        for start, end in _Splitter(text).chunks():
+            body = text[start:end]
+            lead = len(body) - len(body.lstrip())
+            body = body.strip()
+            if not body:
+                continue
+            first = bisect.bisect_right(line_offsets, start + lead) - 1
+            last = bisect.bisect_right(line_offsets, start + lead + len(body) - 1) - 1
             chunks.append(
                 Chunk(
-                    chunk_text=chunk_text,
-                    section_hierarchy=section_hierarchy,
-                    page_start=page_start,
-                    page_end=page_end,
-                    chunk_index=chunk_idx,
-                    token_count=current_tokens
+                    chunk_text=body,
+                    section_hierarchy=hierarchy,
+                    page_start=line_pages[first],
+                    page_end=line_pages[last],
+                    chunk_index=len(chunks),
+                    token_count=count_tokens(body),
                 )
             )
-            chunk_idx += 1
-
-            # Create overlap by keeping last few paragraphs that fit within overlap_size
-            overlap_paras = []
-            overlap_tokens = 0
-
-            # Work backwards from end of current chunk to build overlap
-            for i in range(len(current_chunk) - 1, -1, -1):
-                para_tokens_i = estimate_tokens(current_chunk[i])
-                if overlap_tokens + para_tokens_i <= overlap_size:
-                    overlap_paras.insert(0, current_chunk[i])
-                    overlap_tokens += para_tokens_i
-                else:
-                    break
-
-            # Start new chunk with overlap
-            current_chunk = overlap_paras
-            current_tokens = overlap_tokens
-
-        current_chunk.append(para)
-        current_tokens += para_tokens
-
-    # Add remaining text as final chunk
-    if current_chunk:
-        chunk_text = "\n\n".join(current_chunk)
-        chunks.append(
-            Chunk(
-                chunk_text=chunk_text,
-                section_hierarchy=section_hierarchy,
-                page_start=page_start,
-                page_end=page_end,
-                chunk_index=chunk_idx,
-                token_count=current_tokens
-            )
+    if not chunks:
+        raise NoContentError(
+            "No chunks were created from the material. The file may be empty or contain "
+            "unreadable text."
         )
+    return chunks
 
+
+def chunk_document(file_path: str, filename: str) -> List[Chunk]:
+    """Read a supported file and chunk it. Blocking; call it through `asyncio.to_thread`."""
+    extracted = extract_document(file_path, filename)
+    chunks = chunk_pages(extracted.pages)
+    logger.info("Created %s chunks from %s", len(chunks), filename)
     return chunks

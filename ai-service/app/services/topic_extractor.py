@@ -332,7 +332,9 @@ def build_material_summary(
     summary_parts.append("\n## Sample Content\n")
     for i, chunk in enumerate(sample_chunks[:10], 1):  # First 10 samples
         summary_parts.append(
-            f"\n**Sample {i}** ({chunk['filename']}, pp. {chunk['page_start']}):"
+            f"\n**Sample {i}** ({chunk['filename']}"
+            + (f", pp. {chunk['page_start']}" if chunk['page_start'] is not None else "")
+            + "):"
         )
         # Include first 300 characters of chunk
         preview = chunk['chunk_text'][:300].strip()

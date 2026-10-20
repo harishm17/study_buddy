@@ -152,9 +152,16 @@ Return only the markdown."""
                 citations.append({
                     'filename': filename,
                     'category': chunk['category'],
-                    'pages': f"{chunk['page_start']}-{chunk['page_end']}"
+                    'pages': self._page_range(chunk)
                 })
                 seen_files.add(filename)
 
         return citations
+
+    @staticmethod
+    def _page_range(chunk) -> str:
+        start, end = chunk['page_start'], chunk['page_end']
+        if start is None:
+            return "n/a"  # formats without pages, such as DOCX
+        return str(start) if end is None or end == start else f"{start}-{end}"
 
