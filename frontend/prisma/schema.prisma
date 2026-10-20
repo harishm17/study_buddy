@@ -120,7 +120,7 @@ model MaterialChunk {
   topicChunkMappings   TopicChunkMapping[]
 
   @@index([materialId])
-  @@index([materialId, chunkIndex])
+  @@unique([materialId, chunkIndex])
   @@map("material_chunks")
 }
 

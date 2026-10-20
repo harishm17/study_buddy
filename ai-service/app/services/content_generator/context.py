@@ -10,7 +10,8 @@ from typing import Dict, List
 from app.db.connection import execute_query
 from app.services.llm.base import LLMMessage
 
-TOPIC_CHUNK_LIMIT = 16
+# Chunks are ~350 tokens, so this is about 8k tokens of excerpts per topic.
+TOPIC_CHUNK_LIMIT = 24
 
 
 class NoSourceMaterialError(ValueError):

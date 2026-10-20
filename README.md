@@ -109,7 +109,20 @@ Progress bars, attempt history, and per-attempt scores shown inline
    ```bash
    cd frontend
    npm install
-   npx prisma db push
+   npx prisma migrate deploy
+   ```
+
+   The schema is managed with Prisma migrations (`frontend/prisma/migrations`). After a
+   schema change, run `npm run db:migrate -- --name <what_changed>` to create a migration and
+   commit it.
+
+   **Existing databases.** If your database was created earlier with `prisma db push`, it has
+   the tables but no migration history, and `migrate deploy` will refuse to run. Mark the
+   baseline migration as already applied once, then deploy as usual:
+   ```bash
+   cd frontend
+   npx prisma migrate resolve --applied 0_init
+   npx prisma migrate deploy
    ```
 
 4. **Open browser**
@@ -133,7 +146,7 @@ CREATE EXTENSION vector;
 cd frontend
 cp .env.example .env  # Edit with your values
 npm install
-npx prisma db push
+npx prisma migrate deploy
 npm run dev
 ```
 
@@ -185,9 +198,9 @@ uv run uvicorn app.main:app --reload
 
 #### 1. Topic-Scoped Retrieval
 Instead of sending whole documents to the model:
-- **Chunking**: PDFs are split with heading-aware heuristics into chunks targeting about 800 tokens with 15% overlap, then embedded locally (`BAAI/bge-small-en-v1.5`, 384 dimensions, no API key) and stored in pgvector
-- **Topic mapping**: when topics are extracted, each topic is mapped to its top 15 chunks using a blend of keyword matching and vector similarity
-- **Bounded prompts**: content generation sends at most 16 mapped chunks for the topic, untruncated, so prompt size is capped by the chunk limit rather than by document length
+- **Chunking**: files are read as markdown (PDFs with pymupdf4llm, DOCX, PPTX, and legacy DOC through LibreOffice when installed) and split at headings and paragraphs into chunks of about 350 tokens with 50 tokens of overlap, each tagged with its heading path and pages, then embedded locally (`BAAI/bge-small-en-v1.5`, 384 dimensions, no API key) and stored in pgvector
+- **Topic mapping**: when topics are extracted, each topic is mapped to its top 24 chunks using a blend of keyword matching and vector similarity
+- **Bounded prompts**: content generation sends at most 24 mapped chunks for the topic, untruncated, so prompt size is capped by the chunk limit rather than by document length
 
 #### 2. Content Variation
 - Each "Practice More" request asks the model for new content

@@ -18,6 +18,10 @@ RUN uv sync --locked --no-dev --no-install-project
 ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
 RUN /opt/venv/bin/python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='${EMBEDDING_MODEL}', cache_dir='/opt/models')"
 
+# Same for the tokenizer the chunker counts with (tiktoken downloads its vocabulary on first use).
+ENV TIKTOKEN_CACHE_DIR=/opt/tiktoken
+RUN /opt/venv/bin/python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+
 # Stage 2: Runtime
 FROM python:3.14-slim
 
@@ -29,8 +33,10 @@ RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 # Copy Python dependencies and the embedding model from builder
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder --chown=app:app /opt/models /opt/models
+COPY --from=builder --chown=app:app /opt/tiktoken /opt/tiktoken
 ENV PATH=/opt/venv/bin:$PATH \
     EMBEDDING_CACHE_DIR=/opt/models \
+    TIKTOKEN_CACHE_DIR=/opt/tiktoken \
     HF_HUB_OFFLINE=1
 
 # Copy application code last, owned by root and read-only to the app user

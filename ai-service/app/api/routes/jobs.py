@@ -1,16 +1,18 @@
 """Job processing endpoints."""
+import asyncio
 import logging
 import json
 import re
 from fastapi import APIRouter, HTTPException
 from app.models.jobs import JobPayload, MaterialValidationInput, ContentGenerationInput, ExamGenerationInput
 from app.services.document_processor.validator import validate_material
-from app.services.document_processor.chunker import chunk_document
+from app.services.document_processor.chunker import chunk_document, NoContentError
+from app.services.document_processor.storage import StorageError, local_copy
 from app.services.embeddings.generator import generate_embeddings
 from app.services.topic_extractor import extract_topics_from_materials
 from app.services.embeddings.search import hybrid_search_chunks
 from app.services.content_generator import NotesGenerator, ExamplesGenerator, QuizGenerator
-from app.services.content_generator.context import NoSourceMaterialError
+from app.services.content_generator.context import NoSourceMaterialError, TOPIC_CHUNK_LIMIT
 from app.services.llm.base import LLMError
 from app.services.content_generator.examples import ExampleType
 from app.services.content_generator.quiz import QuestionType
@@ -174,19 +176,25 @@ async def validate_material_job(payload: JobPayload):
     except Exception as e:
         logger.error(f"Error in validation job {payload.jobId}: {e}")
 
-        # Update job status to failed
+        # The material's validation status is left alone: only the file's content can make
+        # it invalid, and a storage or network error says nothing about that. A missing
+        # material (404) is the one permanent failure here.
+        permanent = isinstance(e, HTTPException) and e.status_code < 500
+        error_code = "STORAGE_UNAVAILABLE" if isinstance(e, StorageError) else "VALIDATION_FAILED"
         await execute_update(
             """
             UPDATE processing_jobs
             SET status = 'failed',
-                error_code = 'VALIDATION_FAILED',
-                retryable = FALSE,
+                error_code = $3,
+                retryable = $4,
                 error_message = $1,
                 completed_at = NOW()
             WHERE id = $2
             """,
             str(e),
             payload.jobId,
+            error_code,
+            not permanent,
         )
 
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
@@ -268,15 +276,9 @@ async def chunk_material_job(payload: JobPayload):
 
             return {"status": "success", "jobId": payload.jobId, "dev_mode": True}
 
-        # Download source file from storage
-        from app.services.document_processor.validator import download_from_gcs
-        from app.services.embeddings.generator import generate_embeddings
-        import os
-        
-        pdf_path = None
-        try:
-            pdf_path = download_from_gcs(material['gcs_path'])
-            
+        # The source file is a local copy for the length of the job; downloaded copies are
+        # deleted when the block exits.
+        async with local_copy(material["gcs_path"]) as local_path:
             # Update progress
             await execute_update(
                 """
@@ -287,8 +289,8 @@ async def chunk_material_job(payload: JobPayload):
                 payload.jobId,
             )
 
-            # Chunk source document
-            chunks = chunk_document(pdf_path, material["filename"])
+            # Chunk source document (parsing is blocking, so it runs in a worker thread)
+            chunks = await asyncio.to_thread(chunk_document, local_path, material["filename"])
             logger.info(f"Created {len(chunks)} chunks from {material['filename']}")
             
             # Update progress
@@ -301,22 +303,15 @@ async def chunk_material_job(payload: JobPayload):
                 payload.jobId,
             )
 
-            # Generate embeddings (best-effort). If embeddings fail, keep chunks with NULL vectors
-            # and let downstream retrieval run keyword-only fallback paths.
-            texts = [chunk.chunk_text for chunk in chunks]
-            embeddings = []
-            embeddings_available = True
-            try:
-                embeddings = await generate_embeddings(texts)
-                logger.info(f"Generated {len(embeddings)} embeddings")
-            except Exception as embedding_error:
-                embeddings_available = False
-                logger.warning(
-                    "Embedding generation failed for job %s: %s. Continuing with keyword-only chunks.",
-                    payload.jobId,
-                    embedding_error,
+            # An embedding failure fails the job (and it is retried): chunks stored without
+            # vectors would be invisible to semantic search while the job claimed success.
+            embeddings = await generate_embeddings([chunk.chunk_text for chunk in chunks])
+            if len(embeddings) != len(chunks):
+                raise RuntimeError(
+                    f"Embedding returned {len(embeddings)} vectors for {len(chunks)} chunks"
                 )
-            
+            logger.info(f"Generated {len(embeddings)} embeddings")
+
             # Update progress
             await execute_update(
                 """
@@ -327,49 +322,41 @@ async def chunk_material_job(payload: JobPayload):
                 payload.jobId,
             )
 
-            # Store chunks in database with embeddings (in transaction for atomicity)
-            async def insert_chunks_transaction(conn):
-                count = 0
-                for idx, chunk in enumerate(chunks):
-                    embedding = embeddings[idx] if idx < len(embeddings) else None
-                    embedding_str = (
-                        f"[{','.join(map(str, embedding))}]"
-                        if embedding is not None
-                        else None
-                    )
-
-                    # Sanitize chunk text - remove null bytes that PostgreSQL can't handle
-                    sanitized_text = chunk.chunk_text.replace('\x00', '')
-                    sanitized_hierarchy = chunk.section_hierarchy.replace('\x00', '') if chunk.section_hierarchy else None
-
-                    await conn.execute(
-                        """
-                        INSERT INTO material_chunks
-                        (id, material_id, chunk_text, chunk_embedding, section_hierarchy,
-                         page_start, page_end, chunk_index, token_count, created_at)
-                        VALUES (gen_random_uuid()::text, $1, $2, $3::vector, $4, $5, $6, $7, $8, NOW())
-                        """,
-                        input_data.materialId,
-                        sanitized_text,
-                        embedding_str,
-                        sanitized_hierarchy,
-                        chunk.page_start,
-                        chunk.page_end,
-                        chunk.chunk_index,
-                        chunk.token_count,
-                    )
-                    count += 1
-                return count
-
-            chunks_created = await execute_in_transaction(insert_chunks_transaction)
-            logger.info(f"Stored {chunks_created} chunks in database")
-
-            # Validate that chunks were actually created
-            if chunks_created == 0:
-                raise ValueError(
-                    "No chunks were created from the material. "
-                    "The file may be empty or contain unreadable text."
+            # Replace the material's chunks in one transaction, so a re-run (retry, duplicate
+            # delivery) leaves exactly one set of chunks.
+            records = [
+                (
+                    input_data.materialId,
+                    # PostgreSQL text cannot hold null bytes
+                    chunk.chunk_text.replace('\x00', ''),
+                    f"[{','.join(map(str, embedding))}]",
+                    chunk.section_hierarchy.replace('\x00', '') if chunk.section_hierarchy else None,
+                    chunk.page_start,
+                    chunk.page_end,
+                    chunk.chunk_index,
+                    chunk.token_count,
                 )
+                for chunk, embedding in zip(chunks, embeddings)
+            ]
+
+            async def replace_chunks_transaction(conn):
+                await conn.execute(
+                    "DELETE FROM material_chunks WHERE material_id = $1",
+                    input_data.materialId,
+                )
+                await conn.executemany(
+                    """
+                    INSERT INTO material_chunks
+                    (id, material_id, chunk_text, chunk_embedding, section_hierarchy,
+                     page_start, page_end, chunk_index, token_count, created_at)
+                    VALUES (gen_random_uuid()::text, $1, $2, $3::vector, $4, $5, $6, $7, $8, NOW())
+                    """,
+                    records,
+                )
+                return len(records)
+
+            chunks_created = await execute_in_transaction(replace_chunks_transaction)
+            logger.info(f"Stored {chunks_created} chunks in database")
 
             # Mark job complete
             await execute_update(
@@ -384,12 +371,7 @@ async def chunk_material_job(payload: JobPayload):
                     completed_at = NOW()
                 WHERE id = $2
                 """,
-                json.dumps(
-                    {
-                        "chunks_created": chunks_created,
-                        "embeddings_available": embeddings_available,
-                    }
-                ),
+                json.dumps({"chunks_created": chunks_created}),
                 payload.jobId,
             )
 
@@ -473,36 +455,46 @@ async def chunk_material_job(payload: JobPayload):
                     else:
                         logger.info(f"Topic extraction already exists for project {project_id}, skipping")
 
-        finally:
-            # Clean up temporary file
-            if pdf_path and os.path.exists(pdf_path) and not pdf_path.startswith("/data/uploads"):
-                try:
-                    os.remove(pdf_path)
-                    logger.debug(f"Cleaned up temp file: {pdf_path}")
-                except Exception as e:
-                    logger.warning(f"Failed to clean up temp file {pdf_path}: {e}")
-
         logger.info(f"Completed chunking job: {payload.jobId}")
         return {"status": "success", "jobId": payload.jobId}
 
     except Exception as e:
         logger.error(f"Error in chunking job {payload.jobId}: {e}")
 
+        if isinstance(e, NoContentError):
+            # A file with no text to chunk is a content problem: retrying cannot help, and the
+            # material must not stay "valid" with zero chunks (it would block topic extraction).
+            await execute_update(
+                """
+                UPDATE materials
+                SET validation_status = 'invalid',
+                    validation_notes = $1,
+                    validated_at = NOW()
+                WHERE id = $2
+                """,
+                "No readable text could be extracted from this file.",
+                payload.data.get("materialId"),
+            )
+
         await execute_update(
             """
             UPDATE processing_jobs
             SET status = 'failed',
-                error_code = 'CHUNKING_FAILED',
-                retryable = TRUE,
+                error_code = $3,
+                retryable = $4,
                 error_message = $1,
                 completed_at = NOW()
             WHERE id = $2
             """,
             str(e),
             payload.jobId,
+            e.code if isinstance(e, NoContentError) else "CHUNKING_FAILED",
+            not isinstance(e, NoContentError),
         )
 
-        raise HTTPException(status_code=500, detail=f"Chunking failed: {str(e)}")
+        # Permanent failures answer 400 so the dispatcher does not retry them.
+        status_code = 400 if isinstance(e, NoContentError) else 500
+        raise HTTPException(status_code=status_code, detail=f"Chunking failed: {str(e)}")
 
 
 @router.post("/jobs/extract-topics")
@@ -606,7 +598,7 @@ async def extract_topics_job(payload: JobPayload):
                     topic.name,
                     topic.description,
                     topic.keywords,
-                    limit=15
+                    limit=TOPIC_CHUNK_LIMIT
                 )
 
                 # Replace existing mappings so each extraction run reflects newest chunk ranking.

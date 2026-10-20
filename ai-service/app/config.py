@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     GCS_BUCKET: str = ""
     GCS_BUCKET_NAME: str = ""  # Alternative name used in some configs
     GCS_PROJECT_ID: str = ""
+    # Where the frontend writes uploads when GCS is off (or an upload fell back to local disk).
+    LOCAL_UPLOADS_DIR: str = "/data/uploads"
 
     # Service Configuration
     AI_SERVICE_URL: str = "http://localhost:8000"
@@ -63,6 +65,11 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Check if running in development."""
         return self.ENVIRONMENT == "development"
+
+    @property
+    def gcs_configured(self) -> bool:
+        """Whether uploads can be fetched from a GCS bucket."""
+        return bool(self.GCS_BUCKET or self.GCS_BUCKET_NAME)
 
     @property
     def llm_configured(self) -> bool:
