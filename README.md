@@ -117,8 +117,8 @@ Progress bars, attempt history, and per-attempt scores shown inline
    commit it.
 
    **Existing databases.** If your database was created earlier with `prisma db push`, it has
-   the tables but no migration history, and `migrate deploy` will refuse to run. Mark the
-   baseline migration as already applied once, then deploy as usual:
+   the tables but no migration history, and `migrate deploy` will refuse to run. The deploy
+   workflow detects this and marks the baseline as applied for you. By hand, run once:
    ```bash
    cd frontend
    npx prisma migrate resolve --applied 0_init
@@ -129,11 +129,13 @@ Progress bars, attempt history, and per-attempt scores shown inline
    makes `material_chunks.chunk_embedding` a `vector(384)` with an HNSW index. It sets the
    embeddings of any chunk that is not 384 numbers long (the old 1536-number OpenAI vectors) to
    NULL, which keeps the text but hides the chunk from search by meaning. Chunks embedded
-   before heading text was added to the embedded text also work, but rank slightly worse. Re-embed
-   everything once after deploying:
+   before heading text was added to the embedded text also work, but rank slightly worse. The
+   deploy workflow re-embeds every chunk without a vector after the migrations
+   (`--missing-only`). To re-embed everything by hand:
    ```bash
    cd ai-service
-   uv run python scripts/reembed_chunks.py
+   uv run python scripts/reembed_chunks.py            # every chunk
+   uv run python scripts/reembed_chunks.py --missing-only
    ```
    `EMBEDDING_PROVIDER=openai` produces 1536-number vectors and does not fit this column; using
    it would need a new migration that changes `vector(384)` and the index to `vector(1536)`, and

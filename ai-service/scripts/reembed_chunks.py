@@ -7,7 +7,9 @@ different models cannot be compared, so search quality drops until every chunk u
 current one. The model must produce EMBEDDING_DIMENSIONS (384) numbers: the column is
 vector(384).
 
-    cd ai-service && uv run python scripts/reembed_chunks.py [--batch-size 128] [--dry-run]
+    cd ai-service && uv run python scripts/reembed_chunks.py [--batch-size 128] [--dry-run] [--missing-only]
+
+The deploy workflow runs it with --missing-only after the migrations.
 """
 import argparse
 import asyncio
@@ -31,12 +33,16 @@ def _vector_literal(values: list[float]) -> str:
     return "[" + ",".join(repr(float(v)) for v in values) + "]"
 
 
-async def main(batch_size: int, dry_run: bool) -> None:
+async def main(batch_size: int, dry_run: bool, missing_only: bool) -> None:
     conn = await asyncpg.connect(settings.DATABASE_URL)
+    # Batches are read by id; a chunk embedded in this run is past the cursor, so the
+    # missing-only filter cannot skip or repeat rows.
+    only_missing = "AND chunk_embedding IS NULL" if missing_only else ""
     try:
-        total = await conn.fetchval("SELECT COUNT(*) FROM material_chunks")
-        print(f"{total} chunks; embedding with {get_embedder().name}")
-        if dry_run:
+        total = await conn.fetchval(f"SELECT COUNT(*) FROM material_chunks WHERE TRUE {only_missing}")
+        scope = "chunks without a vector" if missing_only else "chunks"
+        print(f"{total} {scope}; embedding with {get_embedder().name}")
+        if dry_run or total == 0:
             return
 
         done = 0
@@ -45,7 +51,7 @@ async def main(batch_size: int, dry_run: bool) -> None:
         while True:
             rows = await conn.fetch(
                 "SELECT id, chunk_text, section_hierarchy FROM material_chunks "
-                "WHERE id > $1 ORDER BY id LIMIT $2",
+                f"WHERE id > $1 {only_missing} ORDER BY id LIMIT $2",
                 last_id,
                 batch_size,
             )
@@ -69,5 +75,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--dry-run", action="store_true", help="count chunks and exit")
+    parser.add_argument(
+        "--missing-only", action="store_true", help="only chunks that have no vector (used by deploy)"
+    )
     args = parser.parse_args()
-    asyncio.run(main(args.batch_size, args.dry_run))
+    asyncio.run(main(args.batch_size, args.dry_run, args.missing_only))

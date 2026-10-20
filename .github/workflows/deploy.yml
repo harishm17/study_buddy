@@ -73,7 +73,8 @@ jobs:
 
   deploy-frontend:
     name: Deploy Frontend to Cloud Run
-    needs: [check-secrets]
+    # The new code expects the new schema, so it ships after the migrations.
+    needs: [run-migrations]
     runs-on: ubuntu-latest
 
     steps:
@@ -153,7 +154,7 @@ jobs:
   deploy-ai-service:
     name: Deploy AI Service to Cloud Run
     runs-on: ubuntu-latest
-    needs: [setup-database]
+    needs: [run-migrations]
 
     steps:
       - name: Checkout code
@@ -240,8 +241,6 @@ jobs:
     name: Run Database Migrations
     runs-on: ubuntu-latest
     needs: [setup-database]
-    # Run migrations after database setup
-    # Services should handle missing tables gracefully or have health checks
 
     steps:
       - name: Checkout code
@@ -319,10 +318,16 @@ jobs:
           else
             echo "Using DATABASE_URL directly (ensure IP is authorized)"
           fi
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          # A database created with `prisma db push` has the tables but no migration history.
+          # Mark the baseline as applied once, so `migrate deploy` only runs the later migrations.
+          needs_baseline=$(psql "$DATABASE_URL" -tAc \
+            "SELECT to_regclass('public._prisma_migrations') IS NULL AND to_regclass('public.users') IS NOT NULL")
+          if [ "$needs_baseline" = "t" ]; then
+            echo "Existing database without migration history: marking 0_init as applied"
+            npx prisma migrate resolve --applied 0_init
+          fi
           echo "Applying Prisma migrations..."
-          # A database that was created with `prisma db push` has no migration history and
-          # needs a one-time baseline first (see "Existing databases" in the README):
-          #   npx prisma migrate resolve --applied 0_init
           npx prisma migrate deploy
 
       - name: Generate Prisma Client
@@ -330,27 +335,22 @@ jobs:
           cd frontend
           npx prisma generate
 
-      - name: Create vector index (if not exists)
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: '0.12.23'
+
+      - name: Re-embed chunks without a vector
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
         run: |
-          # Install PostgreSQL client
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
-          
-          # Update DATABASE_URL if using Cloud SQL Proxy
+          # The retrieval migration clears vectors from the old 1536-number OpenAI model, and the
+          # HNSW index comes from that migration too. Chunks without a vector are embedded
+          # here with the local model the AI service uses; nothing to do on later deploys.
+          cd ai-service
           if [ -n "$CLOUD_SQL_CONNECTION_NAME" ]; then
             export DATABASE_URL=$(echo "$DATABASE_URL" | sed 's/@[^:]*:/@localhost:/')
-            echo "Using DATABASE_URL via Cloud SQL Proxy for index creation"
           fi
-          
-          # Create vector index for embeddings (HNSW for performance)
-          # This will fail silently if index already exists, which is fine
-          echo "Creating vector index for material_chunks.chunk_embedding..."
-          psql "$DATABASE_URL" <<EOF || echo "Index creation skipped (may already exist)"
-          CREATE INDEX IF NOT EXISTS material_chunks_embedding_hnsw_idx 
-          ON material_chunks 
-          USING hnsw (chunk_embedding vector_cosine_ops)
-          WITH (m = 16, ef_construction = 64);
-          EOF
+          uv sync --locked --no-dev --python 3.14
+          uv run python scripts/reembed_chunks.py --missing-only
