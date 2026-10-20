@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
-import { useJobPolling } from '@/hooks/useJobPolling'
+import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling'
+import { describeJobFailure } from '@/lib/jobs/failure-message'
 
 interface Topic {
   id: string
@@ -47,6 +48,15 @@ type BatchJobStatus = {
   progressPercent: number
   stage?: string | null
   errorMessage?: string | null
+  errorCode?: string | null
+  /** Text for the student when the job could not even be started (there is no job error to translate). */
+  failureMessage?: string | null
+}
+
+// What stays on screen after a batch ends: only the blocks that failed.
+const keepFailed = (jobs: BatchJobStatus[] | null): BatchJobStatus[] | null => {
+  const failed = (jobs ?? []).filter((job) => job.status === 'failed')
+  return failed.length > 0 ? failed : null
 }
 
 export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: ContentGeneratorProps) {
@@ -133,7 +143,7 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
         if (isMountedRef.current) {
           setIsGeneratingAll(false)
           setBatchProgress(null)
-          setBatchJobs(null)
+          setBatchJobs(keepFailed)
         }
       }
     })()
@@ -194,23 +204,28 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
     }
 
     await Promise.all(
-      jobs.map(async (job) => {
+      // Jobs that never started (already failed) have nothing to poll.
+      jobs.filter((job) => job.status !== 'failed').map(async (job) => {
         const result = await pollJob(job.jobId, (polled) =>
           update(job.jobId, {
             status: polled.status,
             progressPercent: polled.progressPercent,
             stage: polled.stage ?? null,
             errorMessage: polled.errorMessage ?? null,
+            errorCode: polled.errorCode ?? null,
           })
         )
         if (result.state !== 'completed') {
           update(job.jobId, {
             status: 'failed',
-            errorMessage: result.error || 'Content generation failed',
+            errorMessage: result.job?.errorMessage ?? result.error ?? null,
+            errorCode: result.job?.errorCode ?? null,
+            failureMessage: result.state === 'timeout' ? pollFailureMessage(result, '') : null,
           })
         }
       })
     )
+    return current
   }
 
   const pollContentJob = async (
@@ -232,7 +247,11 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
     })
 
     if (pollResult.state !== 'completed') {
-      throw new Error(pollResult.error || 'Content generation failed')
+      throw new Error(
+        pollResult.state === 'timeout'
+          ? pollFailureMessage(pollResult, '')
+          : describeJobFailure(pollResult.job?.errorCode, pollResult.job?.errorMessage)
+      )
     }
   }
 
@@ -259,7 +278,18 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
       return true
     } catch (error) {
       console.error('Error generating content:', error)
-      setError(error instanceof Error ? error.message : 'Failed to generate content')
+      const message = error instanceof Error ? error.message : 'Failed to generate content'
+      setError(message)
+      // A retry of a failed block that fails again shows its new reason on that block.
+      setBatchJobs((jobs) =>
+        jobs
+          ? jobs.map((job) =>
+              job.contentType === config.contentType && job.status === 'failed'
+                ? { ...job, failureMessage: message }
+                : job
+            )
+          : jobs
+      )
       return false
     } finally {
       setGenerating(null)
@@ -324,6 +354,7 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
   const runBatchGeneration = async (targets: typeof contentTypes, regenerate: boolean) => {
     if (targets.length === 0) return
     setError(null)
+    setBatchJobs(null)
     setIsGeneratingAll(true)
     setGenerating(null)
     setBatchProgress({ current: 0, total: targets.length })
@@ -347,8 +378,24 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
         .filter((result): result is PromiseFulfilledResult<{ contentType: string; jobId: string }> => result.status === 'fulfilled')
         .map(result => result.value)
       failedCount = enqueueResults.length - jobs.length
+      // Blocks that could not even be started are listed with the reason, like failed jobs.
+      const notStarted: BatchJobStatus[] = enqueueResults.flatMap((result, index) =>
+        result.status === 'rejected'
+          ? [{
+              contentType: targets[index].type,
+              jobId: `not-started-${targets[index].type}`,
+              status: 'failed' as const,
+              progressPercent: 0,
+              failureMessage:
+                result.reason instanceof Error && result.reason.message
+                  ? result.reason.message
+                  : 'Could not start generation.',
+            }]
+          : []
+      )
 
       if (jobs.length === 0) {
+        setBatchJobs(notStarted)
         throw new Error('Unable to start content generation jobs')
       }
 
@@ -367,12 +414,13 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
         errorMessage: null,
       }))
 
-      await pollBatchJobs(initialJobs)
+      const finished = await pollBatchJobs([...initialJobs, ...notStarted])
 
       await checkExistingContent()
+      const failedBlocks = finished.filter((job) => job.status === 'failed').length
       setJobStatusText(
-        failedCount > 0
-          ? `All started content is ready. ${failedCount} job(s) failed to start.`
+        failedBlocks > 0
+          ? `${failedBlocks} of ${finished.length} block(s) could not be generated. The reasons are listed below.`
           : 'All selected content is ready.'
       )
     } catch (error) {
@@ -382,7 +430,19 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
       setIsGeneratingAll(false)
       setGenerating(null)
       setBatchProgress(null)
-      setBatchJobs(null)
+      setBatchJobs(keepFailed)
+    }
+  }
+
+  const retryFailedBlock = async (job: BatchJobStatus) => {
+    const target = contentTypes.find((item) => item.type === job.contentType)
+    if (!target) return
+    const ok = await generateContent({ contentType: target.type, preferences: target.defaultPreferences }, false, false)
+    if (ok) {
+      setBatchJobs((jobs) => {
+        const rest = (jobs ?? []).filter((item) => item.contentType !== job.contentType)
+        return rest.length > 0 ? rest : null
+      })
     }
   }
 
@@ -466,31 +526,62 @@ export function ContentGenerator({ topic, onContentUpdated, onOpenContentTab }: 
         </Alert>
       )}
       {batchJobs && batchJobs.length > 0 && (
-        <Card className="border-primary/10" aria-live="polite">
+        <Card className={isGeneratingAll ? 'border-primary/10' : 'border-amber-300/70 bg-amber-50/60'} aria-live="polite">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Batch Progress</CardTitle>
-            <CardDescription>Running all content jobs in the background.</CardDescription>
+            <CardTitle className="text-base">
+              {isGeneratingAll ? 'Batch Progress' : 'Some blocks could not be generated'}
+            </CardTitle>
+            <CardDescription>
+              {isGeneratingAll
+                ? 'Running all content jobs in the background.'
+                : 'Each one shows why it failed. Retry it once that is dealt with.'}
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {batchJobs.map((job) => (
-              <div
-                key={job.jobId}
-                className="rounded-xl border border-border/60 bg-white/70 p-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-medium">{contentTypeLabels[job.contentType] || job.contentType}</div>
-                  <Badge variant={job.status === 'completed' ? 'secondary' : 'outline'} className="capitalize">
-                    {job.status}
-                  </Badge>
+            {batchJobs.map((job) => {
+              const failed = job.status === 'failed'
+              return (
+                <div
+                  key={job.jobId}
+                  className="rounded-xl border border-border/60 bg-white/70 p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-medium">{contentTypeLabels[job.contentType] || job.contentType}</div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={failed ? 'destructive' : job.status === 'completed' ? 'secondary' : 'outline'} className="capitalize">
+                        {job.status}
+                      </Badge>
+                      {failed && !isGeneratingAll && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void retryFailedBlock(job)}
+                          disabled={generating !== null}
+                          aria-label={`Retry ${(contentTypeLabels[job.contentType] || 'content').toLowerCase()}`}
+                        >
+                          {generating === job.contentType ? 'Retrying...' : 'Retry'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  {failed ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {job.failureMessage || describeJobFailure(job.errorCode, job.errorMessage)}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mt-1 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                        {job.stage || 'queued'}
+                      </div>
+                      <div className="mt-2">
+                        <Progress value={job.progressPercent} className="h-2" />
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="mt-1 text-xs uppercase tracking-[0.12em] text-muted-foreground">
-                  {job.stage || 'queued'}
-                </div>
-                <div className="mt-2">
-                  <Progress value={job.progressPercent} className="h-2" />
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </CardContent>
         </Card>
       )}
