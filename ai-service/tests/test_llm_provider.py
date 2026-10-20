@@ -1,251 +1,260 @@
-"""Tests for LLM provider abstraction."""
+"""Tests for the Claude provider, the mock provider and the factory."""
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
+import anthropic
+import httpx2
 import pytest
+from pydantic import BaseModel
 
-from app.services.llm.base import LLMMessage
+from app.services.llm.anthropic_provider import AnthropicProvider
+from app.services.llm.base import (
+    LLMAuthError,
+    LLMCreditError,
+    LLMMessage,
+    LLMNotConfiguredError,
+    LLMOutputError,
+    LLMRateLimitError,
+    LLMRefusalError,
+    LLMRequestError,
+    LLMUnavailableError,
+)
+from app.services.llm.factory import LLMFactory
+from app.services.llm.mock_provider import MockProvider
+from app.services.llm.schemas import MaterialCheck, QuestionSet
+from app.services.llm.usage import summarize_usage, track_llm_usage
 
 
-class TestLLMProviderFactory:
-    """Factory coverage for provider wiring."""
+class Verdict(BaseModel):
+    ok: bool
+    reason: str
 
-    def test_factory_returns_openai_provider(self):
-        with patch("app.services.llm.factory.settings") as mock_settings:
-            mock_settings.LLM_PROVIDER = "openai"
-            mock_settings.OPENAI_API_KEY = "test-key"
-            mock_settings.OPENAI_MODEL = "gpt-5-mini"
-            mock_settings.OPENAI_MINI_MODEL = "gpt-5-mini"
-            mock_settings.OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
 
-            from app.services.llm.factory import LLMFactory
+def _usage(input_tokens=100, output_tokens=20, cache_read=0, cache_write=0):
+    return SimpleNamespace(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_input_tokens=cache_read,
+        cache_creation_input_tokens=cache_write,
+    )
 
+
+def _response(*texts, stop_reason="end_turn", model="claude-opus-5-5", content=None, stop_details=None):
+    blocks = content if content is not None else [SimpleNamespace(type="text", text=t) for t in texts]
+    return SimpleNamespace(
+        model=model,
+        stop_reason=stop_reason,
+        stop_details=stop_details,
+        content=blocks,
+        usage=_usage(),
+    )
+
+
+def _provider(reply) -> tuple[AnthropicProvider, AsyncMock]:
+    provider = AnthropicProvider(
+        api_key="test-key",
+        model="claude-opus-5-5",
+        fast_model="claude-haiku-5-5",
+        effort="medium",
+        fast_effort="low",
+    )
+    create = AsyncMock(side_effect=reply) if isinstance(reply, BaseException) else AsyncMock(return_value=reply)
+    provider.client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
+    return provider, create
+
+
+MESSAGES = [
+    LLMMessage(role="system", content="You are a grader."),
+    LLMMessage(role="user", content="Shared excerpts", cache=True),
+    LLMMessage(role="user", content="Task instructions"),
+]
+
+
+class TestRequestShape:
+    @pytest.mark.asyncio
+    async def test_main_tier_request(self):
+        provider, create = _provider(_response('{"ok": true, "reason": "fine"}'))
+        await provider.generate_structured(MESSAGES, Verdict, max_tokens=4000, purpose="t")
+
+        params = create.call_args.kwargs
+        assert params["model"] == "claude-opus-5-5"
+        assert params["max_tokens"] == 4000
+        # System prompt is a cached block; consecutive user turns merge into one message.
+        assert params["system"] == [
+            {"type": "text", "text": "You are a grader.", "cache_control": {"type": "ephemeral"}}
+        ]
+        assert len(params["messages"]) == 1
+        first, second = params["messages"][0]["content"]
+        assert first["cache_control"] == {"type": "ephemeral"}
+        assert "cache_control" not in second
+        assert params["output_config"]["effort"] == "medium"
+        assert params["output_config"]["format"]["type"] == "json_schema"
+        assert params["output_config"]["format"]["schema"]["additionalProperties"] is False
+        # Opus gets the server-side refusal fallback.
+        assert params["fallbacks"] == "default"
+        assert params["betas"] == ["server-side-fallback-2026-07-01"]
+        assert "thinking" not in params and "temperature" not in params
+
+    @pytest.mark.asyncio
+    async def test_fast_tier_uses_haiku_without_fallback(self):
+        provider, create = _provider(_response("text", model="claude-haiku-5-5"))
+        await provider.generate_text([LLMMessage(role="user", content="hi")], tier="fast")
+
+        params = create.call_args.kwargs
+        assert params["model"] == "claude-haiku-5-5"
+        assert params["output_config"] == {"effort": "low"}
+        assert "fallbacks" not in params and "betas" not in params
+        assert "system" not in params
+
+    def test_missing_key_is_a_configuration_error(self):
+        with pytest.raises(LLMNotConfiguredError):
+            AnthropicProvider(api_key="", model="m", fast_model="f")
+
+
+class TestResponses:
+    @pytest.mark.asyncio
+    async def test_structured_output_is_validated(self):
+        provider, _ = _provider(_response('{"ok": true, "reason": "fine"}'))
+        result = await provider.generate_structured(MESSAGES, Verdict)
+        assert result == Verdict(ok=True, reason="fine")
+
+    @pytest.mark.asyncio
+    async def test_schema_mismatch_is_an_output_error(self):
+        provider, _ = _provider(_response('{"ok": "maybe"}'))
+        with pytest.raises(LLMOutputError, match="Verdict"):
+            await provider.generate_structured(MESSAGES, Verdict)
+
+    @pytest.mark.asyncio
+    async def test_empty_text_is_an_output_error(self):
+        provider, _ = _provider(_response("   "))
+        with pytest.raises(LLMOutputError, match="no text"):
+            await provider.generate_text(MESSAGES)
+
+    @pytest.mark.asyncio
+    async def test_truncated_output_is_an_output_error(self):
+        provider, _ = _provider(_response('{"ok": tr', stop_reason="max_tokens"))
+        with pytest.raises(LLMOutputError, match="max_tokens"):
+            await provider.generate_structured(MESSAGES, Verdict)
+
+    @pytest.mark.asyncio
+    async def test_refusal_is_not_retryable(self):
+        provider, _ = _provider(
+            _response("", stop_reason="refusal", stop_details=SimpleNamespace(category="cyber"))
+        )
+        with pytest.raises(LLMRefusalError, match="cyber") as excinfo:
+            await provider.generate_text(MESSAGES)
+        assert excinfo.value.retryable is False
+
+    @pytest.mark.asyncio
+    async def test_only_text_after_a_fallback_block_counts(self):
+        content = [
+            SimpleNamespace(type="thinking", thinking=""),
+            SimpleNamespace(type="text", text='{"ok": false, "re'),
+            SimpleNamespace(type="fallback"),
+            SimpleNamespace(type="text", text='{"ok": true, "reason": "rescued"}'),
+        ]
+        provider, _ = _provider(_response(content=content))
+        result = await provider.generate_structured(MESSAGES, Verdict)
+        assert result.reason == "rescued"
+
+    @pytest.mark.asyncio
+    async def test_usage_is_recorded_with_cost(self):
+        provider, _ = _provider(_response("hello"))
+        with track_llm_usage() as usages:
+            await provider.generate_text(MESSAGES, purpose="notes")
+            await provider.generate_text(MESSAGES, purpose="notes")
+        assert [u.purpose for u in usages] == ["notes", "notes"]
+        summary = summarize_usage(usages)
+        assert summary["calls"] == 2
+        assert summary["input_tokens"] == 200
+        # 200 input at $4/M + 40 output at $20/M
+        assert summary["estimated_cost_usd"] == pytest.approx(0.0016)
+
+
+def _status_error(cls, status, message="error"):
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    return cls(message, response=httpx2.Response(status, request=request), body=None)
+
+
+class TestErrorTranslation:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error,expected,retryable",
+        [
+            (_status_error(anthropic.AuthenticationError, 401), LLMAuthError, False),
+            (_status_error(anthropic.PermissionDeniedError, 403), LLMAuthError, False),
+            (
+                _status_error(anthropic.BadRequestError, 400, "Your credit balance is too low"),
+                LLMCreditError,
+                False,
+            ),
+            (_status_error(anthropic.BadRequestError, 400, "max_tokens too large"), LLMRequestError, False),
+            (_status_error(anthropic.NotFoundError, 404, "model not found"), LLMRequestError, False),
+            (_status_error(anthropic.RateLimitError, 429), LLMRateLimitError, True),
+            (_status_error(anthropic.OverloadedError, 529), LLMUnavailableError, True),
+            (_status_error(anthropic.InternalServerError, 500), LLMUnavailableError, True),
+            (
+                anthropic.APITimeoutError(request=httpx2.Request("POST", "https://api.anthropic.com")),
+                LLMUnavailableError,
+                True,
+            ),
+        ],
+    )
+    async def test_sdk_errors_map_to_typed_errors(self, error, expected, retryable):
+        provider, _ = _provider(error)
+        with pytest.raises(expected) as excinfo:
+            await provider.generate_text(MESSAGES)
+        assert excinfo.value.retryable is retryable
+
+
+class TestMockProvider:
+    @pytest.mark.asyncio
+    async def test_returns_schema_examples(self):
+        provider = MockProvider()
+        check = await provider.generate_structured(MESSAGES, MaterialCheck)
+        assert check.is_valid is True
+        questions = await provider.generate_structured(MESSAGES, QuestionSet)
+        assert len(questions.usable()) == 4
+        text = await provider.generate_text(MESSAGES)
+        assert "mock" in text.content.lower()
+
+    @pytest.mark.asyncio
+    async def test_schema_without_example_fails_clearly(self):
+        with pytest.raises(LLMOutputError, match="Verdict"):
+            await MockProvider().generate_structured(MESSAGES, Verdict)
+
+
+class TestFactory:
+    def teardown_method(self):
+        LLMFactory.reset()
+
+    def test_anthropic_provider(self):
+        with patch("app.services.llm.factory.settings") as settings:
+            settings.LLM_PROVIDER = "anthropic"
+            settings.ANTHROPIC_API_KEY = "test-key"
+            settings.ANTHROPIC_MODEL = "claude-opus-5-5"
+            settings.ANTHROPIC_FAST_MODEL = "claude-haiku-5-5"
+            settings.ANTHROPIC_EFFORT = "medium"
+            settings.ANTHROPIC_FAST_EFFORT = "low"
+            settings.LLM_TIMEOUT_SECONDS = 30
+            settings.LLM_MAX_RETRIES = 2
             LLMFactory.reset()
             provider = LLMFactory.get_provider()
-            assert provider is not None
+            assert isinstance(provider, AnthropicProvider)
+            assert provider.model_for("fast") == "claude-haiku-5-5"
+            assert LLMFactory.get_provider() is provider
 
-    def test_provider_has_required_methods(self):
-        with patch("app.services.llm.factory.settings") as mock_settings:
-            mock_settings.LLM_PROVIDER = "openai"
-            mock_settings.OPENAI_API_KEY = "test-key"
-            mock_settings.OPENAI_MODEL = "gpt-5-mini"
-            mock_settings.OPENAI_MINI_MODEL = "gpt-5-mini"
-            mock_settings.OPENAI_EMBEDDING_MODEL = "text-embedding-3-small"
-
-            from app.services.llm.factory import LLMFactory
-
+    def test_mock_provider(self):
+        with patch("app.services.llm.factory.settings") as settings:
+            settings.LLM_PROVIDER = "mock"
             LLMFactory.reset()
-            provider = LLMFactory.get_provider()
-            assert hasattr(provider, "generate_text")
-            assert hasattr(provider, "generate_structured")
-            assert hasattr(provider, "generate_embedding")
+            assert isinstance(LLMFactory.get_provider(), MockProvider)
 
-
-class TestOpenAIProviderResponses:
-    """Behavior coverage for Responses API request construction."""
-
-    @pytest.mark.asyncio
-    async def test_generate_text_strips_temperature_for_gpt5_models(self):
-        mock_client = MagicMock()
-        mock_responses = MagicMock()
-        mock_create = AsyncMock(
-            return_value={
-                "output_text": "hello",
-                "usage": {"input_tokens": 2, "output_tokens": 3},
-                "status": "completed",
-            }
-        )
-        mock_responses.create = mock_create
-        mock_client.responses = mock_responses
-
-        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
-            response = await provider.generate_text(
-                messages=[LLMMessage(role="user", content="Hello")],
-                temperature=0.7,
-                max_tokens=256,
-                top_p=0.4,
-                logprobs=True,
-            )
-
-            assert response.content == "hello"
-            assert response.tokens_used == 5
-
-            call_kwargs = mock_create.call_args.kwargs
-            assert "temperature" not in call_kwargs
-            assert "top_p" not in call_kwargs
-            assert "logprobs" not in call_kwargs
-            assert call_kwargs["max_output_tokens"] == 256
-            assert call_kwargs["model"] == "gpt-5-mini"
-
-    @pytest.mark.asyncio
-    async def test_generate_text_keeps_temperature_for_non_reasoning_models(self):
-        mock_client = MagicMock()
-        mock_responses = MagicMock()
-        mock_create = AsyncMock(
-            return_value={
-                "output_text": "ok",
-                "usage": {"total_tokens": 11},
-                "status": "completed",
-            }
-        )
-        mock_responses.create = mock_create
-        mock_client.responses = mock_responses
-
-        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key", default_model="gpt-4o-mini")
-            await provider.generate_text(
-                messages=[LLMMessage(role="user", content="Hello")],
-                temperature=0.4,
-                top_p=0.9,
-            )
-
-            call_kwargs = mock_create.call_args.kwargs
-            assert call_kwargs["temperature"] == 0.4
-            assert call_kwargs["top_p"] == 0.9
-            assert call_kwargs["model"] == "gpt-4o-mini"
-
-    @pytest.mark.asyncio
-    async def test_generate_structured_uses_json_schema_format(self):
-        mock_client = MagicMock()
-        mock_responses = MagicMock()
-        mock_create = AsyncMock(
-            return_value={
-                "output_text": '{"title":"Safe C Strings","difficulty":"medium"}',
-                "usage": {"total_tokens": 15},
-                "status": "completed",
-            }
-        )
-        mock_responses.create = mock_create
-        mock_client.responses = mock_responses
-
-        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
-            schema = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "study_note",
-                    "strict": True,
-                    "schema": {
-                        "type": "object",
-                        "properties": {
-                            "title": {"type": "string"},
-                            "difficulty": {"type": "string"},
-                        },
-                        "required": ["title", "difficulty"],
-                        "additionalProperties": False,
-                    },
-                },
-            }
-            result = await provider.generate_structured(
-                messages=[LLMMessage(role="user", content="Generate JSON")],
-                response_format=schema,
-                temperature=0.8,
-            )
-
-            assert result["title"] == "Safe C Strings"
-            call_kwargs = mock_create.call_args.kwargs
-            assert "temperature" not in call_kwargs
-            assert call_kwargs["text"]["format"]["type"] == "json_schema"
-            assert call_kwargs["text"]["format"]["name"] == "study_note"
-
-    @pytest.mark.asyncio
-    async def test_structured_fallback_parses_json_from_non_schema_response(self):
-        mock_client = MagicMock()
-        mock_responses = MagicMock()
-
-        from openai import BadRequestError
-
-        request_obj = MagicMock()
-        request_obj.method = "POST"
-        request_obj.url = "https://api.openai.com/v1/responses"
-        bad_response = MagicMock()
-        bad_response.status_code = 400
-        bad_response.request = request_obj
-        bad_response.headers = {}
-
-        first_call = BadRequestError(
-            message="Schema not supported",
-            response=bad_response,
-            body={"error": {"message": "Schema not supported"}},
-        )
-        second_call = {
-            "output_text": "```json\n{\"score\": 0.9}\n```",
-            "status": "completed",
-            "usage": {"total_tokens": 9},
-        }
-        mock_responses.create = AsyncMock(side_effect=[first_call, second_call])
-        mock_client.responses = mock_responses
-
-        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
-            result = await provider.generate_structured(
-                messages=[LLMMessage(role="user", content="Generate JSON")],
-                response_format={
-                    "type": "json_schema",
-                    "name": "score_obj",
-                    "schema": {"type": "object"},
-                    "strict": True,
-                },
-            )
-
-            assert result["score"] == 0.9
-            assert mock_responses.create.await_count == 2
-
-    @pytest.mark.asyncio
-    async def test_http_fallback_when_sdk_has_no_responses_attribute(self):
-        mock_client = MagicMock()
-        mock_client.responses = None
-
-        http_response = MagicMock()
-        http_response.status_code = 200
-        http_response.json.return_value = {
-            "output_text": "fallback works",
-            "status": "completed",
-            "usage": {"total_tokens": 4},
-        }
-
-        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client), patch(
-            "app.services.llm.openai_provider.httpx.AsyncClient"
-        ) as mock_http_client:
-            http_client_ctx = mock_http_client.return_value
-            http_client_ctx.__aenter__.return_value.post = AsyncMock(return_value=http_response)
-
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key", default_model="gpt-5-mini")
-            response = await provider.generate_text([LLMMessage(role="user", content="Hi")])
-
-            assert response.content == "fallback works"
-            post_kwargs = http_client_ctx.__aenter__.return_value.post.call_args.kwargs
-            assert post_kwargs["headers"]["Authorization"] == "Bearer test-key"
-            assert post_kwargs["json"]["model"] == "gpt-5-mini"
-
-
-class TestEmbeddingGeneration:
-    @pytest.mark.asyncio
-    async def test_generate_embedding(self):
-        mock_client = MagicMock()
-        mock_response = SimpleNamespace(data=[SimpleNamespace(embedding=[0.1] * 3)])
-        mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-        mock_client.responses = MagicMock()
-
-        with patch("app.services.llm.openai_provider.AsyncOpenAI", return_value=mock_client):
-            from app.services.llm.openai_provider import OpenAIProvider
-
-            provider = OpenAIProvider(api_key="test-key", embedding_model="text-embedding-3-small")
-            embedding = await provider.generate_embedding("Test text")
-
-            assert embedding == [0.1, 0.1, 0.1]
-            kwargs = mock_client.embeddings.create.call_args.kwargs
-            assert kwargs["model"] == "text-embedding-3-small"
+    def test_unknown_provider(self):
+        with patch("app.services.llm.factory.settings") as settings:
+            settings.LLM_PROVIDER = "openai"
+            LLMFactory.reset()
+            with pytest.raises(LLMNotConfiguredError):
+                LLMFactory.get_provider()

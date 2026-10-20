@@ -3,13 +3,64 @@ Sample exam generator service.
 Creates comprehensive exams combining multiple topics.
 """
 
-from typing import List, Dict, Optional
+import asyncio
+import logging
+import random
+from typing import Dict, List
+
 from datetime import UTC, datetime
 
 from app.db.connection import execute_query
+from app.services.content_generator.context import NoSourceMaterialError, content_messages, fetch_topic_chunks
+from app.services.content_generator.quiz import DIFFICULTY_GUIDANCE, QUESTION_FORMAT_RULES, minimum_usable
+from app.services.llm.base import LLMError, LLMOutputError
 from app.services.llm.factory import LLMFactory
-from app.services.llm.base import LLMMessage
-from app.config import settings
+from app.services.llm.schemas import QuestionSet
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_TYPE_DISTRIBUTION = {"multiple_choice": 60, "short_answer": 30, "numerical": 10}
+QUESTION_TYPES = ("multiple_choice", "short_answer", "numerical", "true_false")
+# Topics generated at the same time.
+TOPIC_CONCURRENCY = 4
+
+
+def split_by_weight(total: int, weights: Dict[str, float]) -> Dict[str, int]:
+    """Split `total` across keys in proportion to weights (largest remainder; sums to total)."""
+    positive = {key: float(w) for key, w in weights.items() if w and float(w) > 0}
+    if total <= 0 or not positive:
+        return {}
+    weight_sum = sum(positive.values())
+    exact = {key: total * w / weight_sum for key, w in positive.items()}
+    counts = {key: int(value) for key, value in exact.items()}
+    leftover = total - sum(counts.values())
+    for key in sorted(exact, key=lambda k: exact[k] - counts[k], reverse=True)[:leftover]:
+        counts[key] += 1
+    return {key: count for key, count in counts.items() if count > 0}
+
+
+def plan_exam(topic_ids: List[str], total_questions: int, type_distribution: Dict[str, float]) -> Dict[str, Dict[str, int]]:
+    """Per-topic question-type counts that add up to exactly `total_questions`.
+
+    Question k goes to topic k mod len(topics), so topics get counts that differ by at most
+    one (with fewer questions than topics, some get none). Types are spread evenly over the
+    question sequence, so each topic gets a mix.
+    """
+    if not topic_ids or total_questions <= 0:
+        return {}
+    weights = {k: v for k, v in type_distribution.items() if k in QUESTION_TYPES}
+    type_counts = split_by_weight(total_questions, weights) or {"multiple_choice": total_questions}
+    # Place the n questions of each type at evenly spaced positions, then read them in order.
+    positioned = [
+        ((i + 0.5) / n, q_type) for q_type, n in type_counts.items() for i in range(n)
+    ]
+    type_sequence = [q_type for _, q_type in sorted(positioned)]
+
+    plan: Dict[str, Dict[str, int]] = {}
+    for k, q_type in enumerate(type_sequence):
+        topic_counts = plan.setdefault(topic_ids[k % len(topic_ids)], {})
+        topic_counts[q_type] = topic_counts.get(q_type, 0) + 1
+    return plan
 
 
 class ExamGenerator:
@@ -25,7 +76,7 @@ class ExamGenerator:
         config: Dict,
     ) -> Dict:
         """
-        Generate a comprehensive exam across multiple topics.
+        Generate an exam across multiple topics.
 
         Args:
             project_id: Project ID
@@ -39,62 +90,51 @@ class ExamGenerator:
         Returns:
             Dict with exam questions and metadata
         """
-        # Fetch topics with their content
         topics = await self._fetch_topics(project_id, topic_ids)
-
         if not topics:
             raise ValueError(f"No topics found for project {project_id}")
 
-        # Calculate questions per topic
-        total_questions = config.get('total_questions', 20)
-        questions_per_topic = self._distribute_questions(topics, total_questions)
-
-        # Get question type distribution
-        type_dist = config.get('question_type_distribution', {
-            'multiple_choice': 60,
-            'short_answer': 30,
-            'numerical': 10,
-        })
-
+        total_questions = int(config.get('total_questions') or 20)
+        type_dist = config.get('question_type_distribution') or DEFAULT_TYPE_DISTRIBUTION
         difficulty = config.get('difficulty_level', 'medium')
+        plan = plan_exam([t["id"] for t in topics], total_questions, type_dist)
 
-        # Generate questions for each topic
-        all_questions = []
-        for topic in topics:
-            question_count = questions_per_topic.get(topic["id"], 1)
-            # Fetch relevant chunks for this topic
-            chunks = await self._fetch_topic_chunks(topic["id"])
+        semaphore = asyncio.Semaphore(TOPIC_CONCURRENCY)
 
-            # Build context
-            context = self._build_context(chunks)
+        async def run(topic: Dict) -> List[Dict]:
+            async with semaphore:
+                return await self._generate_topic_questions(topic, plan[topic["id"]], difficulty)
 
-            # Generate questions for this topic
-            questions = await self._generate_topic_questions(
-                topic_name=topic['name'],
-                topic_description=topic['description'],
-                context=context,
-                question_count=question_count,
-                type_distribution=type_dist,
-                difficulty=difficulty,
+        planned_topics = [t for t in topics if t["id"] in plan]
+        results = await asyncio.gather(*(run(t) for t in planned_topics), return_exceptions=True)
+
+        all_questions: List[Dict] = []
+        errors: List[BaseException] = []
+        for topic, result in zip(planned_topics, results):
+            if isinstance(result, BaseException):
+                logger.warning("Exam questions failed for topic %s: %s", topic["id"], result)
+                errors.append(result)
+                continue
+            all_questions.extend(result)
+
+        # A configuration or billing problem fails every topic the same way: report it as such.
+        for error in errors:
+            if isinstance(error, LLMError) and not error.retryable:
+                raise error
+        if len(all_questions) < minimum_usable(total_questions):
+            if errors:
+                raise errors[0]
+            raise LLMOutputError(
+                f"Exam had {len(all_questions)} usable questions of {total_questions} requested"
             )
 
-            # Tag questions with topic
-            for q in questions:
-                q['topic_id'] = topic['id']
-                q['topic_name'] = topic['name']
-
-            all_questions.extend(questions)
-
-        # Shuffle questions (mix topics)
-        import random
         random.shuffle(all_questions)
-
         return {
             'questions': all_questions,
             'total_questions': len(all_questions),
             'duration_minutes': config.get('duration_minutes', 120),
             'difficulty_level': difficulty,
-            'topics_covered': [t['name'] for t in topics],
+            'topics_covered': [t['name'] for t in planned_topics],
             'generated_at': datetime.now(UTC).isoformat(),
         }
 
@@ -102,222 +142,57 @@ class ExamGenerator:
         """Fetch topics for the exam."""
         if not topic_ids:
             return []
-        
-        query = f"""
+        topics = await execute_query(
+            """
             SELECT id, name, description, keywords
             FROM topics
             WHERE project_id = $1 AND id = ANY($2::text[])
             ORDER BY order_index
-        """
-
-        # Use array parameter instead of multiple placeholders for better safety
-        topics = await execute_query(query, project_id, topic_ids)
+            """,
+            project_id,
+            topic_ids,
+        )
         return [dict(topic) for topic in topics]
-
-    def _distribute_questions(self, topics: List[Dict], total_questions: int) -> Dict[str, int]:
-        """Distribute questions evenly across topics."""
-        questions_per_topic: Dict[str, int] = {}
-        base_count = total_questions // len(topics)
-        remainder = total_questions % len(topics)
-
-        for i, topic in enumerate(topics):
-            count = base_count + (1 if i < remainder else 0)
-            questions_per_topic[topic["id"]] = max(count, 1)
-
-        return questions_per_topic
-
-    async def _fetch_topic_chunks(self, topic_id: str) -> List[Dict]:
-        """Fetch relevant chunks for a topic."""
-        query = """
-            SELECT mc.chunk_text, mc.section_hierarchy
-            FROM topic_chunk_mappings tcm
-            JOIN material_chunks mc ON tcm.chunk_id = mc.id
-            WHERE tcm.topic_id = $1
-            ORDER BY tcm.relevance_score DESC
-            LIMIT 10
-        """
-
-        chunks = await execute_query(query, topic_id)
-        return chunks
-
-    def _build_context(self, chunks: List[Dict]) -> str:
-        """Build context from chunks."""
-        context_parts = []
-        for idx, chunk in enumerate(chunks, 1):
-            text = chunk['chunk_text'].strip()
-            context_parts.append(f"[Excerpt {idx}]\n{text}")
-
-        return "\n\n---\n\n".join(context_parts)
 
     async def _generate_topic_questions(
         self,
-        topic_name: str,
-        topic_description: str,
-        context: str,
-        question_count: int,
-        type_distribution: Dict,
+        topic: Dict,
+        type_counts: Dict[str, int],
         difficulty: str,
     ) -> List[Dict]:
-        """Generate questions for a single topic."""
+        """Questions for one topic, in the planned type mix."""
+        chunks = await fetch_topic_chunks(topic["id"])
+        if not chunks:
+            raise NoSourceMaterialError(f"No source material is mapped to topic {topic['name']}")
 
-        # Calculate how many of each type
-        question_types = []
-        for q_type, percentage in type_distribution.items():
-            count = max(1, round(question_count * percentage / 100))
-            question_types.extend([q_type] * count)
+        requested = sum(type_counts.values())
+        mix = ", ".join(f"{n} {q_type}" for q_type, n in type_counts.items())
+        guidance = DIFFICULTY_GUIDANCE.get(difficulty, DIFFICULTY_GUIDANCE['medium'])
+        instructions = f"""Write {requested} exam questions on "{topic['name']}" from the excerpts above, for a timed practice exam.
 
-        # Trim to exact count
-        question_types = question_types[:question_count]
+Use exactly this mix: {mix}.
+Difficulty: {difficulty}. {guidance}
+Each question tests a different concept from the excerpts.
 
-        difficulty_guidance = {
-            'easy': 'Create straightforward questions testing basic understanding.',
-            'medium': 'Create moderately challenging questions requiring application and analysis.',
-            'hard': 'Create complex questions requiring deep understanding and synthesis.',
-        }
-        guidance = difficulty_guidance.get(difficulty, difficulty_guidance['medium'])
+{QUESTION_FORMAT_RULES}
+Set difficulty to "{difficulty}"."""
 
-        prompt = f"""You are creating exam questions for a comprehensive assessment.
-
-**Topic:** {topic_name}
-**Description:** {topic_description}
-**Number of Questions:** {question_count}
-**Difficulty:** {difficulty}
-
-{guidance}
-
-**Source Material:**
-
-{context}
-
-**Instructions:**
-Create {question_count} diverse questions based on the source material.
-Question types needed: {', '.join(set(question_types))}
-
-**Formatting rules (IMPORTANT — follow these exactly):**
-- All string fields support full markdown. Use it.
-- Any code snippet, memory layout, or command MUST be in a fenced code block with a language tag, e.g. ```c, ```python, ```text. NEVER dump code inline as plain text.
-- Use real line breaks (`\n`) inside JSON strings to separate paragraphs and before/after code fences. Do NOT put everything on one line.
-- Use `inline code` only for short identifiers, function names, or single expressions (e.g. `buf`, `strlen()`).
-- Keep question_text and options concise. If a question needs a code block, include it in question_text with proper fencing — do NOT put code blocks inside options.
-- For math expressions use LaTeX: inline `$E = mc^2$` or display `$$\\int_0^1 f(x)\\,dx$$`. For chemistry use `$2H_2 + O_2 \\to 2H_2O$`. Do NOT use plain-text math when LaTeX is clearer.
-- Separate distinct ideas into short paragraphs rather than one dense block of text.
-
-For MULTIPLE_CHOICE:
-{{
-  "question_type": "multiple_choice",
-  "question_text": "Question here",
-  "options": [{{"id": "A", "text": "..."}}, {{"id": "B", "text": "..."}}, {{"id": "C", "text": "..."}}, {{"id": "D", "text": "..."}}],
-  "correct_answer": "B",
-  "explanation": "Why B is correct",
-  "points": 2,
-  "difficulty": "{difficulty}"
-}}
-
-For SHORT_ANSWER:
-{{
-  "question_type": "short_answer",
-  "question_text": "Question here",
-  "sample_answer": "Expected answer",
-  "key_points": ["Point 1", "Point 2"],
-  "explanation": "Grading guidance",
-  "points": 3,
-  "difficulty": "{difficulty}"
-}}
-
-For NUMERICAL:
-{{
-  "question_type": "numerical",
-  "question_text": "Question here",
-  "correct_answer": 42.5,
-  "unit": "units",
-  "tolerance": 0.1,
-  "explanation": "Solution steps",
-  "points": 3,
-  "difficulty": "{difficulty}"
-}}
-
-For TRUE_FALSE:
-{{
-  "question_type": "true_false",
-  "question_text": "Statement here",
-  "correct_answer": true,
-  "explanation": "Why true/false",
-  "points": 1,
-  "difficulty": "{difficulty}"
-}}
-
-Return a JSON array of {question_count} questions:"""
-
-        if settings.is_development:
-            return self._generate_mock_questions(topic_name, question_count, question_types, difficulty)
-
-        messages = [LLMMessage(role="user", content=prompt)]
-
-        response = await self.llm.generate_structured(
-            messages=messages,
-            temperature=0.6,
-            use_mini=False
+        result = await self.llm.generate_structured(
+            content_messages(topic['name'], topic.get('description') or '', chunks, instructions),
+            QuestionSet,
+            tier="main",
+            max_tokens=16000,
+            purpose="exam_questions",
         )
 
-        return response.get('questions', [])
-
-    def _generate_mock_questions(
-        self,
-        topic_name: str,
-        question_count: int,
-        question_types: List[str],
-        difficulty: str
-    ) -> List[Dict]:
-        """Generate mock questions for development."""
-        questions = []
-
-        for i in range(question_count):
-            q_type = question_types[i % len(question_types)]
-
-            if q_type == 'multiple_choice':
-                questions.append({
-                    "question_type": "multiple_choice",
-                    "question_text": f"Which concept is most important in {topic_name}?",
-                    "options": [
-                        {"id": "A", "text": "Concept A"},
-                        {"id": "B", "text": "Concept B (Correct)"},
-                        {"id": "C", "text": "Concept C"},
-                        {"id": "D", "text": "Concept D"}
-                    ],
-                    "correct_answer": "B",
-                    "explanation": f"Concept B is fundamental to {topic_name}.",
-                    "points": 2,
-                    "difficulty": difficulty
-                })
-            elif q_type == 'short_answer':
-                questions.append({
-                    "question_type": "short_answer",
-                    "question_text": f"Explain the key principle of {topic_name}.",
-                    "sample_answer": f"The key principle involves understanding the relationship between components and applying systematic methods.",
-                    "key_points": ["Relationship between components", "Systematic methods", "Practical application"],
-                    "explanation": "Answer should cover main concepts and applications.",
-                    "points": 3,
-                    "difficulty": difficulty
-                })
-            elif q_type == 'numerical':
-                questions.append({
-                    "question_type": "numerical",
-                    "question_text": f"Calculate the result for {topic_name} given A=10, B=5.",
-                    "correct_answer": 50.0,
-                    "unit": "units",
-                    "tolerance": 0.5,
-                    "explanation": "Result = A × B = 10 × 5 = 50",
-                    "points": 3,
-                    "difficulty": difficulty
-                })
-            else:  # true_false
-                questions.append({
-                    "question_type": "true_false",
-                    "question_text": f"{topic_name} requires consideration of multiple variables.",
-                    "correct_answer": True,
-                    "explanation": f"True, {topic_name} involves multiple interconnected factors.",
-                    "points": 1,
-                    "difficulty": difficulty
-                })
-
+        remaining = dict(type_counts)
+        questions: List[Dict] = []
+        for question in result.usable():
+            q_type = question["question_type"]
+            if remaining.get(q_type, 0) <= 0:
+                continue
+            remaining[q_type] -= 1
+            question['topic_id'] = topic['id']
+            question['topic_name'] = topic['name']
+            questions.append(question)
         return questions

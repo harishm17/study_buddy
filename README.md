@@ -62,7 +62,7 @@ Click **"Add Examples"** or **"Practice More"** to generate new problems. Each r
 - Progress tracking across attempts
 
 ### Voice Coach
-- **Real-time voice interaction** via WebRTC (OpenAI Realtime API)
+- **Real-time voice interaction** via WebRTC (OpenAI Realtime API, optional)
 - **Three learning styles**: Oral Q&A, guided notes, or free conversation
 - **Concept-only focus**: a regex filter and prompt instructions steer sessions away from math and calculations
 - **Topic Drill** or **Voice Sprint** modes for targeted practice
@@ -83,7 +83,8 @@ Progress bars, attempt history, and per-attempt scores shown inline
 - **Node.js** 24+ and **npm**
 - **Python** 3.13+ and [uv](https://docs.astral.sh/uv/)
 - **PostgreSQL** 15+ with **pgvector** extension
-- **OpenAI API Key** ([Get one here](https://platform.openai.com/api-keys))
+- **Anthropic API Key** ([Get one here](https://console.anthropic.com/settings/keys))
+- **OpenAI API Key** (optional, only for the Voice Coach)
 
 ### Docker Setup (Recommended)
 
@@ -92,7 +93,7 @@ Progress bars, attempt history, and per-attempt scores shown inline
    git clone https://github.com/harishm17/study_buddy.git
    cd study_buddy
    cp .env.example .env
-   # Edit .env and add your OPENAI_API_KEY and AI_INTERNAL_TOKEN
+   # Edit .env and add your ANTHROPIC_API_KEY and AI_INTERNAL_TOKEN
    ```
 
 2. **Start services**
@@ -170,11 +171,13 @@ uv run uvicorn app.main:app --reload
                        │
                        ▼
               ┌────────────────┐
-              │   OpenAI API   │
+              │ Anthropic API  │
               │                │
-              │ • GPT-5-mini   │
-              │ • Embeddings   │
-              │ • Realtime API │
+              │ • Claude       │
+              │                │
+              │ OpenAI API     │
+              │ • Realtime     │
+              │   (voice only) │
               └────────────────┘
 ```
 
@@ -182,9 +185,9 @@ uv run uvicorn app.main:app --reload
 
 #### 1. Topic-Scoped Retrieval
 Instead of sending whole documents to the model:
-- **Chunking**: PDFs are split with heading-aware heuristics into chunks targeting about 800 tokens with 15% overlap, then embedded (`text-embedding-3-small`) and stored in pgvector
+- **Chunking**: PDFs are split with heading-aware heuristics into chunks targeting about 800 tokens with 15% overlap, then embedded locally (`BAAI/bge-small-en-v1.5`, 384 dimensions, no API key) and stored in pgvector
 - **Topic mapping**: when topics are extracted, each topic is mapped to its top 15 chunks using a blend of keyword matching and vector similarity
-- **Bounded prompts**: content generation fetches at most 24 mapped chunks for the topic, so prompt size is capped by the chunk limit rather than by document length
+- **Bounded prompts**: content generation sends at most 16 mapped chunks for the topic, untruncated, so prompt size is capped by the chunk limit rather than by document length
 
 #### 2. Content Variation
 - Each "Practice More" request asks the model for new content
@@ -232,8 +235,9 @@ Instead of sending whole documents to the model:
 |------------|---------|
 | [FastAPI](https://fastapi.tiangolo.com/) | Python web framework |
 | [PyMuPDF](https://pymupdf.readthedocs.io/) | PDF text extraction |
-| [OpenAI API](https://platform.openai.com/) | GPT-5-mini for content generation |
-| OpenAI Realtime | WebRTC audio/text for Voice Coach |
+| [Anthropic API](https://docs.anthropic.com/) | Claude for content generation and grading |
+| [fastembed](https://github.com/qdrant/fastembed) | Local embeddings (`BAAI/bge-small-en-v1.5`) |
+| OpenAI Realtime | WebRTC audio/text for Voice Coach (optional) |
 | [pgvector](https://github.com/pgvector/pgvector) | Vector similarity search |
 | [Pydantic v2](https://docs.pydantic.dev/) | Data validation |
 
@@ -266,8 +270,8 @@ Instead of sending whole documents to the model:
 
 **Required:**
 ```env
-# OpenAI
-OPENAI_API_KEY=sk-proj-...
+# Anthropic (Claude generates and grades)
+ANTHROPIC_API_KEY=sk-ant-...
 
 # Database
 DATABASE_URL=postgresql://user:pass@localhost:5432/studybuddy
@@ -287,7 +291,14 @@ AI_INTERNAL_TOKEN=<generate with: openssl rand -hex 32; same value in both servi
 GOOGLE_OAUTH_CLIENT_ID=...
 GOOGLE_OAUTH_CLIENT_SECRET=...
 
-# Voice Coach (AI service)
+# LLM and embeddings (AI service)
+LLM_PROVIDER=anthropic              # or mock: placeholder output, no API calls
+ANTHROPIC_MODEL=claude-opus-5-5     # notes, examples, quizzes, exams
+ANTHROPIC_FAST_MODEL=claude-haiku-5-5  # validation, topics, short-answer grading
+EMBEDDING_PROVIDER=local            # or openai (needs OPENAI_API_KEY)
+
+# Voice Coach (AI service; without OPENAI_API_KEY the voice coach is off)
+OPENAI_API_KEY=sk-proj-...
 OPENAI_REALTIME_MODEL=gpt-realtime-mini
 OPENAI_REALTIME_VOICE=marin
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe

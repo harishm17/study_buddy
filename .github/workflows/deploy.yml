@@ -29,6 +29,16 @@ jobs:
             exit 1
           fi
 
+      - name: ANTHROPIC_API_KEY must be set
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Claude does all text generation and grading; without a key every generation job fails.
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Set the ANTHROPIC_API_KEY repository secret."
+            exit 1
+          fi
+
   setup-database:
     name: Setup Database (pgvector extension)
     needs: [check-secrets]
@@ -173,10 +183,9 @@ jobs:
 
       - name: Deploy AI Service to Cloud Run
         env:
-          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER != '' && secrets.LLM_PROVIDER || 'openai' }}
-          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL != '' && secrets.OPENAI_MODEL || 'gpt-5' }}
-          OPENAI_MINI_MODEL: ${{ secrets.OPENAI_MINI_MODEL != '' && secrets.OPENAI_MINI_MODEL || 'gpt-5-mini' }}
-          OPENAI_EMBEDDING_MODEL: ${{ secrets.OPENAI_EMBEDDING_MODEL != '' && secrets.OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small' }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER != '' && secrets.LLM_PROVIDER || 'anthropic' }}
+          ANTHROPIC_MODEL: ${{ secrets.ANTHROPIC_MODEL != '' && secrets.ANTHROPIC_MODEL || 'claude-opus-5-5' }}
+          ANTHROPIC_FAST_MODEL: ${{ secrets.ANTHROPIC_FAST_MODEL != '' && secrets.ANTHROPIC_FAST_MODEL || 'claude-haiku-5-5' }}
           CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
           DATABASE_URL_SECRET: ${{ secrets.DATABASE_URL }}
         run: |
@@ -200,6 +209,8 @@ jobs:
             echo "Using direct IP connection (ensure IP is authorized)"
           fi
 
+          # OPENAI_API_KEY is optional: only the realtime voice coach uses it.
+          # Memory stays at 2Gi or more: the in-process embedding model needs it.
           gcloud run deploy $AI_SERVICE \
             --image gcr.io/$PROJECT_ID/$AI_SERVICE:${{ github.sha }} \
             --region $REGION \
@@ -207,13 +218,13 @@ jobs:
             --allow-unauthenticated \
             $CLOUD_SQL_FLAG \
             --set-env-vars "DATABASE_URL=$DATABASE_URL" \
+            --set-env-vars "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" \
             --set-env-vars "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" \
             --set-env-vars "ENVIRONMENT=production" \
             --set-env-vars "AI_INTERNAL_TOKEN=${{ secrets.AI_INTERNAL_TOKEN }}" \
             --set-env-vars "LLM_PROVIDER=${LLM_PROVIDER}" \
-            --set-env-vars "OPENAI_MODEL=${OPENAI_MODEL}" \
-            --set-env-vars "OPENAI_MINI_MODEL=${OPENAI_MINI_MODEL}" \
-            --set-env-vars "OPENAI_EMBEDDING_MODEL=${OPENAI_EMBEDDING_MODEL}" \
+            --set-env-vars "ANTHROPIC_MODEL=${ANTHROPIC_MODEL}" \
+            --set-env-vars "ANTHROPIC_FAST_MODEL=${ANTHROPIC_FAST_MODEL}" \
             --set-env-vars "GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}" \
             --set-env-vars "GCS_BUCKET=${{ secrets.GCS_BUCKET_NAME }}" \
             --set-env-vars "GCS_PROJECT_ID=$PROJECT_ID" \

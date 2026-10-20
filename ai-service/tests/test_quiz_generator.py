@@ -1,220 +1,92 @@
-"""Tests for quiz generation functionality."""
-import pytest
+"""Tests for quiz generation."""
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.content_generator.quiz import QuizGenerator, QuestionType
+
+import pytest
+
+from app.services.content_generator.context import NoSourceMaterialError
+from app.services.content_generator.quiz import QuestionType, QuizGenerator, minimum_usable
+from app.services.llm.base import LLMOutputError
+from app.services.llm.schemas import ChoiceOption, GeneratedQuestion, QuestionSet
+
+CHUNKS = [
+    {
+        "id": "c1",
+        "chunk_text": "Machine learning learns patterns from data.",
+        "section_hierarchy": "Chapter 1",
+        "page_start": 1,
+        "page_end": 1,
+        "filename": "ml.pdf",
+        "category": "lecture_notes",
+        "relevance_score": 0.9,
+    }
+]
+
+
+def _mcq(text="What is ML?", answer="B"):
+    return GeneratedQuestion(
+        question_type="multiple_choice",
+        question_text=text,
+        options=[ChoiceOption(id=x, text=f"Option {x}") for x in "ABCD"],
+        correct_answer=answer,
+        explanation="Because.",
+    )
+
+
+def _tf():
+    return GeneratedQuestion(
+        question_type="true_false", question_text="ML needs data.", correct_answer=True, explanation="It does."
+    )
+
+
+async def _run(questions, **kwargs):
+    llm = MagicMock()
+    llm.generate_structured = AsyncMock(return_value=QuestionSet(questions=questions))
+    with patch("app.services.content_generator.context.execute_query", AsyncMock(return_value=CHUNKS)), \
+         patch("app.services.llm.factory.LLMFactory.get_provider", return_value=llm):
+        result = await QuizGenerator().generate_quiz("t1", "ML", "desc", **kwargs)
+    return result, llm
 
 
 class TestQuizGenerator:
-    """Test quiz generation service."""
-
-    @pytest.fixture
-    def mock_db_chunks(self):
-        """Mock database chunks."""
-        return [
-            {
-                "chunk_text": "Machine learning is a subset of AI that enables computers to learn from data.",
-                "section_hierarchy": "Chapter 1 > Introduction",
-                "filename": "ml_textbook.pdf",
-                "relevance_score": 0.95
-            },
-            {
-                "chunk_text": "Supervised learning involves training on labeled data with input-output pairs.",
-                "section_hierarchy": "Chapter 1 > Supervised Learning",
-                "filename": "ml_textbook.pdf",
-                "relevance_score": 0.90
-            }
-        ]
-
-    @pytest.fixture
-    def mock_generated_questions(self):
-        """Mock LLM-generated questions."""
-        return [
-            {
-                "type": "multiple_choice",
-                "question": "What is machine learning?",
-                "options": ["A subset of AI", "A programming language", "A database", "A web framework"],
-                "correct_answer": 0,
-                "explanation": "Machine learning is defined as a subset of AI."
-            },
-            {
-                "type": "short_answer",
-                "question": "Explain supervised learning.",
-                "correct_answer": "Supervised learning is training on labeled data.",
-                "explanation": "Requires labeled input-output pairs."
-            },
-            {
-                "type": "true_false",
-                "question": "Machine learning requires explicit programming for every scenario.",
-                "correct_answer": False,
-                "explanation": "ML learns patterns from data without explicit programming."
-            }
-        ]
+    @pytest.mark.asyncio
+    async def test_returns_valid_questions_and_metadata(self):
+        result, llm = await _run([_mcq(), _tf()], question_count=2)
+        assert result["total_questions"] == 2
+        assert result["question_types"] == [qt.value for qt in QuestionType]
+        assert {q["question_type"] for q in result["questions"]} == {"multiple_choice", "true_false"}
+        assert llm.generate_structured.call_args.args[1] is QuestionSet
+        assert llm.generate_structured.call_args.kwargs["purpose"] == "topic_quiz"
 
     @pytest.mark.asyncio
-    async def test_generate_quiz_basic(self, mock_db_chunks, mock_generated_questions):
-        """Should generate quiz with specified number of questions."""
-        with patch('app.services.content_generator.quiz.execute_query') as mock_query, \
-             patch('app.services.content_generator.quiz.LLMFactory.get_provider') as mock_llm_factory:
-
-            # Mock database query
-            mock_query.return_value = mock_db_chunks
-
-            # Mock LLM provider
-            mock_llm = MagicMock()
-            mock_llm.generate_structured = AsyncMock(return_value={
-                "questions": mock_generated_questions[:2]
-            })
-            mock_llm_factory.return_value = mock_llm
-
-            generator = QuizGenerator()
-            result = await generator.generate_quiz(
-                topic_id="topic_123",
-                topic_name="Machine Learning Basics",
-                topic_description="Introduction to ML concepts",
-                question_count=2
-            )
-
-            assert result is not None
-            assert "questions" in result
-            assert "total_questions" in result
-            assert result["total_questions"] >= 0
+    async def test_invalid_questions_are_dropped(self):
+        bad_answer = _mcq(text="Bad key", answer="E")
+        result, _ = await _run([_mcq(), bad_answer, _tf()], question_count=3)
+        assert [q["question_text"] for q in result["questions"]] == ["What is ML?", "ML needs data."]
 
     @pytest.mark.asyncio
-    async def test_generate_quiz_multiple_choice_only(self, mock_db_chunks):
-        """Should generate only multiple choice questions when specified."""
-        with patch('app.services.content_generator.quiz.execute_query') as mock_query, \
-             patch('app.services.content_generator.quiz.LLMFactory.get_provider') as mock_llm_factory:
-
-            mock_query.return_value = mock_db_chunks
-
-            mock_llm = MagicMock()
-            mock_llm.generate_structured = AsyncMock(return_value={
-                "questions": [
-                    {
-                        "type": "multiple_choice",
-                        "question": "What is ML?",
-                        "options": ["AI subset", "Database", "Language", "Framework"],
-                        "correct_answer": 0
-                    }
-                ]
-            })
-            mock_llm_factory.return_value = mock_llm
-
-            generator = QuizGenerator()
-            result = await generator.generate_quiz(
-                topic_id="topic_123",
-                topic_name="ML Basics",
-                topic_description="Introduction",
-                question_count=1,
-                question_types=[QuestionType.MULTIPLE_CHOICE]
-            )
-
-            assert "question_types" in result
-            assert QuestionType.MULTIPLE_CHOICE.value in result["question_types"]
+    async def test_types_outside_the_request_are_dropped(self):
+        result, llm = await _run(
+            [_mcq(), _tf()], question_count=2, question_types=[QuestionType.MULTIPLE_CHOICE]
+        )
+        assert [q["question_type"] for q in result["questions"]] == ["multiple_choice"]
+        assert "multiple_choice." in llm.generate_structured.call_args.args[0][-1].content
 
     @pytest.mark.asyncio
-    async def test_generate_quiz_no_chunks_raises_error(self):
-        """Should raise error when no relevant chunks found."""
-        with patch('app.services.content_generator.quiz.execute_query') as mock_query, \
-             patch('app.services.content_generator.quiz.LLMFactory.get_provider') as mock_llm_factory:
-
-            # Mock empty chunks
-            mock_query.return_value = []
-
-            mock_llm_factory.return_value = MagicMock()
-
-            generator = QuizGenerator()
-
-            with pytest.raises(ValueError, match="No relevant chunks found"):
-                await generator.generate_quiz(
-                    topic_id="nonexistent_topic",
-                    topic_name="Test",
-                    topic_description="Test",
-                    question_count=5
-                )
+    async def test_too_few_usable_questions_fail(self):
+        with pytest.raises(LLMOutputError, match="1 usable questions of 10"):
+            await _run([_mcq()], question_count=10)
 
     @pytest.mark.asyncio
-    async def test_generate_quiz_difficulty_levels(self, mock_db_chunks, mock_generated_questions):
-        """Should support different difficulty levels."""
-        with patch('app.services.content_generator.quiz.execute_query') as mock_query, \
-             patch('app.services.content_generator.quiz.LLMFactory.get_provider') as mock_llm_factory:
+    async def test_no_chunks_is_not_retryable(self):
+        with patch("app.services.content_generator.context.execute_query", AsyncMock(return_value=[])), \
+             patch("app.services.llm.factory.LLMFactory.get_provider", return_value=MagicMock()):
+            with pytest.raises(NoSourceMaterialError):
+                await QuizGenerator().generate_quiz("t1", "ML", "desc")
 
-            mock_query.return_value = mock_db_chunks
-
-            mock_llm = MagicMock()
-            mock_llm.generate_structured = AsyncMock(return_value={
-                "questions": mock_generated_questions
-            })
-            mock_llm_factory.return_value = mock_llm
-
-            generator = QuizGenerator()
-
-            for difficulty in ["easy", "medium", "hard"]:
-                result = await generator.generate_quiz(
-                    topic_id="topic_123",
-                    topic_name="ML Basics",
-                    topic_description="Introduction",
-                    question_count=3,
-                    difficulty_level=difficulty
-                )
-
-                assert result["difficulty_level"] == difficulty
-
-    @pytest.mark.asyncio
-    async def test_generate_quiz_includes_metadata(self, mock_db_chunks, mock_generated_questions):
-        """Generated quiz should include metadata."""
-        with patch('app.services.content_generator.quiz.execute_query') as mock_query, \
-             patch('app.services.content_generator.quiz.LLMFactory.get_provider') as mock_llm_factory:
-
-            mock_query.return_value = mock_db_chunks
-
-            mock_llm = MagicMock()
-            mock_llm.generate_structured = AsyncMock(return_value={
-                "questions": mock_generated_questions
-            })
-            mock_llm_factory.return_value = mock_llm
-
-            generator = QuizGenerator()
-            result = await generator.generate_quiz(
-                topic_id="topic_123",
-                topic_name="ML Basics",
-                topic_description="Introduction",
-                question_count=3
-            )
-
-            # Check for metadata fields
-            assert "questions" in result
-            assert "total_questions" in result
-            assert "difficulty_level" in result
-            assert "question_types" in result
-            assert "generated_at" in result
-
-    @pytest.mark.asyncio
-    async def test_question_type_validation(self):
-        """Should validate question types."""
-        # Test that QuestionType enum has expected values
-        assert QuestionType.MULTIPLE_CHOICE.value == "multiple_choice"
-        assert QuestionType.SHORT_ANSWER.value == "short_answer"
-        assert QuestionType.NUMERICAL.value == "numerical"
-        assert QuestionType.TRUE_FALSE.value == "true_false"
-
-
-class TestQuestionTypes:
-    """Test question type handling."""
-
-    def test_all_question_types_supported(self):
-        """All standard question types should be available."""
-        types = [
-            QuestionType.MULTIPLE_CHOICE,
-            QuestionType.SHORT_ANSWER,
-            QuestionType.NUMERICAL,
-            QuestionType.TRUE_FALSE
-        ]
-        assert len(types) == 4
+    def test_minimum_usable(self):
+        assert [minimum_usable(n) for n in (1, 2, 5, 10)] == [1, 1, 3, 5]
 
     def test_question_type_values(self):
-        """Question type enum values should match expected strings."""
-        assert QuestionType.MULTIPLE_CHOICE.value == "multiple_choice"
-        assert QuestionType.SHORT_ANSWER.value == "short_answer"
-        assert QuestionType.NUMERICAL.value == "numerical"
-        assert QuestionType.TRUE_FALSE.value == "true_false"
+        assert {qt.value for qt in QuestionType} == {
+            "multiple_choice", "short_answer", "numerical", "true_false"
+        }

@@ -2,7 +2,7 @@
 import logging
 from typing import List, Dict, Optional
 from app.db.connection import execute_query
-from app.services.embeddings.generator import generate_single_embedding
+from app.services.embeddings.generator import generate_query_embedding
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +190,7 @@ async def semantic_search(
         List of chunks with similarity scores
     """
     # Generate embedding for query
-    query_embedding = await generate_single_embedding(query_text)
+    query_embedding = await generate_query_embedding(query_text)
 
     # Convert to pgvector format (array string)
     embedding_str = f"[{','.join(map(str, query_embedding))}]"

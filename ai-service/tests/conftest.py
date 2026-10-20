@@ -1,34 +1,14 @@
 import os
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, AsyncMock
 
 
 def pytest_configure():
     os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost:5432/studybuddy")
-    os.environ.setdefault("OPENAI_API_KEY", "test-key")
-
-
-@pytest.fixture
-def mock_llm_provider():
-    """Mock LLM provider for testing without API calls."""
-    provider = MagicMock()
-
-    # Mock generate_text method
-    mock_response = MagicMock()
-    mock_response.content = "Test response"
-    mock_response.tokens_used = 100
-    mock_response.model = "test-model"
-    mock_response.finish_reason = "stop"
-    provider.generate_text = AsyncMock(return_value=mock_response)
-
-    # Mock generate_embedding method
-    provider.generate_embedding = AsyncMock(return_value=[0.1] * 1536)
-
-    # Mock generate_structured method
-    provider.generate_structured = AsyncMock(return_value={"key": "value"})
-
-    return provider
+    # Always a fake key, even when ai-service/.env holds a real one: tests never call the API.
+    os.environ["ANTHROPIC_API_KEY"] = "test-key"
+    os.environ["LLM_PROVIDER"] = "anthropic"
+    os.environ["OPENAI_API_KEY"] = ""
 
 
 @pytest.fixture

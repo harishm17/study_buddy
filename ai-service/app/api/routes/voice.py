@@ -9,13 +9,22 @@ from pydantic import BaseModel, Field
 from app.config import settings
 from app.services.llm.factory import LLMFactory
 from app.services.llm.base import LLMMessage
+from app.services.llm.schemas import DrillQuestionSet
 
 router = APIRouter(prefix="/voice")
 
+# Questions that need working out on paper. Bare digits are allowed ("layer 4", "Python 3")
+# unless they form an expression; keywords need word boundaries ("sum" is not "summarize").
 MATH_PATTERN = re.compile(
-    r"(\d+|=|±|sqrt|integral|derive|calculate|solve|equation|formula|sum|delta|percent|percentage|compute)",
+    r"(\d\s*[-+*/^=<>]\s*\d|[=±√∑∫]"
+    r"|\b(?:sqrt|integral|integrate|derivative|differentiate|calculate|compute|solve|equation"
+    r"|formula|sum|delta|percent|percentage)\b)",
     re.IGNORECASE,
 )
+
+
+# Requested on top of `count`, because the math filter drops some questions.
+DRILL_EXTRA_QUESTIONS = 3
 
 
 def _is_conceptual_text(value: Optional[str]) -> bool:
@@ -77,6 +86,11 @@ async def create_realtime_token(
     payload: RealtimeTokenRequest,
 ):
     """Mint a Realtime client secret via OpenAI."""
+    if not settings.voice_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail="Voice coaching is turned off: OPENAI_API_KEY is not configured.",
+        )
     voice = payload.voice or settings.OPENAI_REALTIME_VOICE
     session = {
         "type": "realtime",
@@ -173,20 +187,8 @@ Number of questions: {payload.count}
 Source notes:
 {payload.notes}
 
-Return a JSON object with this shape:
-{{
-  "questions": [
-    {{
-      "question_type": "conceptual",
-      "question_text": "...",
-      "key_points": ["...", "..."],
-      "sample_answer": "...",
-      "explanation": "...",
-      "difficulty": "{payload.difficulty}",
-      "concepts_tested": ["...", "..."]
-    }}
-  ]
-}}
+Write {payload.count + DRILL_EXTRA_QUESTIONS} questions a student can answer out loud in under a minute each.
+For each, give 2-4 key points a listener can check, a short sample answer, and the concepts it tests.
 """
 
     messages = [
@@ -194,32 +196,33 @@ Return a JSON object with this shape:
         LLMMessage(role="user", content=user_prompt),
     ]
 
-    result = await llm.generate_structured(messages, use_mini=True)
-    if not isinstance(result, dict):
-        result = {}
-    questions = result.get("questions") or []
-
-    if not isinstance(questions, list):
-        questions = []
+    result = await llm.generate_structured(
+        messages,
+        DrillQuestionSet,
+        tier="fast",
+        max_tokens=8000,
+        purpose="voice_drill",
+    )
 
     cleaned: List[Dict[str, Any]] = []
-    for q in questions:
-        if not isinstance(q, dict):
+    for q in result.questions:
+        if not q.question_text.strip():
             continue
         cleaned.append(
             {
-                "question_type": q.get("question_type", "conceptual"),
-                "question_text": q.get("question_text", ""),
-                "key_points": [str(point) for point in (q.get("key_points") or []) if str(point).strip()],
-                "sample_answer": q.get("sample_answer", ""),
-                "explanation": q.get("explanation", ""),
-                "difficulty": q.get("difficulty", payload.difficulty),
-                "concepts_tested": [str(point) for point in (q.get("concepts_tested") or []) if str(point).strip()],
+                "question_type": "conceptual",
+                "question_text": q.question_text.strip(),
+                "key_points": [point.strip() for point in q.key_points if point.strip()],
+                "sample_answer": q.sample_answer,
+                "explanation": q.explanation,
+                "difficulty": payload.difficulty,
+                "concepts_tested": [point.strip() for point in q.concepts_tested if point.strip()],
                 "source": "generated",
             }
         )
 
-    cleaned = _filter_concept_questions(cleaned)
+    # Extra questions were requested so the set is still full after the math filter.
+    cleaned = _filter_concept_questions(cleaned)[: payload.count]
 
     return {
         "questions": cleaned,

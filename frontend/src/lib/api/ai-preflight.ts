@@ -29,11 +29,11 @@ export async function ensureAiGenerationReady(): Promise<NextResponse | null> {
     const payload = await response.json()
     const checks = Array.isArray(payload?.checks) ? (payload.checks as DependencyCheck[]) : []
 
-    const openAiCheck = checks.find((check) => check.name === 'openai_key')
-    if (openAiCheck?.status === 'fail') {
+    const llmCheck = checks.find((check) => check.name === 'llm_key')
+    if (llmCheck?.status === 'fail') {
       return apiError(
         ApiErrorCode.UPSTREAM_ERROR,
-        'AI service is missing OPENAI_API_KEY. Configure it before generating content.',
+        'AI service is missing ANTHROPIC_API_KEY. Configure it before generating content.',
         undefined,
         503
       )

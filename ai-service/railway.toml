@@ -18,6 +18,8 @@
   restartPolicyMaxRetries = 10
 
 # Environment variables (set in Railway dashboard):
-# - OPENAI_API_KEY
+# - ANTHROPIC_API_KEY
+# - OPENAI_API_KEY (optional, realtime voice coach only)
 # - DATABASE_URL (from Railway PostgreSQL)
 # - ENVIRONMENT=production
+# - Give the service at least 2 GB of memory: the embedding model runs in-process

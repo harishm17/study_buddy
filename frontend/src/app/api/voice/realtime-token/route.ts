@@ -48,6 +48,14 @@ export async function POST(request: NextRequest) {
       }),
     })
 
+    if (response.status === 503) {
+      // The AI service has no OpenAI key, so the realtime voice coach is turned off.
+      return NextResponse.json(
+        { error: 'Voice coaching is not available on this server.' },
+        { status: 503 }
+      )
+    }
+
     if (!response.ok) {
       return NextResponse.json(
         { error: 'Failed to mint realtime token', detail: await response.text() },

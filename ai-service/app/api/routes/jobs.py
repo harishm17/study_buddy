@@ -10,6 +10,8 @@ from app.services.embeddings.generator import generate_embeddings
 from app.services.topic_extractor import extract_topics_from_materials
 from app.services.embeddings.search import hybrid_search_chunks
 from app.services.content_generator import NotesGenerator, ExamplesGenerator, QuizGenerator
+from app.services.content_generator.context import NoSourceMaterialError
+from app.services.llm.base import LLMError
 from app.services.content_generator.examples import ExampleType
 from app.services.content_generator.quiz import QuestionType
 from app.services.exam_generator import ExamGenerator
@@ -22,14 +24,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _is_permanent_llm_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return (
-        "openai_api_key is not configured" in message
-        or "missing bearer" in message
-        or "authentication" in message
-        or "invalid api key" in message
-    )
+def _classify_failure(exc: Exception, default_code: str) -> tuple[str, bool, int]:
+    """(error_code, retryable, HTTP status) for a failed job.
+
+    Permanent failures answer 400 so the dispatcher does not retry them; transient
+    ones answer 500.
+    """
+    if isinstance(exc, LLMError):
+        return exc.code, exc.retryable, 500 if exc.retryable else 400
+    if isinstance(exc, NoSourceMaterialError):
+        return exc.code, False, 400
+    if isinstance(exc, HTTPException) and exc.status_code < 500:
+        return default_code, False, 400
+    return default_code, True, 500
 
 
 def _normalize_topic_name(name: str) -> str:
@@ -443,21 +450,21 @@ async def chunk_material_job(payload: JobPayload):
 
                             # Enqueue topic extraction task only when API credentials are configured.
                             # This prevents retry noise in local environments that intentionally omit keys.
-                            if settings.OPENAI_API_KEY:
+                            if settings.llm_configured:
                                 await enqueue_topic_extraction_job(topic_job['id'], project_id)
                                 logger.info(f"Topic extraction job {topic_job['id']} enqueued for project {project_id}")
                             else:
                                 logger.warning(
-                                    "Skipping automatic topic extraction for project %s because OPENAI_API_KEY is missing",
+                                    "Skipping automatic topic extraction for project %s because ANTHROPIC_API_KEY is missing",
                                     project_id,
                                 )
                                 await execute_update(
                                     """
                                     UPDATE processing_jobs
                                     SET status = 'failed',
-                                        error_code = 'OPENAI_KEY_MISSING',
+                                        error_code = 'LLM_NOT_CONFIGURED',
                                         retryable = FALSE,
-                                        error_message = 'OPENAI_API_KEY is not configured',
+                                        error_message = 'ANTHROPIC_API_KEY is not configured',
                                         completed_at = NOW()
                                     WHERE id = $1
                                     """,
@@ -683,9 +690,7 @@ async def extract_topics_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in topic extraction job {payload.jobId}: {e}")
-        retryable = not _is_permanent_llm_error(e)
-        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'TOPIC_EXTRACTION_FAILED'
-        status_code = 400 if not retryable else 500
+        error_code, retryable, status_code = _classify_failure(e, 'TOPIC_EXTRACTION_FAILED')
 
         await execute_update(
             """
@@ -1028,9 +1033,7 @@ async def generate_content_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in content generation job {payload.jobId}: {e}")
-        retryable = not _is_permanent_llm_error(e)
-        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'CONTENT_GENERATION_FAILED'
-        status_code = 400 if not retryable else 500
+        error_code, retryable, status_code = _classify_failure(e, 'CONTENT_GENERATION_FAILED')
 
         await execute_update(
             """
@@ -1141,9 +1144,7 @@ async def generate_exam_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in exam generation job {payload.jobId}: {e}")
-        retryable = not _is_permanent_llm_error(e)
-        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'EXAM_GENERATION_FAILED'
-        status_code = 400 if not retryable else 500
+        error_code, retryable, status_code = _classify_failure(e, 'EXAM_GENERATION_FAILED')
 
         await execute_update(
             """
@@ -1314,9 +1315,7 @@ async def grade_exam_job(payload: JobPayload):
 
     except Exception as e:
         logger.error(f"Error in exam grading job {payload.jobId}: {e}")
-        retryable = not _is_permanent_llm_error(e)
-        error_code = 'OPENAI_KEY_MISSING' if not retryable else 'EXAM_GRADING_FAILED'
-        status_code = 400 if not retryable else 500
+        error_code, retryable, status_code = _classify_failure(e, 'EXAM_GRADING_FAILED')
 
         await execute_update(
             """
