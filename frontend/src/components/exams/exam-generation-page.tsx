@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,7 @@ import ExamConfiguration from './exam-configuration';
 import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PageHeader } from '@/components/ui/page-shell';
+import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling';
 
 interface Topic {
   id: string;
@@ -29,64 +30,49 @@ export default function ExamGenerationPage({
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMountedRef = useRef(true);
+  const { pollJob, stopPolling, resumeActiveJobs } = useJobPolling({ timeoutMs: 300_000 });
+
+  const followJob = useCallback(
+    async (jobId: string) => {
+      setIsGenerating(true);
+      setError(null);
+
+      const result = await pollJob(jobId);
+      if (result.state === 'cancelled') return;
+
+      if (result.state === 'completed') {
+        const examId = result.job?.resultData?.exam_id;
+        router.push(typeof examId === 'string' ? `/exams/${examId}` : `/projects/${projectId}`);
+        return;
+      }
+
+      setIsGenerating(false);
+      setError(
+        pollFailureMessage(result, 'Exam generation failed. Please try again.')
+      );
+    },
+    [pollJob, projectId, router]
+  );
 
   useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
+  // An exam still being generated before a refresh: follow it to the finished exam.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const active = await resumeActiveJobs({ projectId, jobTypes: ['generate_exam'] }).catch(() => []);
+      if (cancelled || active.length === 0) return;
+      await followJob(active[0].id);
+    })();
     return () => {
-      isMountedRef.current = false;
-      if (pollRef.current) {
-        clearTimeout(pollRef.current);
-      }
+      cancelled = true;
     };
-  }, []);
+  }, [followJob, projectId, resumeActiveJobs]);
 
-  const handleExamCreated = async (jobId: string) => {
-    if (pollRef.current) {
-      clearTimeout(pollRef.current);
-      pollRef.current = null;
-    }
-    setIsGenerating(true);
-    setError(null);
-
-    const maxAttempts = 60;
-    let attempts = 0;
-
-    const poll = async () => {
-      if (!isMountedRef.current) return;
-      attempts += 1;
-
-      try {
-        const response = await fetch(`/api/jobs/${jobId}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch job status');
-        }
-        const job = await response.json();
-
-        if (job.status === 'completed') {
-          if (job.resultData?.exam_id) {
-            router.push(`/exams/${job.resultData.exam_id}`);
-          } else {
-            router.push(`/projects/${projectId}`);
-          }
-          return;
-        }
-
-        if (job.status === 'failed' || attempts >= maxAttempts) {
-          if (!isMountedRef.current) return;
-          setIsGenerating(false);
-          setError('Exam generation failed or took too long. Please try again.');
-          return;
-        }
-      } catch (pollError) {
-        console.error('Error polling job:', pollError);
-      }
-
-      if (!isMountedRef.current) return;
-      pollRef.current = setTimeout(poll, 5000);
-    };
-
-    poll();
+  const handleExamCreated = (jobId: string) => {
+    void followJob(jobId);
   };
 
   return (

@@ -1,178 +1,95 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  DEFAULT_POLL_TIMEOUT_MS,
+  fetchActiveJobs,
+  pollJobUntilDone,
+  type ActiveJobFilter,
+  type NormalizedJob,
+  type PollResult,
+} from '@/lib/jobs/poll-job'
 
-export type NormalizedJobState = 'queued' | 'processing' | 'completed' | 'failed'
-
-export type NormalizedJob = {
-  id: string
-  status: NormalizedJobState
-  progressPercent: number
-  stage?: string | null
-  errorMessage?: string | null
-  errorCode?: string | null
-  retryable?: boolean
-  raw: Record<string, unknown>
-}
+export type { NormalizedJob, NormalizedJobState, PollResult } from '@/lib/jobs/poll-job'
+export { pollFailureMessage } from '@/lib/jobs/poll-job'
 
 type UseJobPollingOptions = {
+  /** Visible time to wait before giving up with state 'timeout'. */
   timeoutMs?: number
-  initialDelayMs?: number
-  maxDelayMs?: number
-  backoffFactor?: number
 }
 
-type PollResult = {
-  state: 'completed' | 'failed' | 'timeout'
-  job?: NormalizedJob
-  error?: string
-}
-
-const normalizeStatus = (value: unknown): NormalizedJobState => {
-  const status = String(value || '').toLowerCase()
-  if (status === 'completed') return 'completed'
-  if (status === 'failed') return 'failed'
-  if (status === 'processing') return 'processing'
-  return 'queued'
-}
-
-const normalizeJob = (data: Record<string, unknown>): NormalizedJob => ({
-  id: String(data.id || ''),
-  status: normalizeStatus(data.status),
-  progressPercent: Number(data.progressPercent || 0),
-  stage: data.stage ? String(data.stage) : null,
-  errorMessage: data.errorMessage ? String(data.errorMessage) : null,
-  errorCode: data.errorCode ? String(data.errorCode) : null,
-  retryable: typeof data.retryable === 'boolean' ? data.retryable : undefined,
-  raw: data,
-})
-
+/**
+ * The one way to follow a processing job from the browser.
+ *
+ * Each job is polled on its own, so any number can run at once (one per uploaded file, say)
+ * and starting one never cancels another. Polling backs off from 1 s to 10 s, pauses while
+ * the tab is hidden, and ends with state 'timeout' (job still running) after `timeoutMs`.
+ * Everything stops when the component unmounts.
+ *
+ * `resumeActiveJobs` lists the user's pending/processing jobs so a page that was refreshed
+ * mid-job can pick them up again with `pollJob`.
+ */
 export function useJobPolling(options: UseJobPollingOptions = {}) {
-  const {
-    timeoutMs = 120_000,
-    initialDelayMs = 1_000,
-    maxDelayMs = 8_000,
-    backoffFactor = 1.4,
-  } = options
+  const { timeoutMs = DEFAULT_POLL_TIMEOUT_MS } = options
 
-  const [isPolling, setIsPolling] = useState(false)
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const waitResolverRef = useRef<(() => void) | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const controllers = useRef(new Map<string, AbortController>())
   const mountedRef = useRef(true)
-  const activePollingRef = useRef(false)
+  const [activeCount, setActiveCount] = useState(0)
 
-  const stopPolling = useCallback(() => {
-    activePollingRef.current = false
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current)
-      timeoutRef.current = null
+  const stopPolling = useCallback((jobId?: string) => {
+    if (jobId) {
+      controllers.current.get(jobId)?.abort()
+      return
     }
-    if (waitResolverRef.current) {
-      waitResolverRef.current()
-      waitResolverRef.current = null
-    }
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    setIsPolling(false)
+    controllers.current.forEach((controller) => controller.abort())
   }, [])
 
   useEffect(() => {
+    mountedRef.current = true
+    const running = controllers.current
     return () => {
       mountedRef.current = false
-      stopPolling()
+      running.forEach((controller) => controller.abort())
     }
-  }, [stopPolling])
+  }, [])
 
   const pollJob = useCallback(
     async (
       jobId: string,
-      onUpdate?: (job: NormalizedJob) => void
+      onUpdate?: (job: NormalizedJob) => void,
+      pollOptions: { timeoutMs?: number } = {}
     ): Promise<PollResult> => {
-      stopPolling()
-      activePollingRef.current = true
-      setIsPolling(true)
+      // Polling the same job twice replaces the first poll; other jobs are untouched.
+      controllers.current.get(jobId)?.abort()
+      const controller = new AbortController()
+      controllers.current.set(jobId, controller)
+      setActiveCount(controllers.current.size)
 
-      const startedAt = Date.now()
-      let delayMs = initialDelayMs
-
-      while (mountedRef.current && activePollingRef.current) {
-        if (Date.now() - startedAt > timeoutMs) {
-          stopPolling()
-          return { state: 'timeout', error: 'Job timed out before completion' }
-        }
-
-        const jitter = Math.floor(Math.random() * Math.min(500, delayMs * 0.15))
-        const wait = delayMs + jitter
-        await new Promise<void>((resolve) => {
-          waitResolverRef.current = resolve
-          timeoutRef.current = setTimeout(() => {
-            timeoutRef.current = null
-            waitResolverRef.current = null
-            resolve()
-          }, wait)
+      try {
+        return await pollJobUntilDone(jobId, {
+          timeoutMs: pollOptions.timeoutMs ?? timeoutMs,
+          signal: controller.signal,
+          onUpdate,
         })
-
-        if (!activePollingRef.current || !mountedRef.current) {
-          stopPolling()
-          return { state: 'failed', error: 'Polling cancelled' }
+      } finally {
+        if (controllers.current.get(jobId) === controller) {
+          controllers.current.delete(jobId)
         }
-
-        abortRef.current = new AbortController()
-
-        try {
-          const response = await fetch(`/api/jobs/${jobId}`, {
-            signal: abortRef.current.signal,
-          })
-          if (!response.ok) {
-            const text = await response.text()
-            stopPolling()
-            return {
-              state: 'failed',
-              error: text || `Failed to fetch job status (${response.status})`,
-            }
-          }
-
-          const payload = (await response.json()) as Record<string, unknown>
-          const job = normalizeJob(payload)
-          onUpdate?.(job)
-
-          if (job.status === 'completed') {
-            stopPolling()
-            return { state: 'completed', job }
-          }
-
-          if (job.status === 'failed') {
-            stopPolling()
-            return {
-              state: 'failed',
-              job,
-              error: job.errorMessage || 'Job failed',
-            }
-          }
-        } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') {
-            stopPolling()
-            return { state: 'failed', error: 'Polling aborted' }
-          }
-        } finally {
-          abortRef.current = null
-        }
-
-        delayMs = Math.min(Math.floor(delayMs * backoffFactor), maxDelayMs)
+        if (mountedRef.current) setActiveCount(controllers.current.size)
       }
-
-      stopPolling()
-      return { state: 'failed', error: 'Polling cancelled' }
     },
-    [backoffFactor, initialDelayMs, maxDelayMs, stopPolling, timeoutMs]
+    [timeoutMs]
+  )
+
+  const resumeActiveJobs = useCallback(
+    (filter?: ActiveJobFilter) => fetchActiveJobs(filter),
+    []
   )
 
   return {
-    isPolling,
+    isPolling: activeCount > 0,
     pollJob,
     stopPolling,
+    resumeActiveJobs,
   }
 }

@@ -31,7 +31,7 @@ export function TopicReview({ projectId }: TopicReviewProps) {
   const [saving, setSaving] = useState(false)
   const [newTopicName, setNewTopicName] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 120_000 })
+  const { pollJob, stopPolling, resumeActiveJobs } = useJobPolling({ timeoutMs: 120_000 })
 
   const fetchTopics = useCallback(async () => {
     try {
@@ -58,6 +58,28 @@ export function TopicReview({ projectId }: TopicReviewProps) {
       stopPolling()
     }
   }, [stopPolling])
+
+  // An extraction already running (started before a refresh, or by the AI service after the
+  // last upload was chunked): follow it instead of showing an empty list.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const active = await resumeActiveJobs({ projectId, jobTypes: ['extract_topics'] }).catch(() => [])
+      if (cancelled || active.length === 0) return
+      setExtracting(true)
+      const pollResult = await pollJob(active[0].id)
+      if (cancelled) return
+      if (pollResult.state === 'completed') {
+        await fetchTopics()
+      } else {
+        setError(pollResult.error || 'Topic extraction failed')
+      }
+      setExtracting(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [fetchTopics, pollJob, projectId, resumeActiveJobs])
 
   const handleExtractTopics = async () => {
     try {

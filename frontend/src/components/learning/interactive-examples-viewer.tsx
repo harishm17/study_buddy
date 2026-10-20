@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling'
 import { MarkdownBlock, MarkdownInline } from '@/components/ui/markdown'
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
 
@@ -60,16 +61,15 @@ export function InteractiveExamplesViewer({
   const [error, setError] = useState<string | null>(null)
   const [focusText, setFocusText] = useState('')
   const isMountedRef = useRef(true)
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 180_000 })
 
   useEffect(() => {
+    isMountedRef.current = true
     return () => {
       isMountedRef.current = false
-      if (pollTimeoutRef.current) {
-        clearTimeout(pollTimeoutRef.current)
-      }
+      stopPolling()
     }
-  }, [])
+  }, [stopPolling])
 
   const currentExample = examples[currentExampleIndex]
   const currentStep = currentExample.steps[currentStepIndex]
@@ -215,7 +215,7 @@ export function InteractiveExamplesViewer({
     } catch (error) {
       console.error('Error generating more practice:', error)
       if (!isMountedRef.current) return
-      setError('Failed to generate more practice')
+      setError(error instanceof Error ? error.message : 'Failed to generate more practice')
     } finally {
       if (!isMountedRef.current) return
       setRegenerating(false)
@@ -223,32 +223,10 @@ export function InteractiveExamplesViewer({
   }
 
   const pollJobStatus = async (jobId: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const poll = async () => {
-        try {
-          const response = await fetch(`/api/jobs/${jobId}`)
-          if (!response.ok) throw new Error('Failed to fetch job status')
-
-          const job = await response.json()
-
-          if (job.status === 'completed') {
-            resolve()
-            return
-          }
-
-          if (job.status === 'failed') {
-            reject(new Error(job.errorMessage || 'Content generation failed'))
-            return
-          }
-
-          pollTimeoutRef.current = setTimeout(poll, 2000)
-        } catch (error) {
-          reject(error)
-        }
-      }
-
-      poll()
-    })
+    const result = await pollJob(jobId)
+    if (result.state !== 'completed') {
+      throw new Error(pollFailureMessage(result, 'Failed to generate more practice'))
+    }
   }
 
   const progressPercentage =
