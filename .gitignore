@@ -49,3 +49,4 @@ htmlcov/
 
 # Retrieval eval downloads (OpenStax PDFs are not committed)
 evals/.cache/
+!evals/results/*.md
