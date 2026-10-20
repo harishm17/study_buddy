@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Loader2, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { MarkdownBlock, MarkdownInline } from '@/components/ui/markdown';
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown';
+import { useExamAutosave, type SaveStatus } from '@/hooks/useExamAutosave';
 
 interface Question {
   question_type: 'multiple_choice' | 'short_answer' | 'numerical' | 'true_false';
@@ -22,8 +23,6 @@ interface Question {
   difficulty?: string;
   // Multiple choice fields
   options?: Array<{ id: string; text: string }>;
-  // Short answer fields
-  key_points?: string[];
   // Numerical fields
   unit?: string;
 }
@@ -32,58 +31,78 @@ interface ExamInterfaceProps {
   examId: string;
   examName: string;
   questions: Question[];
-  durationMinutes: number;
+  /** When time runs out, as a client-clock timestamp (the server start time plus the duration). */
+  deadlineAtMs: number;
+  /** Answers already saved on the server, when an attempt is resumed. */
+  initialAnswers?: Record<string, any>;
   onSubmit: (answers: Record<string, any>) => void;
+  /** The server closed the attempt (time ran out or it was submitted elsewhere). */
+  onEnded: (submissionId: string | null) => void;
   isSubmitting?: boolean;
 }
+
+const secondsLeft = (deadlineAtMs: number) =>
+  Math.max(0, Math.ceil((deadlineAtMs - Date.now()) / 1000));
+
+const saveStatusText = (status: SaveStatus, lastSavedAt: Date | null) => {
+  if (status === 'saving') return 'Saving your answers...';
+  if (status === 'error') return 'Could not save your answers. Trying again...';
+  if (status === 'saved' && lastSavedAt) {
+    return `Answers saved at ${lastSavedAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`;
+  }
+  return 'Your answers are saved automatically.';
+};
 
 export default function ExamInterface({
   examId,
   examName,
   questions,
-  durationMinutes,
+  deadlineAtMs,
+  initialAnswers,
   onSubmit,
+  onEnded,
   isSubmitting = false,
 }: ExamInterfaceProps) {
-  const [answers, setAnswers] = useState<Record<string, any>>({});
+  const [answers, setAnswers] = useState<Record<string, any>>(initialAnswers ?? {});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(durationMinutes * 60); // in seconds
-  const [isTimerActive, setIsTimerActive] = useState(true);
-  const [showWarning, setShowWarning] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(() => secondsLeft(deadlineAtMs));
   const answersRef = useRef<Record<string, any>>(answers);
+  const autoSubmittedRef = useRef(false);
+  const onSubmitRef = useRef(onSubmit);
 
   useEffect(() => {
     answersRef.current = answers;
-  }, [answers]);
+    onSubmitRef.current = onSubmit;
+  });
 
-  const handleAutoSubmit = useCallback(() => {
-    onSubmit(answersRef.current);
-  }, [onSubmit]);
+  const { status: saveStatus, lastSavedAt } = useExamAutosave({
+    examId,
+    answers,
+    savedAnswers: initialAnswers ?? {},
+    enabled: !isSubmitting,
+    onEnded,
+  });
 
-  // Timer countdown
+  // The countdown is read from the clock against the server-set deadline on every tick, so a
+  // throttled background tab catches up as soon as it wakes. At zero the saved answers are
+  // submitted once.
   useEffect(() => {
-    if (!isTimerActive || timeRemaining <= 0) return;
+    const tick = () => {
+      const left = secondsLeft(deadlineAtMs);
+      setTimeRemaining(left);
+      if (left <= 0 && !autoSubmittedRef.current) {
+        autoSubmittedRef.current = true;
+        onSubmitRef.current(answersRef.current);
+      }
+    };
+    const interval = setInterval(tick, 1000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [deadlineAtMs]);
 
-    const interval = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          setIsTimerActive(false);
-          handleAutoSubmit();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isTimerActive, timeRemaining, handleAutoSubmit]);
-
-  // Show warning when 5 minutes left
-  useEffect(() => {
-    if (timeRemaining === 300 && timeRemaining > 0) {
-      setShowWarning(true);
-    }
-  }, [timeRemaining]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -194,11 +213,14 @@ export default function ExamInterface({
             )}
           </div>
           <Progress value={progress} className="h-2" />
+          <p role="status" aria-live="polite" className="mt-3 text-xs text-muted-foreground">
+            {saveStatusText(saveStatus, lastSavedAt)}
+          </p>
         </CardContent>
       </Card>
 
       {/* Warning for low time */}
-      {showWarning && timeRemaining > 0 && timeRemaining < 300 && (
+      {timeRemaining > 0 && timeRemaining <= 300 && (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
@@ -273,11 +295,6 @@ export default function ExamInterface({
                 value={answers[currentQuestionIndex] || ''}
                 onChange={(e) => handleAnswerChange(currentQuestionIndex, e.target.value)}
               />
-              {currentQuestion.key_points && currentQuestion.key_points.length > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Hint: Make sure to address key concepts in your answer
-                </p>
-              )}
             </div>
           )}
 

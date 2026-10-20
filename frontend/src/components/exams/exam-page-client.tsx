@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,7 @@ const ExamHistory = dynamic(() => import('./exam-history'), {
 });
 import { ArrowLeft, Clock, BarChart3, BookOpen, Play, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { pollFailureMessage, useJobPolling } from '@/hooks/useJobPolling';
+import type { AttemptView } from '@/lib/exams/attempts';
 import { PageHeader } from '@/components/ui/page-shell';
 
 interface ExamQuestion {
@@ -28,7 +28,6 @@ interface ExamQuestion {
   points?: number;
   difficulty?: string;
   options?: Array<{ id: string; text: string }>;
-  key_points?: string[];
   unit?: string;
 }
 
@@ -46,69 +45,81 @@ interface Exam {
 
 interface ExamPageClientProps {
   exam: Exam;
+  /** The attempt in progress, if the student already started (a refresh resumes it). */
+  initialAttempt: AttemptView | null;
 }
 
-export default function ExamPageClient({ exam }: ExamPageClientProps) {
+export default function ExamPageClient({ exam, initialAttempt }: ExamPageClientProps) {
   const router = useRouter();
-  const [isStarted, setIsStarted] = useState(false);
+  const [attempt, setAttempt] = useState<AttemptView | null>(initialAttempt);
+  // The server tells us how many seconds are left; the deadline is then kept on this clock.
+  const [deadlineAtMs, setDeadlineAtMs] = useState(() =>
+    initialAttempt ? Date.now() + initialAttempt.remainingSeconds * 1000 : 0
+  );
+  const [isStarting, setIsStarting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submissionComplete, setSubmissionComplete] = useState(false);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isMountedRef = useRef(true);
-  const { pollJob, stopPolling } = useJobPolling({ timeoutMs: 300_000 });
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-      stopPolling();
-    };
-  }, [stopPolling]);
+  const openResults = useCallback(
+    (submissionId: string) => router.push(`/exams/${exam.id}/results/${submissionId}`),
+    [exam.id, router]
+  );
 
-  const handleStartExam = () => {
-    setIsStarted(true);
-  };
-
-  const handleSubmitExam = async (answers: Record<string, any>) => {
-    setIsSubmitting(true);
+  const handleStartExam = async () => {
+    setIsStarting(true);
     setError(null);
-
     try {
-      const response = await fetch(`/api/exams/${exam.id}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit exam. Please try again.');
-      }
-
-      const data = await response.json();
-      setJobId(data.jobId);
-      setSubmissionComplete(true);
-
-      // Poll for grading completion
-      const pollResult = await pollJob(data.jobId);
-      if (pollResult.state !== 'completed') {
-        throw new Error(
-          pollFailureMessage(pollResult, 'Failed to submit exam. Please try again.')
-        );
-      }
-      if (!isMountedRef.current) return;
-      setIsSubmitting(false);
-      router.refresh();
-    } catch (error) {
-      console.error('Error submitting exam:', error);
-      setError(
-        error instanceof Error && error.message
-          ? error.message
-          : 'Failed to submit exam. Please try again.'
-      );
-      setIsSubmitting(false);
+      const response = await fetch(`/api/exams/${exam.id}/attempt`, { method: 'POST' });
+      if (!response.ok) throw new Error('Could not start the exam. Please try again.');
+      const data = (await response.json()) as { attempt: AttemptView };
+      setDeadlineAtMs(Date.now() + data.attempt.remainingSeconds * 1000);
+      setAttempt(data.attempt);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not start the exam. Please try again.');
+    } finally {
+      setIsStarting(false);
     }
   };
+
+  const handleSubmitExam = useCallback(
+    async (answers: Record<string, any>) => {
+      setIsSubmitting(true);
+      setError(null);
+
+      try {
+        const response = await fetch(`/api/exams/${exam.id}/submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ answers }),
+        });
+        const data = await response.json().catch(() => ({}));
+
+        if (response.ok || (typeof data?.submissionId === 'string' && response.status === 502)) {
+          // Grading is followed on the results page, which also picks it up after a refresh.
+          openResults(data.submissionId);
+          return;
+        }
+        if (response.status === 409) {
+          // Submitted already (another tab, or time ran out): the history has it.
+          router.refresh();
+          setAttempt(null);
+          throw new Error(data?.error?.message || 'This exam was already submitted.');
+        }
+        throw new Error(
+          data?.error?.message || 'Failed to submit exam. Please try again.'
+        );
+      } catch (err) {
+        console.error('Error submitting exam:', err);
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : 'Failed to submit exam. Please try again.'
+        );
+        setIsSubmitting(false);
+      }
+    },
+    [exam.id, openResults, router]
+  );
 
   const errorBanner = error ? (
     <Alert variant="destructive">
@@ -116,55 +127,7 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
     </Alert>
   ) : null;
 
-  if (submissionComplete) {
-    return (
-      <div className="space-y-6">
-        {errorBanner}
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle>Exam Submitted!</CardTitle>
-            <CardDescription>
-              Your exam has been submitted and is being graded
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isSubmitting ? (
-              <Alert role="status" aria-live="polite">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                <AlertDescription>
-                  Your exam is being graded by AI. This may take a minute...
-                </AlertDescription>
-              </Alert>
-            ) : (
-              <Alert role="status" aria-live="polite">
-                <AlertDescription>
-                  Your exam has been graded! View your results below.
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <div className="flex gap-3">
-              <Button
-                onClick={() => {
-                  setIsStarted(false);
-                  setSubmissionComplete(false);
-                  setJobId(null);
-                }}
-                variant="outline"
-              >
-                View Results
-              </Button>
-              <Button variant="back" size="back" onClick={() => router.push(`/projects/${exam.projectId}`)}>
-                Back to Project
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (isStarted) {
+  if (attempt) {
     return (
       <div className="space-y-6">
         {/* Header */}
@@ -188,8 +151,12 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
           examId={exam.id}
           examName={exam.name}
           questions={exam.questions}
-          durationMinutes={exam.durationMinutes}
+          deadlineAtMs={deadlineAtMs}
+          initialAnswers={attempt.answers}
           onSubmit={handleSubmitExam}
+          onEnded={(submissionId) =>
+            submissionId ? openResults(submissionId) : router.refresh()
+          }
           isSubmitting={isSubmitting}
         />
       </div>
@@ -202,7 +169,7 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
       <PageHeader
         eyebrow={exam.projectName}
         title={exam.name}
-        description="Timed exam session with autosave-style submission and AI grading."
+        description="Timed exam with autosave and AI grading. The timer runs on the server, so a refresh does not restart it."
         actions={
           <Link href={`/projects/${exam.projectId}`}>
             <Button variant="back" size="back">
@@ -257,14 +224,19 @@ export default function ExamPageClient({ exam }: ExamPageClientProps) {
           <Alert>
             <AlertDescription>
               <strong>Instructions:</strong> This is a timed exam. Once you start, the timer will
-              begin counting down. Make sure you have a stable internet connection and enough time
-              to complete the exam. Your answers will be automatically submitted when time runs out.
+              begin counting down on our server, so refreshing the page or coming back later does not
+              reset it. Your answers are saved as you go, and what is saved is submitted
+              automatically when time runs out.
             </AlertDescription>
           </Alert>
 
-          <Button onClick={handleStartExam} size="lg" className="w-full">
-            <Play className="mr-2 h-5 w-5" />
-            Start Exam
+          <Button onClick={handleStartExam} size="lg" className="w-full" disabled={isStarting}>
+            {isStarting ? (
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" aria-hidden="true" />
+            ) : (
+              <Play className="mr-2 h-5 w-5" />
+            )}
+            {isStarting ? 'Starting...' : 'Start Exam'}
           </Button>
         </CardContent>
       </Card>
