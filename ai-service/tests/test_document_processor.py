@@ -262,6 +262,13 @@ class TestSections:
         assert chunks[0].section_hierarchy == "Intro"
         assert chunks[0].chunk_text.startswith("# Intro")
 
+    def test_overlong_heading_lines_stay_body_text(self):
+        authors = "### " + ", ".join(f"Author Number{i}" for i in range(30))
+        chunks = chunk_pages([page(f"# Paper title\n{authors}\n#### Abstract\nWe study things.")])
+
+        assert [c.section_hierarchy for c in chunks] == ["Paper title", "Paper title > Abstract"]
+        assert "Author Number29" in chunks[0].chunk_text
+
     def test_hash_lines_in_code_fences_are_not_headings(self):
         text = "# Shell\n```\n# not a heading\nls\n```\nafter"
         chunks = chunk_pages([page(text)])

@@ -106,8 +106,6 @@ def _clean_heading(text: str) -> str:
     text = text.strip().rstrip("#").strip()
     text = re.sub(r"^[*_]+|[*_]+$", "", text).strip()
     text = text.replace("**", "").replace("__", "")
-    if len(text) > MAX_HEADING_CHARS:
-        text = text[: MAX_HEADING_CHARS - 1].rstrip() + "…"
     return text
 
 
@@ -157,7 +155,8 @@ def _split_sections(pages: Sequence[ExtractedPage]) -> List[_Section]:
                 in_code = not in_code
             heading = None if in_code else HEADING_LINE.match(line)
             heading_text = _clean_heading(heading.group(2)) if heading else ""
-            if heading and heading_text:
+            # A "heading" this long is body text set in a large font (an author list, a quote).
+            if heading and heading_text and len(heading_text) <= MAX_HEADING_CHARS:
                 level = _nested_numbered_level(heading_text, len(heading.group(1)), stack)
                 while stack and stack[-1][0] >= level:
                     stack.pop()

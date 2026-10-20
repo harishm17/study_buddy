@@ -198,7 +198,7 @@ uv run uvicorn app.main:app --reload
 
 #### 1. Topic-Scoped Retrieval
 Instead of sending whole documents to the model:
-- **Chunking**: PDFs are split with heading-aware heuristics into chunks targeting about 800 tokens with 15% overlap, then embedded locally (`BAAI/bge-small-en-v1.5`, 384 dimensions, no API key) and stored in pgvector
+- **Chunking**: files are read as markdown (PDFs with pymupdf4llm, DOCX, PPTX, and legacy DOC through LibreOffice when installed) and split at headings and paragraphs into chunks of about 350 tokens with 50 tokens of overlap, each tagged with its heading path and pages, then embedded locally (`BAAI/bge-small-en-v1.5`, 384 dimensions, no API key) and stored in pgvector
 - **Topic mapping**: when topics are extracted, each topic is mapped to its top 15 chunks using a blend of keyword matching and vector similarity
 - **Bounded prompts**: content generation sends at most 16 mapped chunks for the topic, untruncated, so prompt size is capped by the chunk limit rather than by document length
 
