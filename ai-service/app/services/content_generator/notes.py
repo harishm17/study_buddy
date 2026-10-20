@@ -5,7 +5,7 @@ Synthesizes comprehensive study notes from relevant material chunks.
 
 import re
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.db.connection import execute_query, execute_one, execute_update
 from app.services.llm.factory import LLMFactory
@@ -67,7 +67,7 @@ class NotesGenerator:
             'content': notes_content,
             'citations': citations,
             'chunk_count': len(chunks),
-            'generated_at': datetime.utcnow().isoformat()
+            'generated_at': datetime.now(UTC).isoformat()
         }
 
     async def _fetch_topic_chunks(self, topic_id: str) -> List[Dict]:

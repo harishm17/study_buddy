@@ -1,6 +1,5 @@
 """Every AI-service route except health checks requires the shared internal token."""
 import pytest
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from app.config import settings
@@ -11,10 +10,12 @@ HEADER = "x-ai-internal-token"
 
 
 def _protected_routes():
-    for route in app.routes:
-        if isinstance(route, APIRoute) and route.path not in PUBLIC_PATHS:
-            for method in route.methods:
-                yield method, route.path
+    # The OpenAPI schema lists every route, including those of included routers
+    # (FastAPI 0.150+ no longer flattens them into app.routes).
+    for path, operations in app.openapi()["paths"].items():
+        if path not in PUBLIC_PATHS:
+            for method in operations:
+                yield method.upper(), path
 
 
 PROTECTED = sorted(_protected_routes())

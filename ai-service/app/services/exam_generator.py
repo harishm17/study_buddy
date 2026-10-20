@@ -4,7 +4,7 @@ Creates comprehensive exams combining multiple topics.
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.db.connection import execute_query
 from app.services.llm.factory import LLMFactory
@@ -95,7 +95,7 @@ class ExamGenerator:
             'duration_minutes': config.get('duration_minutes', 120),
             'difficulty_level': difficulty,
             'topics_covered': [t['name'] for t in topics],
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(UTC).isoformat(),
         }
 
     async def _fetch_topics(self, project_id: str, topic_ids: List[str]) -> List[Dict]:

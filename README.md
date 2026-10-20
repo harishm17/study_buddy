@@ -80,8 +80,8 @@ Progress bars, attempt history, and per-attempt scores shown inline
 ## Quick Start
 
 ### Prerequisites
-- **Node.js** 20+ and **npm**
-- **Python** 3.11 or 3.12 (3.13 not supported yet)
+- **Node.js** 24+ and **npm**
+- **Python** 3.13+ and [uv](https://docs.astral.sh/uv/)
 - **PostgreSQL** 15+ with **pgvector** extension
 - **OpenAI API Key** ([Get one here](https://platform.openai.com/api-keys))
 
@@ -140,10 +140,8 @@ npm run dev
 ```bash
 cd ai-service
 cp .env.example .env  # Edit with your values
-python3.11 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
+uv sync
+uv run uvicorn app.main:app --reload
 ```
 
 </details>
@@ -340,8 +338,8 @@ npm run build
 
 # AI Service tests
 cd ai-service
-pytest
-pytest --cov=app tests/  # With coverage
+uv run pytest
+uv run pytest --cov=app tests/  # With coverage
 ```
 
 ### CI/CD Pipeline
