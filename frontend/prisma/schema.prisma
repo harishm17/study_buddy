@@ -106,9 +106,11 @@ model MaterialChunk {
   id                String                 @id @default(uuid())
   materialId        String                 @map("material_id")
   chunkText         String                 @map("chunk_text")
-  // 384 numbers from the local embedder (see EMBEDDING_DIMENSIONS in ai-service). The
-  // column has an HNSW index (vector_cosine_ops) that Prisma cannot express; it lives in
-  // migrations/20261022000000_retrieval_indexes.
+  // 384 numbers from the local embedder (see EMBEDDING_DIMENSIONS in ai-service). The column
+  // has an HNSW index (vector_cosine_ops) that Prisma cannot express; it is created in
+  // migrations/20261022000000_retrieval_indexes. `prisma migrate dev` will propose dropping
+  // "material_chunks_chunk_embedding_hnsw_idx" and the default of search_vector: delete those
+  // statements from the migration it generates.
   chunkEmbedding    Unsupported("vector(384)")? @map("chunk_embedding")
   // Generated column: heading path (weight A) and chunk text (weight B), with a GIN index.
   // Written by the database only; also in the same migration.
@@ -124,6 +126,7 @@ model MaterialChunk {
   material             Material              @relation(fields: [materialId], references: [id], onDelete: Cascade)
   topicChunkMappings   TopicChunkMapping[]
 
+  @@index([searchVector], type: Gin, map: "material_chunks_search_vector_idx")
   @@unique([materialId, chunkIndex])
   @@map("material_chunks")
 }
