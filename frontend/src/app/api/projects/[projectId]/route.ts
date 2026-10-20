@@ -143,10 +143,27 @@ export async function DELETE(
       )
     }
 
-    // Delete project (cascade will handle all related records)
+    // Note the stored files before the rows that point to them are gone.
+    const materials = await prisma.material.findMany({
+      where: { projectId },
+      select: { gcsPath: true },
+    })
+
+    // Delete project (cascade will handle all related records). One statement, so the
+    // database is either fully deleted or untouched.
     await prisma.project.delete({
       where: { id: projectId },
     })
+
+    // Then the uploaded files. Best effort: the project is already deleted, so a storage
+    // error is logged for manual cleanup instead of failing the request.
+    try {
+      const { deleteFilesBestEffort, deleteProjectFolder } = await import('@/lib/storage/gcs')
+      await deleteFilesBestEffort(materials.map((material) => material.gcsPath))
+      await deleteProjectFolder(session.user.id, projectId)
+    } catch (storageError) {
+      console.error(`Project ${projectId} deleted, but its files could not be cleaned up:`, storageError)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
