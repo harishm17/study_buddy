@@ -16,6 +16,7 @@ from app.services.document_processor.storage import local_copy
 from app.services.embeddings.generator import embedding_text, generate_embeddings
 from app.services.topic_extractor import extract_topics_from_materials
 from app.services.embeddings.search import hybrid_search_chunks
+from app.services.embeddings.topic_mapping import replace_topic_mappings
 from app.services.content_generator import NotesGenerator, ExamplesGenerator, QuizGenerator
 from app.services.content_generator.context import TOPIC_CHUNK_LIMIT
 from app.services.content_generator.examples import ExampleType
@@ -413,26 +414,7 @@ async def extract_topics_job(payload: JobPayload, job: JobContext) -> JobOutcome
             kept_topic_ids.append(topic_id)
 
             # Replace existing mappings so each extraction run reflects newest chunk ranking.
-            await conn.execute(
-                """
-                DELETE FROM topic_chunk_mappings
-                WHERE topic_id = $1
-                """,
-                topic_id,
-            )
-            await conn.executemany(
-                """
-                INSERT INTO topic_chunk_mappings
-                (id, topic_id, chunk_id, relevance_score, relevance_source)
-                VALUES (gen_random_uuid()::text, $1, $2, $3, $4)
-                ON CONFLICT (topic_id, chunk_id) DO UPDATE
-                SET relevance_score = EXCLUDED.relevance_score
-                """,
-                [
-                    (topic_id, chunk['id'], chunk['relevance_score'], chunk['relevance_source'])
-                    for chunk in relevant_chunks
-                ],
-            )
+            await replace_topic_mappings(conn, topic_id, relevant_chunks)
 
             topic_count += 1
 

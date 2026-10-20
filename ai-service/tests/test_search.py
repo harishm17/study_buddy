@@ -1,6 +1,4 @@
 """Topic retrieval: rank fusion, the similarity floor, query building, and the SQL legs."""
-import math
-
 import pytest
 
 from app.services.embeddings import search
@@ -14,7 +12,7 @@ from app.services.embeddings.search import (
     hybrid_search_chunks,
     topic_query_text,
 )
-from tests.db_helpers import new_id, seed_material, seed_project, seed_user
+from tests.db_helpers import add_chunk, seed_material, seed_project, seed_user, unit
 
 K = 60
 
@@ -141,29 +139,6 @@ class TestQueryBuilding:
 
 
 # ---- the SQL legs, on the test database --------------------------------------------------
-
-
-def unit(*weights):
-    """A 384-number unit vector from its first few components."""
-    vector = [0.0] * 384
-    for index, weight in enumerate(weights):
-        vector[index] = weight
-    norm = math.sqrt(sum(v * v for v in vector))
-    return [v / norm for v in vector]
-
-
-def literal(vector):
-    return "[" + ",".join(repr(v) for v in vector) + "]"
-
-
-async def add_chunk(db, material_id, index, text, vector=None, heading=None):
-    chunk_id = new_id()
-    await db.execute(
-        "INSERT INTO material_chunks (id, material_id, chunk_text, chunk_embedding, section_hierarchy, chunk_index) "
-        "VALUES ($1, $2, $3, $4::vector, $5, $6)",
-        chunk_id, material_id, text, literal(vector) if vector else None, heading, index,
-    )
-    return chunk_id
 
 
 @pytest.fixture

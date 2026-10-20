@@ -1,5 +1,6 @@
 """Rows the job tests need in the test database."""
 import json
+import math
 import uuid
 from typing import Any, Optional
 
@@ -83,3 +84,26 @@ async def seed_job(pool, user_id: str, job_type: str = "generate_content", *,
 
 async def get_job(pool, job_id: str):
     return await pool.fetchrow("SELECT * FROM processing_jobs WHERE id = $1", job_id)
+
+
+def unit(*weights):
+    """A 384-number unit vector from its first few components."""
+    vector = [0.0] * 384
+    for index, weight in enumerate(weights):
+        vector[index] = weight
+    norm = math.sqrt(sum(v * v for v in vector))
+    return [v / norm for v in vector]
+
+
+def literal(vector):
+    return "[" + ",".join(repr(v) for v in vector) + "]"
+
+
+async def add_chunk(db, material_id, index, text, vector=None, heading=None):
+    chunk_id = new_id()
+    await db.execute(
+        "INSERT INTO material_chunks (id, material_id, chunk_text, chunk_embedding, section_hierarchy, chunk_index) "
+        "VALUES ($1, $2, $3, $4::vector, $5, $6)",
+        chunk_id, material_id, text, literal(vector) if vector else None, heading, index,
+    )
+    return chunk_id

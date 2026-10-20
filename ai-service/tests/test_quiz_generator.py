@@ -8,6 +8,15 @@ from app.services.content_generator.quiz import QuestionType, QuizGenerator, min
 from app.services.llm.base import LLMOutputError
 from app.services.llm.schemas import ChoiceOption, GeneratedQuestion, QuestionSet
 
+
+@pytest.fixture(autouse=True)
+def _mappings_are_current(monkeypatch):
+    """These tests stub the mapped chunks; generation-time remapping has its own tests."""
+    monkeypatch.setattr(
+        "app.services.content_generator.context.ensure_topic_mappings", AsyncMock()
+    )
+
+
 CHUNKS = [
     {
         "id": "c1",

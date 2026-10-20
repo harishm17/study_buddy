@@ -8,6 +8,7 @@ another quiz set, exam questions after a quiz, more examples, a regenerated set.
 from typing import Dict, List
 
 from app.db.connection import execute_query
+from app.services.embeddings.topic_mapping import ensure_topic_mappings
 from app.services.llm.base import LLMMessage
 
 # Chunks are ~350 tokens, so this is about 8k tokens of excerpts per topic.
@@ -33,7 +34,12 @@ Formatting rules for every text field:
 
 
 async def fetch_topic_chunks(topic_id: str, limit: int = TOPIC_CHUNK_LIMIT) -> List[Dict]:
-    """The topic's mapped chunks, most relevant first, in a stable order."""
+    """The topic's mapped chunks, most relevant first, in a stable order.
+
+    The mappings are brought up to date first: a topic with none (added by hand) or older than
+    the newest chunk of its project is mapped again (see `ensure_topic_mappings`).
+    """
+    await ensure_topic_mappings(topic_id, limit)
     return await execute_query(
         """
         SELECT
