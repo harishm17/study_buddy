@@ -5,6 +5,12 @@ import { computeMasteryFromSignals, intervalFromMastery, type MasteryComponents 
 export { computeMasteryFromSignals, intervalFromMastery }
 export type { MasteryComponents }
 
+/** Signals an older confidence route wrote with a copy of a past score; they are not results. */
+export const isConfidenceFeedback = (metadata: unknown) =>
+  !!metadata &&
+  typeof metadata === 'object' &&
+  (metadata as Record<string, unknown>).kind === 'confidence_feedback'
+
 export async function computeTopicMastery(
   userId: string,
   projectId: string,
@@ -32,14 +38,16 @@ export async function computeTopicMastery(
       },
       orderBy: { createdAt: 'desc' },
       take: 20,
-      select: { score: true, createdAt: true },
+      select: { score: true, createdAt: true, metadata: true },
     }),
   ])
+
+  const examResults = examSignals.filter((signal) => !isConfidenceFeedback(signal.metadata))
 
   const latestDates: Date[] = []
   if (quizAttempts[0]?.takenAt) latestDates.push(quizAttempts[0].takenAt)
   if (voiceAttempts[0]?.createdAt) latestDates.push(voiceAttempts[0].createdAt)
-  if (examSignals[0]?.createdAt) latestDates.push(examSignals[0].createdAt)
+  if (examResults[0]?.createdAt) latestDates.push(examResults[0].createdAt)
 
   const daysSinceLastPractice = latestDates.length > 0
     ? (Date.now() - Math.max(...latestDates.map((d) => d.getTime()))) / (1000 * 60 * 60 * 24)
@@ -48,7 +56,7 @@ export async function computeTopicMastery(
   return computeMasteryFromSignals({
     quizScores: quizAttempts.map((attempt) => attempt.score),
     voiceScores: voiceAttempts.map((attempt) => attempt.score),
-    examScores: examSignals.map((signal) => signal.score),
+    examScores: examResults.map((signal) => signal.score),
     daysSinceLastPractice,
   })
 }
@@ -102,6 +110,39 @@ export async function upsertReviewSchedule(input: {
       intervalDays,
       streak: wasCorrect ? 1 : 0,
       lastReviewedAt: now,
+    },
+  })
+}
+
+/**
+ * Re-time a topic's next review after the student rates their confidence.
+ *
+ * Confidence is feedback, not practice: it never touches the streak or the last-reviewed
+ * time, and it does not create a schedule for a topic nobody has practised. Low confidence
+ * (1-2) brings the review forward to tomorrow; otherwise the usual mastery-based interval
+ * applies, one step longer when confidence is high.
+ */
+export async function adjustReviewForConfidence(input: {
+  userId: string
+  topicId: string
+  mastery: number
+  confidence: number
+}) {
+  const { userId, topicId, mastery, confidence } = input
+  const existing = await prisma.reviewSchedule.findUnique({
+    where: { userId_topicId: { userId, topicId } },
+    select: { lastReviewedAt: true },
+  })
+  if (!existing) return null
+
+  const intervalDays = confidence <= 2 ? 1 : intervalFromMastery(mastery, { confidence })
+  const base = existing.lastReviewedAt ?? new Date()
+  return prisma.reviewSchedule.update({
+    where: { userId_topicId: { userId, topicId } },
+    data: {
+      mastery,
+      intervalDays,
+      dueAt: new Date(base.getTime() + intervalDays * 24 * 60 * 60 * 1000),
     },
   })
 }
