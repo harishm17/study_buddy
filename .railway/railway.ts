@@ -1,7 +1,7 @@
 // Railway project for StudyBuddy: the Next.js app (web), the Python AI service (ai), Postgres
 // with pgvector, and a bucket for uploaded materials. `railway config plan` previews changes to
 // the live project and `railway config apply` makes them; see docs/deployment/RAILWAY.md.
-import { bucket, defineRailway, postgres, preserve, project, ref, service, volume } from "railway/iac";
+import { bucket, defineRailway, github, postgres, preserve, project, ref, service, volume } from "railway/iac";
 
 export default defineRailway(() => {
   const Postgres = postgres("Postgres", { region: "us-west2" });
@@ -22,14 +22,17 @@ export default defineRailway(() => {
     S3_ACCESS_KEY_ID: ref(uploads, "ACCESS_KEY_ID"),
     S3_SECRET_ACCESS_KEY: ref(uploads, "SECRET_ACCESS_KEY"),
   };
+  // Each service deploys from GitHub after CI passes, and only when its own folder changed.
+  const REPO = "harishm17/study_buddy";
+  const BRANCH = "feat/railway";
   // The web app reaches the AI service over the private network only.
   const aiServiceUrl = "http://${{ai.RAILWAY_PRIVATE_DOMAIN}}:8000";
 
   const ai = service("ai", {
-    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
+    source: github(REPO, { branch: BRANCH, rootDirectory: "ai-service", checkSuites: true }),
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", watchPatterns: ["/ai-service/**"] },
     healthcheck: "/health",
     healthcheckTimeout: 120,
-    deploy: { restartPolicyType: "ON_FAILURE", restartPolicyMaxRetries: 10 },
     replicas: { "us-west2": 1 },
     env: {
       ENVIRONMENT: "production",
@@ -45,12 +48,12 @@ export default defineRailway(() => {
   });
 
   const web = service("web", {
-    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" },
+    source: github(REPO, { branch: BRANCH, rootDirectory: "frontend", checkSuites: true }),
+    build: { builder: "DOCKERFILE", dockerfilePath: "Dockerfile", watchPatterns: ["/frontend/**"] },
     // Apply database migrations before the new version takes traffic.
     preDeploy: ["prisma migrate deploy"],
     healthcheck: "/login",
     healthcheckTimeout: 120,
-    deploy: { restartPolicyType: "ON_FAILURE", restartPolicyMaxRetries: 10 },
     replicas: { "us-west2": 1 },
     env: {
       ENVIRONMENT: "production",
