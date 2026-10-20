@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { detectLikelyLanguage } from '@/lib/voice/language'
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected'
 
@@ -38,36 +39,28 @@ type UseRealtimeVoiceOptions = {
   onToolOutput?: (output: ToolOutput) => void
   onInterrupt?: () => void
   onDetectedLanguage?: (language: string, transcript: string) => void
+  /** Milliseconds without speech from either side before the call ends. 0 turns it off. */
+  idleTimeoutMs?: number
+  onAutoDisconnect?: (reason: AutoDisconnectReason) => void
 }
 
 const DEFAULT_TRANSCRIPTION = 'gpt-4o-mini-transcribe'
 const DEFAULT_REALTIME_MODEL = 'gpt-realtime-mini'
 const MAX_CONVERSATION_MESSAGES = 120
+// A brief network blip shows up as `disconnected`. Give it this long to recover on its own,
+// then ask ICE to restart, and only end the call if it has still not come back after that.
+const ICE_DISCONNECT_GRACE_MS = 5000
+const ICE_RESTART_TIMEOUT_MS = 10000
+const DEFAULT_IDLE_TIMEOUT_MS = 2 * 60 * 1000
+const IDLE_CHECK_INTERVAL_MS = 5000
+
+export type AutoDisconnectReason = 'idle' | 'connection_lost'
 
 const createId = () => {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-const detectLikelyLanguage = (transcript: string): string => {
-  const value = transcript.toLowerCase()
-  if (!value.trim()) return 'en'
-
-  const languageHints: Array<{ code: string; pattern: RegExp }> = [
-    { code: 'es', pattern: /\b(el|la|los|las|de|que|por|para|gracias|hola|como|est[aá]|donde)\b/i },
-    { code: 'fr', pattern: /\b(le|la|les|des|et|bonjour|merci|avec|pour|être|où)\b/i },
-    { code: 'de', pattern: /\b(der|die|das|und|ist|nicht|danke|bitte|wie|wo)\b/i },
-    { code: 'pt', pattern: /\b(o|a|os|as|de|que|obrigado|ol[aá]|como|est[aá])\b/i },
-  ]
-
-  for (const hint of languageHints) {
-    if (hint.pattern.test(value)) {
-      return hint.code
-    }
-  }
-  return 'en'
 }
 
 const normalizeTools = (rawTools: any[]) => {
@@ -114,6 +107,8 @@ export const useRealtimeVoice = ({
   onToolOutput,
   onInterrupt,
   onDetectedLanguage,
+  idleTimeoutMs = DEFAULT_IDLE_TIMEOUT_MS,
+  onAutoDisconnect,
 }: UseRealtimeVoiceOptions) => {
   const [connection, setConnection] = useState<ConnectionState>('disconnected')
   const [status, setStatus] = useState('Idle')
@@ -122,7 +117,6 @@ export const useRealtimeVoice = ({
   const [userInterim, setUserInterim] = useState('')
   const [assistantInterim, setAssistantInterim] = useState('')
   const [metrics, setMetrics] = useState<MetricState>({})
-  const [micLevel, setMicLevel] = useState(0)
   const metricsRef = useRef<MetricState>({})
   const userInterimRef = useRef('')
   const assistantInterimRef = useRef('')
@@ -133,6 +127,12 @@ export const useRealtimeVoice = ({
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const rafRef = useRef<number | null>(null)
+  // The mic level changes every animation frame. It lives in a ref so reading it does not
+  // re-render this hook's owner; the meter component polls it.
+  const micLevelRef = useRef(0)
+  const iceTimerRef = useRef<number | null>(null)
+  const lastActivityRef = useRef(0)
+  const onAutoDisconnectRef = useRef(onAutoDisconnect)
   const duckTimeoutRef = useRef<number | null>(null)
 
   const lastSpeechStartRef = useRef<number | null>(null)
@@ -147,6 +147,10 @@ export const useRealtimeVoice = ({
   const pendingResponsePromptRef = useRef<string | null>(null)
   const didSendInitialPromptRef = useRef(false)
   const metricsDirtyRef = useRef(false)
+
+  useEffect(() => {
+    onAutoDisconnectRef.current = onAutoDisconnect
+  }, [onAutoDisconnect])
 
   const toolSpec = useMemo(() => normalizeTools(tools), [tools])
 
@@ -373,7 +377,7 @@ export const useRealtimeVoice = ({
         sum += value * value
       }
       const rms = Math.sqrt(sum / buffer.length)
-      setMicLevel(rms)
+      micLevelRef.current = rms
 
       if (assistantSpeakingRef.current && rms > 0.06) {
         if (audioRef.current) {
@@ -403,10 +407,12 @@ export const useRealtimeVoice = ({
     audioCtxRef.current = null
     analyserRef.current = null
     duckTimeoutRef.current = null
-    setMicLevel(0)
+    micLevelRef.current = 0
   }, [])
 
   const cleanupConnection = useCallback(() => {
+    if (iceTimerRef.current) window.clearTimeout(iceTimerRef.current)
+    iceTimerRef.current = null
     dcRef.current?.close()
     pcRef.current?.close()
     mediaStreamRef.current?.getTracks().forEach(track => track.stop())
@@ -427,6 +433,16 @@ export const useRealtimeVoice = ({
     lastAssistantItemIdRef.current = null
   }, [audioRef, stopAnalyser])
 
+  const endCall = useCallback(
+    (reason: AutoDisconnectReason) => {
+      cleanupConnection()
+      setConnection('disconnected')
+      setStatus('Idle')
+      onAutoDisconnectRef.current?.(reason)
+    },
+    [cleanupConnection]
+  )
+
   const connect = useCallback(async () => {
     if (!sessionId || connection !== 'disconnected') return
     setConnection('connecting')
@@ -435,6 +451,20 @@ export const useRealtimeVoice = ({
     resetMetrics()
 
     try {
+      // Ask for the microphone first. If it is denied, no realtime token is minted.
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      } catch (micError: any) {
+        const denied = micError?.name === 'NotAllowedError' || micError?.name === 'SecurityError'
+        throw new Error(
+          denied
+            ? 'Microphone access was blocked. Allow it in your browser settings and try again.'
+            : 'No microphone was found.'
+        )
+      }
+      mediaStreamRef.current = stream
+
       const tokenResponse = await fetch('/api/voice/realtime-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -443,7 +473,9 @@ export const useRealtimeVoice = ({
 
       if (!tokenResponse.ok) {
         const failure = await tokenResponse.json().catch(() => null)
-        throw new Error(failure?.error || 'Could not start the voice session.')
+        const failureMessage =
+          typeof failure?.error === 'string' ? failure.error : failure?.error?.message
+        throw new Error(failureMessage || 'Could not start the voice session.')
       }
 
       const tokenPayload = await tokenResponse.json()
@@ -458,8 +490,6 @@ export const useRealtimeVoice = ({
       })
       pcRef.current = pc
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      mediaStreamRef.current = stream
       stream.getTracks().forEach(track => pc.addTrack(track, stream))
 
       startAnalyser(stream)
@@ -468,15 +498,32 @@ export const useRealtimeVoice = ({
       dcRef.current = dc
 
       pc.onconnectionstatechange = () => {
+        if (pcRef.current !== pc) return
         const state = pc.connectionState
-        if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-          cleanupConnection()
-          setConnection('disconnected')
-          setStatus('Idle')
+        if (state === 'connected') {
+          if (iceTimerRef.current) window.clearTimeout(iceTimerRef.current)
+          iceTimerRef.current = null
+          setStatus((current) => (current === 'Reconnecting' ? 'Listening' : current))
+        } else if (state === 'disconnected') {
+          // Often a short blip. Wait, then try an ICE restart, and give up only if that
+          // does not bring the call back either.
+          if (iceTimerRef.current) window.clearTimeout(iceTimerRef.current)
+          setStatus('Reconnecting')
+          iceTimerRef.current = window.setTimeout(() => {
+            if (pcRef.current !== pc || pc.connectionState === 'connected') return
+            pc.restartIce()
+            iceTimerRef.current = window.setTimeout(() => {
+              if (pcRef.current !== pc || pc.connectionState === 'connected') return
+              endCall('connection_lost')
+            }, ICE_RESTART_TIMEOUT_MS)
+          }, ICE_DISCONNECT_GRACE_MS)
+        } else if (state === 'failed' || state === 'closed') {
+          endCall('connection_lost')
         }
       }
 
       dc.onopen = () => {
+        lastActivityRef.current = Date.now()
         didSendInitialPromptRef.current = false
         sendSessionUpdate()
         setStatus('Listening')
@@ -498,6 +545,7 @@ export const useRealtimeVoice = ({
             }
             break
           case 'response.created':
+            lastActivityRef.current = Date.now()
             responseActiveRef.current = true
             setStatus('Thinking')
             break
@@ -516,6 +564,7 @@ export const useRealtimeVoice = ({
             }
             break
           case 'input_audio_buffer.speech_started':
+            lastActivityRef.current = Date.now()
             setMetrics({})
             lastSpeechStartRef.current = performance.now()
             firstTranscriptSeenRef.current = false
@@ -571,6 +620,7 @@ export const useRealtimeVoice = ({
             }
             break
           case 'output_audio_buffer.started':
+            lastActivityRef.current = Date.now()
             assistantSpeakingRef.current = true
             if (awaitingAudioRef.current && lastSpeechStopRef.current) {
               const ttfa = performance.now() - lastSpeechStopRef.current
@@ -582,6 +632,7 @@ export const useRealtimeVoice = ({
             setStatus('Speaking')
             break
           case 'response.output_audio.done':
+            lastActivityRef.current = Date.now()
             assistantSpeakingRef.current = false
             if (assistantAudioStartRef.current) {
               const startedAt = assistantAudioStartRef.current
@@ -661,6 +712,7 @@ export const useRealtimeVoice = ({
   }, [
     appendConversation,
     cleanupConnection,
+    endCall,
     connection,
     audioRef,
     handleToolCall,
@@ -688,6 +740,19 @@ export const useRealtimeVoice = ({
 
   useEffect(() => () => disconnect(), [disconnect])
 
+  // End the call after a stretch with no speech from either side, so a forgotten tab
+  // does not keep a billable realtime session open.
+  useEffect(() => {
+    if (connection !== 'connected' || idleTimeoutMs <= 0) return
+    lastActivityRef.current = Date.now()
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastActivityRef.current >= idleTimeoutMs) {
+        endCall('idle')
+      }
+    }, IDLE_CHECK_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [connection, endCall, idleTimeoutMs])
+
   useEffect(() => {
     if (connection === 'connected') {
       sendSessionUpdate()
@@ -702,7 +767,7 @@ export const useRealtimeVoice = ({
     userInterim,
     assistantInterim,
     metrics,
-    micLevel,
+    micLevelRef,
     connect,
     disconnect,
     sendResponseCreate,
