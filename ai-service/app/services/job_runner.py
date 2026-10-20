@@ -24,9 +24,9 @@ from typing import Any, Awaitable, Callable, Dict, Optional, Type, TypeVar
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
 
-from app.config import settings
 from app.db.connection import UTC_NOW, execute_one
 from app.models.jobs import JobPayload
+from app.services.budget import over_budget_message
 from app.services.content_generator.context import NoSourceMaterialError
 from app.services.document_processor.chunker import NoContentError
 from app.services.document_processor.storage import StorageError
@@ -216,24 +216,9 @@ async def _heartbeat(job: JobContext) -> None:
 
 
 async def _enforce_daily_budget(job: JobContext) -> None:
-    budget = settings.DAILY_LLM_BUDGET_USD
-    if budget <= 0:
-        return
-    row = await execute_one(
-        f"""
-        SELECT COALESCE(SUM(llm_cost_usd), 0)::float8 AS spent
-        FROM processing_jobs
-        WHERE user_id = $1
-          AND created_at >= date_trunc('day', {UTC_NOW})
-        """,
-        job.user_id,
-    )
-    spent = float(row["spent"]) if row else 0.0
-    if spent >= budget:
-        raise DailyBudgetExceeded(
-            f"Daily AI usage limit reached (${spent:.2f} of ${budget:.2f} used today, UTC). "
-            "Generation is available again after midnight UTC."
-        )
+    message = await over_budget_message(job.user_id)
+    if message:
+        raise DailyBudgetExceeded(message)
 
 
 def _usage_columns(usages) -> tuple[Dict[str, object], int, int, float]:

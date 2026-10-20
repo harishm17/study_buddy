@@ -107,3 +107,30 @@ async def add_chunk(db, material_id, index, text, vector=None, heading=None):
         chunk_id, material_id, text, literal(vector) if vector else None, heading, index,
     )
     return chunk_id
+
+
+async def seed_chat_thread(pool, user_id: str, project_id: str) -> str:
+    thread_id = new_id()
+    await pool.execute(
+        f"INSERT INTO chat_threads (id, user_id, project_id, updated_at) VALUES ($1, $2, $3, {UTC_NOW})",
+        thread_id,
+        user_id,
+        project_id,
+    )
+    return thread_id
+
+
+async def seed_chat_message(pool, thread_id: str, *, role: str = "assistant", cost: float = 0,
+                            created_at: str = "SQL:(NOW() AT TIME ZONE 'UTC')") -> str:
+    message_id = new_id()
+    await pool.execute(
+        f"""
+        INSERT INTO chat_messages (id, thread_id, role, content, llm_cost_usd, created_at)
+        VALUES ($1, $2, $3, 'text', $4, {created_at[4:]})
+        """,
+        message_id,
+        thread_id,
+        role,
+        cost,
+    )
+    return message_id
