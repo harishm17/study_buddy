@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
-import { computeTopicMastery } from '@/lib/learning/mastery'
+import { computeProjectMastery } from '@/lib/learning/mastery'
 
 export type NextAction = {
   id: string
@@ -76,16 +76,18 @@ async function loadTopicSnapshots(userId: string, projectId: string): Promise<To
     orderBy: { orderIndex: 'asc' },
   })
 
-  const masteryValues = await Promise.all(
-    topics.map((topic) => computeTopicMastery(userId, projectId, topic.id))
+  const masteryByTopic = await computeProjectMastery(
+    userId,
+    projectId,
+    topics.map((topic) => topic.id)
   )
 
-  return topics.map((topic, index) => ({
+  return topics.map((topic) => ({
     id: topic.id,
     name: topic.name,
     projectId,
     orderIndex: topic.orderIndex,
-    mastery: masteryValues[index].mastery,
+    mastery: masteryByTopic.get(topic.id)?.mastery ?? 0,
     progress: topic.progress[0] || {
       notesCompleted: false,
       examplesCompleted: false,

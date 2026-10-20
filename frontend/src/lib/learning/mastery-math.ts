@@ -48,6 +48,60 @@ export function computeMasteryFromSignals(input: {
   return { quiz, voice, exam, recencyPenalty, mastery }
 }
 
+/** How many recent results of each kind feed a topic's mastery. */
+export const MASTERY_HISTORY = { quiz: 5, voice: 20, exam: 20 } as const
+
+/** Signals an older confidence route wrote with a copy of a past score; they are not results. */
+export const isConfidenceFeedback = (metadata: unknown) =>
+  !!metadata &&
+  typeof metadata === 'object' &&
+  (metadata as Record<string, unknown>).kind === 'confidence_feedback'
+
+/** Groups rows (newest first) by topic and keeps the first `limit` rows of each topic. */
+export function newestPerTopic<T extends { topicId: string | null }>(
+  rows: T[],
+  limit: number
+): Map<string, T[]> {
+  const byTopic = new Map<string, T[]>()
+  for (const row of rows) {
+    if (!row.topicId) continue
+    const list = byTopic.get(row.topicId)
+    if (!list) {
+      byTopic.set(row.topicId, [row])
+    } else if (list.length < limit) {
+      list.push(row)
+    }
+  }
+  return byTopic
+}
+
+type DatedScore = { score: number; at: Date }
+
+/**
+ * Mastery of one topic from its recent results, each list newest first and already cut to
+ * its history length (exam rows with confidence feedback already removed).
+ */
+export function masteryFromHistory(input: {
+  quiz: DatedScore[]
+  voice: DatedScore[]
+  exam: DatedScore[]
+  now: number
+}): MasteryComponents {
+  const latest = [input.quiz[0], input.voice[0], input.exam[0]]
+    .filter((row): row is DatedScore => !!row)
+    .map((row) => row.at.getTime())
+  const daysSinceLastPractice = latest.length > 0
+    ? (input.now - Math.max(...latest)) / (1000 * 60 * 60 * 24)
+    : 30
+
+  return computeMasteryFromSignals({
+    quizScores: input.quiz.map((row) => row.score),
+    voiceScores: input.voice.map((row) => row.score),
+    examScores: input.exam.map((row) => row.score),
+    daysSinceLastPractice,
+  })
+}
+
 export function intervalFromMastery(
   mastery: number,
   options: { wasCorrect?: boolean; confidence?: number } = {}
