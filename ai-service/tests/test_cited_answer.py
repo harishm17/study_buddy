@@ -196,27 +196,76 @@ class TestRequest:
             await collect(provider, excerpts=[])
 
 
-class TestSplitBlocks:
-    def test_paragraphs_become_blocks_and_nothing_is_lost(self):
-        a = "First paragraph. " * 20
-        b = "Second paragraph. " * 20
-        blocks = split_excerpt_blocks(f"{a.strip()}\n\n{b.strip()}")
-        assert len(blocks) == 2
-        assert blocks[0].startswith("First") and blocks[1].startswith("Second")
+HASH_INTRO = (
+    "# Hash Tables\n\n"
+    "A hash table stores key-value pairs in an array of buckets. A hash function maps each key "
+    "to a bucket index, so lookup, insert and delete take O(1) time on average."
+)
+HASH_COLLISIONS = (
+    "Collisions happen when two keys map to the same bucket. Separate chaining keeps a linked "
+    "list of entries in each bucket. Open addressing probes for the next free slot in the array."
+)
+HASH_CHUNK = HASH_INTRO + "\n\n" + HASH_COLLISIONS
 
-    def test_short_neighbours_are_joined(self):
-        assert split_excerpt_blocks("One.\n\nTwo.\n\nThree.") == ["One.\n\nTwo.\n\nThree."]
+
+class TestSplitBlocks:
+    def test_heading_goes_with_the_paragraph_after_it_and_paragraphs_stay_apart(self):
+        assert split_excerpt_blocks(HASH_CHUNK) == [HASH_INTRO, HASH_COLLISIONS]
+
+    def test_short_paragraphs_are_not_merged(self):
+        assert split_excerpt_blocks("One.\n\nTwo.\n\nThree.") == ["One.", "Two.", "Three."]
+
+    def test_consecutive_headings_and_a_trailing_heading(self):
+        assert split_excerpt_blocks("# A\n\n## B\n\nBody.\n\n# End") == ["# A\n\n## B\n\nBody.", "# End"]
 
     def test_a_long_paragraph_is_split_at_sentences(self):
         text = " ".join(f"Sentence number {i} is here." for i in range(60))
         blocks = split_excerpt_blocks(text)
         assert len(blocks) > 3
-        assert all(len(b) < 700 for b in blocks)
+        assert all(len(b) <= 600 for b in blocks)
+        assert all(b.endswith(".") for b in blocks)  # cut at sentence ends only
         assert " ".join(blocks).split() == text.split()
+
+    def test_a_paragraph_at_the_limit_is_kept_whole(self):
+        paragraph = "x" * 600
+        assert split_excerpt_blocks(paragraph) == [paragraph]
+
+    def test_a_single_long_sentence_is_not_cut(self):
+        sentence = ("word " * 300).strip()
+        assert split_excerpt_blocks(sentence) == [sentence]
 
     def test_never_empty(self):
         assert split_excerpt_blocks("   ")
-        assert split_excerpt_blocks("") 
+        assert split_excerpt_blocks("")
+
+    @pytest.mark.asyncio
+    async def test_the_hash_chunk_is_sent_as_two_blocks(self):
+        provider, calls = provider_with([text_start(), text_delta("x")])
+        await collect(provider, excerpts=[Excerpt(ref="chunk:h", title="notes.pdf, p. 1", text=HASH_CHUNK)])
+        content = calls[0]["messages"][0]["content"][0]["content"]
+        assert [b["text"] for b in content] == [HASH_INTRO, HASH_COLLISIONS]
+
+    @pytest.mark.asyncio
+    async def test_block_indices_map_to_the_paragraph_that_supports_the_claim(self):
+        from app.services import chat as chat_service
+
+        blocks = split_excerpt_blocks(HASH_CHUNK)
+        # The API returns the text of the cited blocks: here block 1, the collisions paragraph.
+        start, end = 1, 2
+        events = [
+            text_start(),
+            text_delta("Separate chaining keeps a list in each bucket."),
+            cite("chunk:h", 0, cited="".join(blocks[start:end]), start=start, end=end),
+        ]
+        provider, _ = provider_with(events)
+        out = await collect(provider, excerpts=[Excerpt(ref="chunk:h", title="t", text=HASH_CHUNK)])
+
+        citation = out[-1].citations[0]
+        assert (citation.start_block_index, citation.end_block_index) == (1, 2)
+        chunk = {"id": "h", "material_id": "m", "filename": "notes.pdf", "page_start": 1, "page_end": 1}
+        sources, _ = chat_service.build_sources(out[-1].citations, {"chunk:h": chunk})
+        assert sources[0]["cited_text"] == HASH_COLLISIONS
+        assert "# Hash Tables" not in sources[0]["cited_text"]
 
 
 class TestEvents:

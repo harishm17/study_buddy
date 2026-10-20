@@ -14,6 +14,7 @@ import {
   insertCitationMarkers,
   isPdf,
   pageLabel,
+  quoteForDisplay,
   sourceLabel,
   viewerUrl,
   type ChatSource,
@@ -35,7 +36,7 @@ function ExcerptDialog({ source, onClose }: { source: ChatSource | null; onClose
               </DialogDescription>
             </DialogHeader>
             <blockquote className="mt-4 whitespace-pre-wrap rounded-lg border-l-4 border-primary/40 bg-muted/50 p-4 text-sm leading-relaxed">
-              {source.citedText || 'No excerpt was saved for this source.'}
+              {quoteForDisplay(source.citedText) || 'No excerpt was saved for this source.'}
             </blockquote>
             <a
               href={viewerUrl(source)}
@@ -53,7 +54,8 @@ function ExcerptDialog({ source, onClose }: { source: ChatSource | null; onClose
 
 function SourceRow({ source }: { source: ChatSource }) {
   const [expanded, setExpanded] = useState(false)
-  const long = source.citedText.length > 180
+  const quote = quoteForDisplay(source.citedText)
+  const long = quote.length > 180
   return (
     <li id={`source-${source.marker}`} className="rounded-xl border border-border/70 bg-white/60 p-3">
       <SourceLink
@@ -67,9 +69,9 @@ function SourceRow({ source }: { source: ChatSource }) {
         <span className="truncate">{sourceLabel(source)}</span>
         {isPdf(source.filename) && <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
       </SourceLink>
-      {source.citedText && (
+      {quote && (
         <p className={`mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground ${expanded ? '' : 'line-clamp-2'}`}>
-          {source.citedText}
+          {quote}
         </p>
       )}
       {long && (

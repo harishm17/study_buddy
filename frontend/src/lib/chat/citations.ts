@@ -74,6 +74,11 @@ export function insertCitationMarkers(text: string, marks: readonly CitationMark
   return result + text.slice(last)
 }
 
+/** A cited quote for display: the chunk text is markdown, so heading marks ("## ") are dropped. */
+export function quoteForDisplay(citedText: string): string {
+  return citedText.replace(/^#{1,6}[ \t]+/gm, '').trim()
+}
+
 export function isPdf(filename: string): boolean {
   return filename.toLowerCase().endsWith('.pdf')
 }

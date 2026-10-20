@@ -91,48 +91,63 @@ def _final_text(content: List[Any]) -> str:
     ).strip()
 
 
-# Excerpts are sent as several text blocks (a paragraph or so each) because Claude cites whole
+# Excerpts are sent as several text blocks, one paragraph each, because Claude cites whole
 # blocks: one block per chunk would make every citation quote the entire chunk.
 _BLOCK_TARGET_CHARS = 450
+# A paragraph longer than this is split at sentence boundaries into blocks near the target.
+_BLOCK_MAX_CHARS = 600
 _PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
+_HEADING_LINE = re.compile(r"^#{1,6}[ \t]+\S[^\n]*$")
 
 
-def split_excerpt_blocks(text: str, target_chars: int = _BLOCK_TARGET_CHARS) -> List[str]:
-    """Split text into citable blocks of roughly `target_chars`, never returning an empty list.
+def _split_long_paragraph(paragraph: str, target_chars: int) -> List[str]:
+    pieces: List[str] = []
+    current = ""
+    for sentence in _SENTENCE_BREAK.split(paragraph):
+        if current and len(current) + 1 + len(sentence) > target_chars:
+            pieces.append(current)
+            current = sentence
+        else:
+            current = f"{current} {sentence}" if current else sentence
+    if current:
+        pieces.append(current)
+    return pieces
 
-    Splits at paragraph breaks, then sentences for a paragraph that is too long, and joins
-    neighbours that are too short. Joining with the original separator keeps the text intact.
+
+def split_excerpt_blocks(
+    text: str, target_chars: int = _BLOCK_TARGET_CHARS, max_chars: int = _BLOCK_MAX_CHARS
+) -> List[str]:
+    """Split text into citable blocks, one paragraph each; never returns an empty list.
+
+    A heading line is kept with the paragraph that follows it. A paragraph longer than
+    `max_chars` is split at sentence boundaries into blocks of about `target_chars` (a single
+    sentence is never cut). Short paragraphs are not merged: a citation should quote the
+    paragraph that supports the claim, not its neighbours.
     """
     cleaned = text.strip()
     if not cleaned:
         return [text or " "]
 
-    pieces: List[str] = []
+    blocks: List[str] = []
+    heading = ""
     for paragraph in _PARAGRAPH_BREAK.split(cleaned):
         paragraph = paragraph.strip()
         if not paragraph:
             continue
-        if len(paragraph) <= target_chars * 1.5:
-            pieces.append(paragraph)
+        if _HEADING_LINE.match(paragraph):
+            # Two headings in a row stay together, then go with the next paragraph.
+            heading = f"{heading}\n\n{paragraph}" if heading else paragraph
             continue
-        sentences = _SENTENCE_BREAK.split(paragraph)
-        current = ""
-        for sentence in sentences:
-            if current and len(current) + 1 + len(sentence) > target_chars:
-                pieces.append(current)
-                current = sentence
-            else:
-                current = f"{current} {sentence}" if current else sentence
-        if current:
-            pieces.append(current)
-
-    blocks: List[str] = []
-    for piece in pieces:
-        if blocks and len(blocks[-1]) < target_chars // 2:
-            blocks[-1] = f"{blocks[-1]}\n\n{piece}"
+        if heading:
+            paragraph = f"{heading}\n\n{paragraph}"
+            heading = ""
+        if len(paragraph) > max_chars:
+            blocks.extend(_split_long_paragraph(paragraph, target_chars))
         else:
-            blocks.append(piece)
+            blocks.append(paragraph)
+    if heading:  # a heading with nothing after it
+        blocks.append(heading)
     return blocks
 
 

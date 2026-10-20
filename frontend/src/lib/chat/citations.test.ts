@@ -6,6 +6,7 @@ import {
   markerFromHref,
   pageLabel,
   parseStoredCitations,
+  quoteForDisplay,
   sourceLabel,
   viewerUrl,
   type ChatSource,
@@ -58,6 +59,16 @@ describe('insertCitationMarkers', () => {
 
   it('a mark at the very start lands at the start', () => {
     assert.equal(insertCitationMarkers('Hi', [{ offset: 0, marker: 1 }]), '[1](#cite-1)Hi')
+  })
+})
+
+describe('quoteForDisplay', () => {
+  it('drops heading marks and keeps the quoted paragraph', () => {
+    assert.equal(
+      quoteForDisplay('# Hash Tables\n\nCollisions happen when two keys map to one bucket.'),
+      'Hash Tables\n\nCollisions happen when two keys map to one bucket.'
+    )
+    assert.equal(quoteForDisplay('Use # for comments #1'), 'Use # for comments #1')
   })
 })
 
