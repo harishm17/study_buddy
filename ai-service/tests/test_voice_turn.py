@@ -414,3 +414,15 @@ class TestLedgerInTheDatabase:
         monkeypatch.setattr(settings, "DAILY_LLM_BUDGET_USD", 0.0001)
         refused = await voice_route.turn(payload)
         assert refused.status_code == 429
+
+
+class TestMockDrillEnd:
+    async def test_a_finished_drill_gets_a_goodbye(self):
+        asked = {"type": "tool_use", "id": "t1", "name": "get_next_question", "input": {}}
+        messages = [
+            {"role": "user", "content": "Start"},
+            {"role": "assistant", "content": [asked]},
+            user(tool_result("t1", {"done": True, "message": "Drill complete."})),
+        ]
+        events = await collect(MockProvider(), messages=messages)
+        assert "goodbye" in events[-1].content[0]["text"]

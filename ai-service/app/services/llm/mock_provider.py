@@ -119,6 +119,9 @@ def _mock_turn(messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> t
         called = {call.get("id"): call for call in calls}
         call = called.get(results[-1].get("tool_use_id"), {})
         name = call.get("name")
+        output = str(results[-1].get("content") or "")
+        if '"done": true' in output or '"done":true' in output:
+            return "That was the last question. Well done, and goodbye.", None
         if name == "get_next_question":
             return "Here is your question. Take your time and answer out loud.", None
         if name == "record_answer":
@@ -138,7 +141,7 @@ def _mock_turn(messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> t
                           "user_answer": utterance or "no answer"},
             }
         return "", {"name": "get_next_question", "input": {}}
-    if utterance:
+    if utterance and not utterance.startswith("["):
         return f"Mock coach here. You said: {utterance[:80]}. Tell me more.", None
     return "Hi, I am your mock coach. What would you like to talk about?", None
 

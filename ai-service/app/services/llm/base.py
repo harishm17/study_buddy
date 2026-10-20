@@ -228,8 +228,7 @@ class LLMProvider(ABC):
         citations cannot be combined with structured outputs.
         """
 
-    @abstractmethod
-    def stream_turn(
+    async def stream_turn(
         self,
         *,
         system: str,
@@ -247,7 +246,12 @@ class LLMProvider(ABC):
         Yields TurnText pieces as they arrive, one TurnToolUse per tool call, and ends with
         one TurnDone. Raises LLMRefusalError when the model declines (with `usage` set) and
         LLMOutputError when it returned neither text nor a tool call.
+
+        Not abstract: a provider without a conversation mode (a test double) need not
+        implement it.
         """
+        raise NotImplementedError(f"{type(self).__name__} does not support voice turns")
+        yield  # pragma: no cover  (makes this an async generator)
 
     def model_for(self, tier: Tier) -> Optional[str]:
         """The model a tier maps to, for logging."""
