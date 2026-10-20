@@ -1,4 +1,4 @@
-# StudyBuddy UI and UX specification
+# Margins (formerly StudyBuddy) UI and UX specification
 
 This is the source of truth for the new frontend. It replaces the old UI entirely. The backend
 (Next.js API routes in `frontend/src/app/api`, server libs in `frontend/src/lib`, Prisma schema,
@@ -166,7 +166,7 @@ headings.
   empty states. Use `fill` weight only for the active nav item and the brand glyph. No other
   icon library, no hand-drawn SVG icons.
 - Brand: a 24px tile, radius 7px, `--accent` background, Phosphor `BookOpenText` (fill weight,
-  14px, `--accent-fg`) centred, followed by the wordmark "StudyBuddy" in 15px/600, tracking
+  14px, `--accent-fg`) centred, followed by the wordmark "Margins" in 15px/600, tracking
   -0.01em. The name lives in one constant `BRAND_NAME` in `src/config/brand.ts`.
 
 ### 3.6 Z-index scale (`src/config/layers.ts`)
@@ -221,7 +221,7 @@ listing them. Feature components live in `src/features/<area>/*`.
 
 | Route | Page | Notes |
 |---|---|---|
-| `/` | Landing | Public. Signed-in users see "Open StudyBuddy" in the nav instead of sign in; no forced redirect. |
+| `/` | Landing | Public. Signed-in users see "Open Margins" in the nav instead of sign in; no forced redirect. |
 | `/login`, `/signup` | Auth | Redirect to `/home` (or `?next=`) when already signed in. |
 | `/home` | Home | All courses, continue card, due reviews. |
 | `/courses/new` | Create course | |
@@ -335,10 +335,10 @@ a `loading.tsx` skeleton matching its layout and an `error.tsx` with a retry but
 
 Light/dark aware, same tokens. Sections (each a different layout family):
 1. **Nav**: brand left; right: "Sign in" (ghost) and "Get started" (primary). Signed in: "Open
-   StudyBuddy" (primary) only.
+   Margins" (primary) only.
 2. **Hero**, split 5/7: left: headline "Turn your course files into a study plan." (title is
    display-xl, max 2 lines), subtext (max 20 words): "Upload lecture notes and past exams.
-   StudyBuddy builds notes, practice, quizzes and mock exams from them." CTAs: "Get started"
+   Margins builds notes, practice, quizzes and mock exams from them." CTAs: "Get started"
    (primary lg) and "Sign in" (secondary lg). Right: real screenshot of the topic notes page
    (light theme in light mode, dark in dark mode; `next/image`, priority) in a frame: radius 12,
    border, the float shadow, slightly cropped by the viewport edge on the right. No pills over it.
@@ -416,7 +416,7 @@ Courses
   getting there, accent strong); max 40 squares then "+N". Footer: "Updated 2h ago" caption fg-3.
   The last card is a dashed-border "New course" tile.
 - Empty (no courses): EmptyState centred in the page: icon BookOpenText, title "Add your first
-  course", text "Upload lecture notes, past exams or chapters. StudyBuddy turns them into notes,
+  course", text "Upload lecture notes, past exams or chapters. Margins turns them into notes,
   practice and quizzes.", primary "Add a course".
 
 ### 6.4 Create course (`/courses/new`)
@@ -767,7 +767,7 @@ Full page: two panes inside the content area (no outer card):
 |  BFS vs DFS      |  You                                                   |
 |  Master theorem  |  How does BFS differ from DFS?                         |
 | Earlier          |                                                       |
-|  ...             |  StudyBuddy                                           |
+|  ...             |  Margins                                           |
 |                  |  BFS goes wide, level by level[1]. DFS goes deep[2]...|
 |                  |  Sources  [1] week2-graphs.pdf, p. 4  [2] ... p. 5    |
 |                  |                                                       |
@@ -781,7 +781,7 @@ Full page: two panes inside the content area (no outer card):
 - Thread list 248px (surface, right hairline), grouped Today / Last 7 days / Earlier, row menu
   Delete (confirm). Collapses into a dropdown on < 1024px.
 - Messages: user messages right-aligned in a surface-2 bubble (radius 12, max 80%), 15px.
-  Assistant messages full-width Markdown (reading variant at 16px), label row "StudyBuddy"
+  Assistant messages full-width Markdown (reading variant at 16px), label row "Margins"
   (caption fg-3) above. Citation markers render as small superscript pills (accent-soft bg,
   accent-soft-fg, 11px mono, radius 6) that open a HoverCard: filename + page (caption), the
   cited text as a quote (small, fg-2, 5-line clamp), and "Open page" (PDF link to the page) or
