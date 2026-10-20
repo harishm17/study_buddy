@@ -445,6 +445,18 @@ model ExamSubmission {
   submittedAt  DateTime  @default(now()) @map("submitted_at")
   gradedAt     DateTime? @map("graded_at")
 
+  // A row is one attempt. It starts as 'in_progress' (the student is taking the exam: the
+  // server records startedAt and deadlineAt, and answers are autosaved into `answers`) and
+  // becomes 'submitted' when finalised, after which grading fills aiGrading. Rows that
+  // existed before attempts are all 'submitted'. A partial unique index (see the
+  // exam_attempts migration; Prisma cannot express it) allows one in_progress row per
+  // user and exam. While in progress, submittedAt only holds the start time: every reader
+  // of results filters on status = 'submitted'.
+  status         String    @default("submitted") // in_progress|submitted
+  startedAt      DateTime? @map("started_at")
+  deadlineAt     DateTime? @map("deadline_at")
+  answersSavedAt DateTime? @map("answers_saved_at")
+
   // Relations
   sampleExam SampleExam @relation(fields: [sampleExamId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -1,182 +1,95 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import prisma from '@/lib/prisma';
-import { z } from 'zod';
-import { createHash } from 'crypto';
-import { stableStringify } from '@/lib/utils/stable-json';
+/**
+ * POST /api/exams/[examId]/submit
+ *
+ * Finalises the attempt in progress and starts grading. The body may carry the final
+ * { answers }; they are used while time remains. Without a body, or after the deadline and
+ * grace, the last autosave is what gets graded.
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth/get-session'
 import {
   apiError,
   ApiErrorCode,
   apiInternal,
-  zodDetails,
-} from '@/lib/api/errors';
-import { ensureAiGenerationReady } from '@/lib/api/ai-preflight';
-import { createJobOrFindActive, gradeExamTarget } from '@/lib/jobs/active-jobs';
+  apiInvalidInput,
+  apiNotFound,
+  apiUnauthorized,
+  isUnauthorizedError,
+} from '@/lib/api/errors'
+import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
+import {
+  countQuestions,
+  finalizeAttempt,
+  findExamForUser,
+  findInProgressAttempt,
+} from '@/lib/exams/attempts'
+import { isExpired, sanitizeAnswers, type AnswerMap } from '@/lib/exams/attempt-timing'
 
-const submitExamSchema = z.object({
-  answers: z.record(
-    z.union([z.string(), z.number(), z.boolean(), z.null()])
-  ), // Map of questionIndex -> answer
-});
-
-const submissionIdOf = (inputData: unknown): string | null =>
-  inputData && typeof inputData === 'object'
-    ? ((inputData as { submissionId?: string }).submissionId ?? null)
-    : null;
+export const dynamic = 'force-dynamic'
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ examId: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const session = await requireAuth()
+    const { examId } = await params
 
-    const { examId } = await params;
+    const exam = await findExamForUser(session.user.id, examId)
+    if (!exam) return apiNotFound('Exam not found')
 
-    // Verify exam exists and user has access
-    const exam = await prisma.sampleExam.findFirst({
-      where: {
-        id: examId,
-        project: {
-          userId: session.user.id,
-        },
-      },
-      select: {
-        id: true,
-        projectId: true,
-      },
-    });
-
-    if (!exam) {
-      return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
-    }
-
-    const preflightError = await ensureAiGenerationReady();
-    if (preflightError) {
-      return preflightError;
-    }
-
-    const body = await req.json();
-    const validation = submitExamSchema.safeParse(body);
-
-    if (!validation.success) {
+    const attempt = await findInProgressAttempt(session.user.id, examId)
+    if (!attempt) {
       return apiError(
-        ApiErrorCode.INVALID_INPUT,
-        'Invalid input',
-        zodDetails(validation.error),
-        400
-      );
+        ApiErrorCode.CONFLICT,
+        'This exam is not in progress, so there is nothing to submit. Check your exam history.',
+        { code: 'ATTEMPT_CLOSED' },
+        409
+      )
     }
 
-    const { answers } = validation.data;
-    const answersFingerprint = createHash('sha256')
-      .update(stableStringify(answers))
-      .digest('hex');
-    const idempotencyKey = `${examId}:${answersFingerprint}`;
-
-    const existingJob = await prisma.processingJob.findFirst({
-      where: {
-        userId: session.user.id,
-        projectId: exam.projectId,
-        jobType: 'grade_exam',
-        status: { in: ['pending', 'processing'] },
-        inputData: {
-          path: ['idempotencyKey'],
-          equals: idempotencyKey,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (existingJob) {
-      return NextResponse.json({
-        submissionId: submissionIdOf(existingJob.inputData),
-        jobId: existingJob.id,
-        status: existingJob.status === 'processing' ? 'processing' : 'queued',
-        message: 'Exam grading already in progress',
-        estimatedSeconds: 90,
-      });
+    const body = await req.json().catch(() => ({}))
+    let submitted: AnswerMap | null = null
+    if (body?.answers !== undefined) {
+      submitted = sanitizeAnswers(body.answers, await countQuestions(examId))
+      if (!submitted) return apiInvalidInput('answers must be an object')
     }
 
-    // Create exam submission
-    const submission = await prisma.examSubmission.create({
-      data: {
-        sampleExamId: examId,
-        userId: session.user.id,
-        answers,
-      },
-    });
-
-    // Create processing job for AI grading. The input holds ids only: the grading task
-    // loads the questions and answers itself, so nothing large travels in the task body or
-    // sits in the job row that the status API reads.
-    const { job, created } = await createJobOrFindActive({
-      userId: session.user.id,
-      projectId: exam.projectId,
-      jobType: 'grade_exam',
-      status: 'pending',
-      stage: 'grading',
-      inputData: {
-        submissionId: submission.id,
-        examId,
-        idempotencyKey,
-      },
-      targetKey: gradeExamTarget(session.user.id, idempotencyKey),
-    });
-
-    if (!created) {
-      // The same answers were submitted a moment ago; grade that submission, not this copy.
-      await prisma.examSubmission.delete({ where: { id: submission.id } });
-      return NextResponse.json({
-        submissionId: submissionIdOf(job.inputData),
-        jobId: job.id,
-        status: job.status === 'processing' ? 'processing' : 'queued',
-        message: 'Exam grading already in progress',
-        estimatedSeconds: 90,
-      });
+    // An attempt that is past its time is submitted as saved, whatever the AI service state:
+    // that must not be blocked by a health check. Otherwise check first, so a student who
+    // still has time can retry the submit instead of losing the attempt.
+    const now = new Date()
+    const late = attempt.deadlineAt ? isExpired(attempt.deadlineAt, now) : false
+    if (!late) {
+      const preflightError = await ensureAiGenerationReady()
+      if (preflightError) return preflightError
     }
 
-    // Enqueue grading task via Cloud Tasks (or direct call in dev)
-    try {
-      const { enqueueExamGradingJob } = await import('@/lib/tasks/cloud-tasks');
-      await enqueueExamGradingJob(job.id, submission.id, examId);
-    } catch (error) {
-      console.error('Error enqueuing grading job:', error);
-      const retryable = typeof (error as { retryable?: unknown })?.retryable === 'boolean'
-        ? Boolean((error as { retryable: boolean }).retryable)
-        : true
+    const result = await finalizeAttempt(session.user.id, exam, attempt, submitted, now)
 
-      // Update job status to failed
-      await prisma.processingJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'failed',
-          errorCode: retryable ? 'ENQUEUE_FAILED' : 'ENQUEUE_PERMANENT',
-          errorMessage: 'Failed to start exam grading',
-          retryable,
-          completedAt: new Date(),
-        },
-      });
-
+    if (!result.started) {
+      // The attempt is saved and submitted; only starting the grader failed.
       return NextResponse.json(
-        { error: 'Failed to start exam grading' },
-        { status: 500 }
-      );
+        {
+          error: 'Your exam was submitted, but grading could not start. Open the results and choose Grade again.',
+          submissionId: result.submissionId,
+        },
+        { status: 502 }
+      )
     }
 
     return NextResponse.json({
-      submissionId: submission.id,
-      jobId: job.id,
+      submissionId: result.submissionId,
+      jobId: result.jobId,
       status: 'queued',
+      usedSubmittedAnswers: result.usedSubmittedAnswers,
       message: 'Exam submitted and grading started',
       estimatedSeconds: 90,
-    });
+    })
   } catch (error) {
-    console.error('Error submitting exam:', error);
-    return apiInternal('Internal server error');
+    console.error('Error submitting exam:', error)
+    if (isUnauthorizedError(error)) return apiUnauthorized()
+    return apiInternal('Internal server error')
   }
 }

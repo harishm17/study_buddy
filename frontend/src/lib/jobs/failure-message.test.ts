@@ -1,0 +1,74 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import {
+  FALLBACK_FAILURE_MESSAGE,
+  describeJobFailure,
+  parseContentTarget,
+  pickGenerationFailures,
+  type GenerationJobRow,
+} from './failure-message'
+
+test('the daily budget message is shown as the job wrote it', () => {
+  assert.equal(
+    describeJobFailure('LLM_DAILY_BUDGET', 'Daily limit of $2.00 reached. Resets at midnight UTC.'),
+    'Daily limit of $2.00 reached. Resets at midnight UTC.'
+  )
+  assert.match(describeJobFailure('LLM_DAILY_BUDGET', null), /limit/)
+})
+
+test('missing source material explains what to do', () => {
+  assert.match(describeJobFailure('NO_SOURCE_MATERIAL', 'No relevant chunks found for topic x'), /Add material/)
+})
+
+test('raw server messages never reach the student for other codes', () => {
+  const text = describeJobFailure('SOMETHING_ELSE', 'psycopg2.errors.UniqueViolation: secret detail')
+  assert.equal(text, FALLBACK_FAILURE_MESSAGE)
+  assert.equal(describeJobFailure(null, 'boom'), FALLBACK_FAILURE_MESSAGE)
+})
+
+test('content targets parse, and other keys do not', () => {
+  assert.deepEqual(parseContentTarget('content:abc-123:topic_quiz'), { topicId: 'abc-123', contentType: 'topic_quiz' })
+  assert.equal(parseContentTarget('extract:p1'), null)
+  assert.equal(parseContentTarget(null), null)
+})
+
+const row = (id: string, targetKey: string, status: string, errorCode: string | null = null): GenerationJobRow => ({
+  id,
+  targetKey,
+  status,
+  errorCode,
+  errorMessage: null,
+})
+
+test('a failure is listed when its latest job failed and the content is missing', () => {
+  const failures = pickGenerationFailures(
+    [row('j2', 'content:t1:topic_quiz', 'failed', 'NO_SOURCE_MATERIAL'), row('j1', 'content:t1:topic_quiz', 'failed', 'LLM_UNAVAILABLE')],
+    () => false
+  )
+  assert.equal(failures.length, 1)
+  assert.equal(failures[0].jobId, 'j2')
+  assert.equal(failures[0].errorCode, 'NO_SOURCE_MATERIAL')
+})
+
+test('a retry that is running or finished clears the failure', () => {
+  assert.deepEqual(
+    pickGenerationFailures([row('j2', 'content:t1:topic_quiz', 'processing'), row('j1', 'content:t1:topic_quiz', 'failed')], () => false),
+    []
+  )
+  assert.deepEqual(
+    pickGenerationFailures([row('j2', 'content:t1:topic_quiz', 'completed'), row('j1', 'content:t1:topic_quiz', 'failed')], () => false),
+    []
+  )
+})
+
+test('a failure is dropped once the content exists anyway', () => {
+  const failures = pickGenerationFailures(
+    [row('j1', 'content:t1:section_notes', 'failed'), row('j3', 'content:t2:section_notes', 'failed')],
+    (topicId, type) => topicId === 't1' && type === 'section_notes'
+  )
+  assert.deepEqual(failures.map((failure) => failure.topicId), ['t2'])
+})
+
+test('jobs without a content target are ignored', () => {
+  assert.deepEqual(pickGenerationFailures([row('j1', 'extract:p1', 'failed')], () => false), [])
+})

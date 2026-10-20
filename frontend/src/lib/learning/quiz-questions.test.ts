@@ -63,3 +63,23 @@ test('review answers: sample answer for short answers, the key otherwise', () =>
   assert.equal(reviewAnswer({ question_type: 'numerical', correct_answer: 9.8, unit: 'm/s^2' }), '9.8 m/s^2')
   assert.equal(reviewAnswer({ question_type: 'multiple_choice', correct_answer: 'C' }), 'C')
 })
+
+test('exam questions keep their topic but not their key points or sample answer', () => {
+  const examQuestion = {
+    question_type: 'short_answer',
+    question_text: 'Explain a stack',
+    topic_id: 't1',
+    topic_name: 'Stacks',
+    points: 5,
+    key_points: ['LIFO', 'push and pop'],
+    sample_answer: 'A stack is last in, first out.',
+    explanation: 'Stacks are LIFO.',
+  }
+  const publicQuestion = toPublicQuestion(examQuestion) as Record<string, unknown>
+  assert.equal(publicQuestion.topic_name, 'Stacks')
+  assert.equal(publicQuestion.topic_id, 't1')
+  const payload = JSON.stringify(publicQuestion)
+  for (const secret of ['LIFO', 'push and pop', 'last in, first out', 'key_points', 'sample_answer']) {
+    assert.equal(payload.includes(secret), false, secret)
+  }
+})

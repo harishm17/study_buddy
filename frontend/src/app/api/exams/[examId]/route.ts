@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
+import { toPublicQuestions } from '@/lib/learning/quiz-questions';
 
 export async function GET(
   req: NextRequest,
@@ -37,7 +38,8 @@ export async function GET(
       return NextResponse.json({ error: 'Exam not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ exam });
+    // No answer key: it is released only in a graded submission's results.
+    return NextResponse.json({ exam: { ...exam, questions: toPublicQuestions(exam.questions) } });
   } catch (error) {
     console.error('Error fetching exam:', error);
     return NextResponse.json(

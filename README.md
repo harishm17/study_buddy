@@ -335,6 +335,9 @@ OPENAI_REALTIME_VOICE=marin
 OPENAI_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
 VOICE_DAILY_MINUTES=30            # per-user voice minutes per 24 hours (frontend setting)
 
+# Uploads (frontend setting)
+MAX_UPLOAD_MB=25                  # largest study file, in MB; bigger files get 413
+
 # GCP (for production deployment)
 GCS_BUCKET=studybuddy-materials
 GCS_PROJECT_ID=your-project-id

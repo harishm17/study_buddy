@@ -1,5 +1,5 @@
 /**
- * Quiz questions carry their answer key (correct_answer, sample_answer, key_points,
+ * Quiz and exam questions carry their answer key (correct_answer, sample_answer, key_points,
  * explanation, acceptable_answers). The key stays on the server until a student has
  * submitted: everything a browser receives before that goes through `toPublicQuestion`,
  * which keeps only the fields needed to show and answer the question.
@@ -13,6 +13,9 @@ const PUBLIC_FIELDS = [
   'points',
   'difficulty',
   'concepts_tested',
+  // Exam questions say which topic they belong to.
+  'topic_id',
+  'topic_name',
 ] as const
 
 type RawQuestion = Record<string, unknown>
@@ -25,6 +28,8 @@ export type PublicQuizQuestion = {
   points: number
   difficulty?: string
   concepts_tested?: string[]
+  topic_id?: string
+  topic_name?: string
 }
 
 const isRecord = (value: unknown): value is RawQuestion =>

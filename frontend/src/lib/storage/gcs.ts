@@ -3,6 +3,8 @@
  * Handles file uploads and downloads with signed URLs
  */
 
+import type { Readable, Transform } from 'stream'
+
 // Lazy-load Storage to avoid credential errors in development
 let storageInstance: any = null
 const CLOUD_STORAGE_ENABLED = process.env.ENABLE_GCS_STORAGE === 'true'
@@ -11,22 +13,38 @@ const BUCKET_NAME = process.env.GCS_BUCKET || 'studybuddy-materials'
 const LOCAL_UPLOAD_BASE = process.env.LOCAL_UPLOADS_DIR || '/data/uploads'
 const LOCAL_UPLOAD_FALLBACK_BASE = '/tmp/studybuddy-uploads'
 
-async function writeLocalFile(file: Buffer, storagePath: string): Promise<string> {
+/**
+ * Stream a file to local disk. The first writable upload folder is chosen before any byte is
+ * read, because a stream cannot be replayed into a second folder. A failed or refused upload
+ * leaves no partial file behind.
+ */
+async function writeLocalStream(
+  source: Readable,
+  transforms: Transform[],
+  storagePath: string
+): Promise<string> {
   const fs = await import('fs')
   const pathModule = await import('path')
-  const bases = [LOCAL_UPLOAD_BASE, LOCAL_UPLOAD_FALLBACK_BASE]
+  const { pipeline } = await import('stream/promises')
 
   let lastError: unknown = null
-  for (const base of bases) {
+  for (const base of [LOCAL_UPLOAD_BASE, LOCAL_UPLOAD_FALLBACK_BASE]) {
     // Runtime upload folder, not project files: keep Turbopack from tracing the whole project.
     const localFilePath = pathModule.join(/* turbopackIgnore: true */ base, storagePath)
     try {
       fs.mkdirSync(pathModule.dirname(localFilePath), { recursive: true })
-      fs.writeFileSync(localFilePath, file)
+      fs.accessSync(pathModule.dirname(localFilePath), fs.constants.W_OK)
+    } catch (error) {
+      lastError = error
+      continue
+    }
+    try {
+      await pipeline([source, ...transforms, fs.createWriteStream(localFilePath)])
       console.log('[LOCAL_STORAGE] File stored successfully')
       return `gs://${BUCKET_NAME}/${storagePath}`
     } catch (error) {
-      lastError = error
+      fs.rmSync(localFilePath, { force: true })
+      throw error
     }
   }
 
@@ -103,36 +121,40 @@ function inferContentType(storagePath: string, provided?: string): string {
 }
 
 /**
- * Upload a file to GCS
- * @param file - File buffer
- * @param path - Destination path in bucket (e.g., user_id/project_id/material_id/filename.pdf)
+ * Upload a file as a stream: the bytes go through `transforms` (size limit, signature check)
+ * and straight to GCS or disk without being held in memory. If a transform rejects the
+ * stream, or the upload fails part way, nothing is left in storage.
+ *
+ * There is no fallback from GCS to local disk after a failure, because the source has already
+ * been read. The client simply uploads again.
  * @returns GCS path (gs://bucket/path)
  */
-export async function uploadFile(
-  file: Buffer,
+export async function uploadStream(
+  source: Readable,
   storagePath: string,
-  contentType?: string
+  contentType?: string,
+  transforms: Transform[] = []
 ): Promise<string> {
   const storage = await getStorage()
 
   if (!storage) {
-    return writeLocalFile(file, storagePath)
+    return writeLocalStream(source, transforms, storagePath)
   }
 
-  const bucket = storage.bucket(BUCKET_NAME)
-  const blob = bucket.file(storagePath)
+  const { pipeline } = await import('stream/promises')
+  const blob = storage.bucket(BUCKET_NAME).file(storagePath)
   try {
-    await blob.save(file, {
-      metadata: {
-        contentType: inferContentType(storagePath, contentType),
-      },
-    })
+    await pipeline([
+      source,
+      ...transforms,
+      blob.createWriteStream({
+        resumable: false,
+        metadata: { contentType: inferContentType(storagePath, contentType) },
+      }),
+    ])
     return `gs://${BUCKET_NAME}/${storagePath}`
   } catch (error) {
-    if (ALLOW_LOCAL_FALLBACK) {
-      console.warn('[GCS] Upload failed, falling back to local storage:', error)
-      return writeLocalFile(file, storagePath)
-    }
+    await blob.delete({ ignoreNotFound: true }).catch(() => undefined)
     throw error
   }
 }

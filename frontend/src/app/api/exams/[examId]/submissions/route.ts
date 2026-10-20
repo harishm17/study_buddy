@@ -41,6 +41,8 @@ export async function GET(
       where: {
         sampleExamId: examId,
         userId: session.user.id,
+        // An attempt still in progress is not a submission yet.
+        status: 'submitted',
       },
       select: {
         id: true,

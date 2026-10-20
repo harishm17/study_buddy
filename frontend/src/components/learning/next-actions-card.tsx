@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowRight, ListChecks } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { GenerationFailures } from '@/components/learning/generation-failures'
 
 type NextAction = {
   id: string
@@ -75,6 +76,8 @@ export function NextActionsCard({
   const [batchStarting, setBatchStarting] = useState(false)
   const actionsFingerprintRef = useRef<string>('')
   const [batchError, setBatchError] = useState<string | null>(null)
+  // Raised after a batch starts so the failure list looks for new jobs.
+  const [failuresVersion, setFailuresVersion] = useState(0)
 
   const fetchActions = useCallback(async (background = false) => {
     if (!background) {
@@ -160,6 +163,7 @@ export function NextActionsCard({
         throw new Error('Failed to start background generation')
       }
       await fetchActions(true)
+      setFailuresVersion((version) => version + 1)
     } catch (error) {
       console.error('Batch generation error:', error)
       // Generation costs money, so it never restarts on its own. The student retries by clicking.
@@ -178,106 +182,114 @@ export function NextActionsCard({
     return null
   }
 
+  const failures = <GenerationFailures projectId={projectId} version={failuresVersion} />
+
   if (compact) {
     return (
-      <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/[0.07] via-white/80 to-white/80">
-        <CardContent className="space-y-3 px-4 py-4 md:px-5">
+      <div className="space-y-4">
+        <Card className="overflow-hidden border-primary/20 bg-gradient-to-r from-primary/[0.07] via-white/80 to-white/80">
+          <CardContent className="space-y-3 px-4 py-4 md:px-5">
+            {initialLoading && (
+              <div className="rounded-xl border border-border/60 bg-white/60 p-4">
+                <div className="h-4 w-48 animate-pulse rounded bg-muted" />
+                <div className="mt-2 h-4 w-72 animate-pulse rounded bg-muted/80" />
+              </div>
+            )}
+            {!initialLoading && !primaryAction && (
+              <div className="text-sm text-muted-foreground">You are all caught up for now.</div>
+            )}
+            {!initialLoading && primaryAction && (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Recommended next step
+                    </div>
+                    <div className="text-base font-semibold leading-tight">{primaryAction.title}</div>
+                    <div className="text-sm text-muted-foreground">{primaryAction.reason}</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                      {renderActionMeta(primaryAction)}
+                    </div>
+                    {batchError && <div className="text-sm text-red-600">{batchError}</div>}
+                  </div>
+                  {primaryIsBatchGeneration && !primaryIsActiveBatch ? (
+                    <Button size="sm" onClick={startBatchGeneration} disabled={batchStarting}>
+                      {batchStarting ? 'Starting...' : 'Start in Background'}
+                    </Button>
+                  ) : (
+                    <Button size="sm" asChild>
+                      <Link href={getActionHref(projectId, primaryAction)}>
+                        {primaryIsActiveBatch ? 'View Topics' : 'Open'}
+                        <ArrowRight className="ml-2 h-3 w-3" />
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+                {secondaryActions.length > 0 && (
+                  <div className="rounded-lg border border-border/70 bg-white/65 px-3 py-2 text-xs text-muted-foreground">
+                    {secondaryActions.length} more recommendation{secondaryActions.length === 1 ? '' : 's'} will appear after you complete this step.
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      {failures}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ListChecks className="h-5 w-5" />
+            Recommended Next Steps
+          </CardTitle>
+          <CardDescription>
+            Focus on one step at a time, then continue with the next item.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
           {initialLoading && (
-            <div className="rounded-xl border border-border/60 bg-white/60 p-4">
-              <div className="h-4 w-48 animate-pulse rounded bg-muted" />
+            <div className="rounded-xl border border-border/60 bg-white/50 p-4">
+              <div className="h-5 w-52 animate-pulse rounded bg-muted" />
               <div className="mt-2 h-4 w-72 animate-pulse rounded bg-muted/80" />
             </div>
           )}
-          {!initialLoading && !primaryAction && (
+          {!initialLoading && visibleActions.length === 0 && (
             <div className="text-sm text-muted-foreground">You are all caught up for now.</div>
           )}
-          {!initialLoading && primaryAction && (
-            <>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                    Recommended next step
+          {batchError && <div className="text-sm text-red-600">{batchError}</div>}
+          {visibleActions.map((action) => (
+            <div key={action.id} className="rounded-xl border border-border/70 bg-white/70 px-4 py-3 transition hover:border-primary/30 hover:bg-white">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <div className="font-medium">{action.title}</div>
+                  <div className="text-sm text-muted-foreground">{action.reason}</div>
+                  <div className="mt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    {renderActionMeta(action)}
                   </div>
-                  <div className="text-base font-semibold leading-tight">{primaryAction.title}</div>
-                  <div className="text-sm text-muted-foreground">{primaryAction.reason}</div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                    {renderActionMeta(primaryAction)}
-                  </div>
-                  {batchError && <div className="text-sm text-red-600">{batchError}</div>}
                 </div>
-                {primaryIsBatchGeneration && !primaryIsActiveBatch ? (
-                  <Button size="sm" onClick={startBatchGeneration} disabled={batchStarting}>
+                {isBatchGenerateAction(action) && !action.id.endsWith('-batch-active') ? (
+                  <Button size="sm" variant="outline" onClick={startBatchGeneration} disabled={batchStarting}>
                     {batchStarting ? 'Starting...' : 'Start in Background'}
                   </Button>
                 ) : (
-                  <Button size="sm" asChild>
-                    <Link href={getActionHref(projectId, primaryAction)}>
-                      {primaryIsActiveBatch ? 'View Topics' : 'Open'}
+                  <Button size="sm" variant="outline" asChild>
+                    <Link href={getActionHref(projectId, action)}>
+                      {action.id.endsWith('-batch-active') ? 'View Topics' : 'Open'}
                       <ArrowRight className="ml-2 h-3 w-3" />
                     </Link>
                   </Button>
                 )}
               </div>
-              {secondaryActions.length > 0 && (
-                <div className="rounded-lg border border-border/70 bg-white/65 px-3 py-2 text-xs text-muted-foreground">
-                  {secondaryActions.length} more recommendation{secondaryActions.length === 1 ? '' : 's'} will appear after you complete this step.
-                </div>
-              )}
-            </>
-          )}
+            </div>
+          ))}
         </CardContent>
       </Card>
-    )
-  }
-
-  return (
-    <Card className="overflow-hidden">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ListChecks className="h-5 w-5" />
-          Recommended Next Steps
-        </CardTitle>
-        <CardDescription>
-          Focus on one step at a time, then continue with the next item.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {initialLoading && (
-          <div className="rounded-xl border border-border/60 bg-white/50 p-4">
-            <div className="h-5 w-52 animate-pulse rounded bg-muted" />
-            <div className="mt-2 h-4 w-72 animate-pulse rounded bg-muted/80" />
-          </div>
-        )}
-        {!initialLoading && visibleActions.length === 0 && (
-          <div className="text-sm text-muted-foreground">You are all caught up for now.</div>
-        )}
-        {batchError && <div className="text-sm text-red-600">{batchError}</div>}
-        {visibleActions.map((action) => (
-          <div key={action.id} className="rounded-xl border border-border/70 bg-white/70 px-4 py-3 transition hover:border-primary/30 hover:bg-white">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="font-medium">{action.title}</div>
-                <div className="text-sm text-muted-foreground">{action.reason}</div>
-                <div className="mt-2 text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                  {renderActionMeta(action)}
-                </div>
-              </div>
-              {isBatchGenerateAction(action) && !action.id.endsWith('-batch-active') ? (
-                <Button size="sm" variant="outline" onClick={startBatchGeneration} disabled={batchStarting}>
-                  {batchStarting ? 'Starting...' : 'Start in Background'}
-                </Button>
-              ) : (
-                <Button size="sm" variant="outline" asChild>
-                  <Link href={getActionHref(projectId, action)}>
-                    {action.id.endsWith('-batch-active') ? 'View Topics' : 'Open'}
-                    <ArrowRight className="ml-2 h-3 w-3" />
-                  </Link>
-                </Button>
-              )}
-            </div>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
+    {failures}
+    </div>
   )
 }

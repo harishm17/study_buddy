@@ -39,7 +39,8 @@ export async function GET(
         topicsCovered: true,
         createdAt: true,
         _count: {
-          select: { submissions: true },
+          // Attempts still in progress are not attempts yet.
+          select: { submissions: { where: { status: 'submitted' } } },
         },
       },
       orderBy: { createdAt: 'desc' },
@@ -61,6 +62,7 @@ export async function GET(
                 THEN (ai_grading ->> 'overall_score')::float8 END AS "overallScore"
             FROM exam_submissions
             WHERE user_id = ${session.user.id}
+              AND status = 'submitted'
               AND sample_exam_id IN (${Prisma.join(examIds)})
             ORDER BY sample_exam_id, submitted_at DESC
           `);
