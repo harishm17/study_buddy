@@ -1,6 +1,7 @@
-"""Read uploaded material files from local disk or GCS.
+"""Read uploaded material files from local disk, an S3-compatible bucket or GCS.
 
-The frontend stores every material as `gs://bucket/path`, even when it wrote the file to its
+With S3 storage on, the frontend stores materials as `s3://bucket/key` and the file is always
+downloaded from the bucket. Otherwise the frontend stores every material as `gs://bucket/path`, even when it wrote the file to its
 local uploads folder (GCS off, or an upload that fell back to disk). So a `gs://` path is looked
 up in the local upload folders first, in every environment, and only then fetched from the
 bucket. Plain filesystem paths are read in place.
@@ -63,8 +64,49 @@ def _download_from_gcs(bucket_name: str, blob_path: str) -> Tuple[str, str]:
         raise StorageError(f"Could not download gs://{bucket_name}/{blob_path}: {exc}") from exc
 
 
+def _s3_client():
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.S3_ENDPOINT or None,
+        region_name=settings.S3_REGION or "auto",
+        aws_access_key_id=settings.S3_ACCESS_KEY_ID or None,
+        aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY or None,
+        config=Config(
+            s3={"addressing_style": "path" if settings.S3_FORCE_PATH_STYLE else "virtual"},
+            # Checksums only where S3 requires them: not every S3-compatible store accepts
+            # the SDK's default ones.
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
+            retries={"max_attempts": 3, "mode": "standard"},
+        ),
+    )
+
+
+def _download_from_s3(bucket_name: str, key: str) -> Tuple[str, str]:
+    """Download one object into a fresh temp dir; returns (file path, temp dir)."""
+    temp_dir = tempfile.mkdtemp(prefix="studybuddy-")
+    try:
+        suffix = os.path.splitext(key)[1]
+        local_path = os.path.join(temp_dir, f"material{suffix}")
+        _s3_client().download_file(bucket_name, key, local_path)
+        return local_path, temp_dir
+    except Exception as exc:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise StorageError(f"Could not download s3://{bucket_name}/{key}: {exc}") from exc
+
+
 def _fetch(storage_path: str) -> Tuple[str, Optional[str]]:
     """(readable local path, temp dir to delete afterwards or None)."""
+    if storage_path.startswith("s3://"):
+        parts = storage_path[5:].split("/", 1)
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise StorageError(f"Invalid S3 path format: {storage_path}")
+        logger.info("Downloading %s", storage_path)
+        return _download_from_s3(parts[0], parts[1])
+
     if not storage_path.startswith("gs://"):
         if os.path.isfile(storage_path):
             return storage_path, None

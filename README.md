@@ -117,8 +117,8 @@ Progress bars, attempt history, and per-attempt scores shown inline
    commit it.
 
    **Existing databases.** If your database was created earlier with `prisma db push`, it has
-   the tables but no migration history, and `migrate deploy` will refuse to run. The deploy
-   workflow detects this and marks the baseline as applied for you. By hand, run once:
+   the tables but no migration history, and `migrate deploy` will refuse to run. Mark the
+   baseline as applied once, then migrate:
    ```bash
    cd frontend
    npx prisma migrate resolve --applied 0_init
@@ -129,9 +129,8 @@ Progress bars, attempt history, and per-attempt scores shown inline
    makes `material_chunks.chunk_embedding` a `vector(384)` with an HNSW index. It sets the
    embeddings of any chunk that is not 384 numbers long (the old 1536-number OpenAI vectors) to
    NULL, which keeps the text but hides the chunk from search by meaning. Chunks embedded
-   before heading text was added to the embedded text also work, but rank slightly worse. The
-   deploy workflow re-embeds every chunk without a vector after the migrations
-   (`--missing-only`). To re-embed everything by hand:
+   before heading text was added to the embedded text also work, but rank slightly worse.
+   Re-embed after migrating:
    ```bash
    cd ai-service
    uv run python scripts/reembed_chunks.py            # every chunk
@@ -279,9 +278,8 @@ Instead of sending whole documents to the model:
 |------------|---------|
 | PostgreSQL 15+ | Database with pgvector extension |
 | Docker & Compose | Local development environment |
-| Google Cloud Run | Serverless deployment (optional) |
-| Cloud SQL | Managed PostgreSQL (optional) |
-| Cloud Storage | PDF storage (optional) |
+| [Railway](https://railway.com/) | Hosting: both services, Postgres and an S3-compatible bucket ([deployment guide](docs/deployment/RAILWAY.md)) |
+| S3-compatible storage | Uploaded files (Railway Buckets, S3, R2 or MinIO); Google Cloud Storage and local disk also work |
 
 ---
 
@@ -340,11 +338,17 @@ VOICE_DAILY_MINUTES=30            # per-user voice minutes per 24 hours (fronten
 # Uploads (frontend setting)
 MAX_UPLOAD_MB=25                  # largest study file, in MB; bigger files get 413
 
-# GCP (for production deployment)
-GCS_BUCKET=studybuddy-materials
-GCS_PROJECT_ID=your-project-id
-ENABLE_GCS_STORAGE=true
-ENABLE_CLOUD_TASKS=true
+# Uploaded files: an S3-compatible bucket (both services), see docs/deployment/RAILWAY.md
+S3_BUCKET=...                     # frontend only; the AI service reads the bucket from each path
+S3_ENDPOINT=https://...
+S3_REGION=auto
+S3_ACCESS_KEY_ID=...
+S3_SECRET_ACCESS_KEY=...
+# Or Google Cloud Storage and Cloud Tasks instead
+# GCS_BUCKET=studybuddy-materials
+# GCS_PROJECT_ID=your-project-id
+# ENABLE_GCS_STORAGE=true
+# ENABLE_CLOUD_TASKS=true
 ```
 
 </details>
@@ -353,6 +357,7 @@ ENABLE_CLOUD_TASKS=true
 
 ```
 study_buddy/
+├── .railway/railway.ts          # Railway project: services, settings, variables
 ├── frontend/                    # Next.js application
 │   ├── src/
 │   │   ├── app/                # App Router pages & API routes

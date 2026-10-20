@@ -37,9 +37,10 @@ logs/
 htmlcov/
 .pytest_cache/
 
-# Documentation (ignore all .md files except README.md)
+# Documentation (ignore .md files except README.md and docs/)
 *.md
 !README.md
+!docs/**/*.md
 
 # Misc
 *.pem

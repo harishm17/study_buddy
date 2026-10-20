@@ -60,6 +60,8 @@ jobs:
       - name: Image runs as a non-root user and serves the sign-in page
         run: |
           test "$(docker run --rm --entrypoint id studybuddy-frontend -u)" != "0"
+          # Railway's pre-deploy command runs `prisma migrate deploy` in this image.
+          docker run --rm --network none --entrypoint prisma studybuddy-frontend --version
           docker run -d --name web -p 3000:3000 \
             -e DATABASE_URL=postgresql://u:p@127.0.0.1:1/db \
             -e NEXTAUTH_SECRET=ci-secret -e NEXTAUTH_URL=http://127.0.0.1:3000 \

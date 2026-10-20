@@ -37,6 +37,8 @@ export async function GET() {
   const appEnv = process.env.ENVIRONMENT || 'development'
   const isDeploymentProduction = appEnv === 'production'
   const aiServiceUrl = process.env.AI_SERVICE_URL || ''
+  const s3Bucket = process.env.S3_BUCKET || ''
+  const s3CredentialsSet = Boolean(process.env.S3_ACCESS_KEY_ID && process.env.S3_SECRET_ACCESS_KEY)
   const cloudStorageEnabled = process.env.ENABLE_GCS_STORAGE === 'true'
   const cloudTasksEnabled = process.env.ENABLE_CLOUD_TASKS === 'true'
   const gcsProjectId = process.env.GCS_PROJECT_ID || ''
@@ -85,7 +87,17 @@ export async function GET() {
     }
   }
 
-  if (cloudStorageEnabled) {
+  if (s3Bucket) {
+    checks.push(
+      s3CredentialsSet
+        ? { name: 's3_config', status: 'pass', message: 'S3 storage is enabled and credentials are present.' }
+        : {
+            name: 's3_config',
+            status: 'fail',
+            message: 'S3_BUCKET is set but S3_ACCESS_KEY_ID or S3_SECRET_ACCESS_KEY is missing.',
+          }
+    )
+  } else if (cloudStorageEnabled) {
     if (gcsProjectId && gcsBucket) {
       checks.push({
         name: 'gcs_config',
@@ -134,8 +146,8 @@ export async function GET() {
   } else {
     checks.push({
       name: 'cloud_tasks_config',
-      status: 'warn',
-      message: 'Cloud Tasks is disabled; background jobs run via direct HTTP mode.',
+      status: 'pass',
+      message: 'Cloud Tasks is off; jobs are sent to the AI service over direct HTTP.',
     })
   }
 

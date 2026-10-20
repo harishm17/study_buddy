@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     CLOUD_TASKS_LOCATION: str = "us-central1"
     CLOUD_TASKS_QUEUE: str = "studybuddy-jobs"
 
+    # S3-compatible bucket (Railway Buckets, AWS S3, R2, MinIO) for `s3://` material paths.
+    S3_ENDPOINT: str = ""
+    S3_REGION: str = "auto"
+    S3_ACCESS_KEY_ID: str = ""
+    S3_SECRET_ACCESS_KEY: str = ""
+    S3_FORCE_PATH_STYLE: bool = False
+
     # GCP (optional, can use local storage)
     GCS_BUCKET: str = ""
     GCS_BUCKET_NAME: str = ""  # Alternative name used in some configs
