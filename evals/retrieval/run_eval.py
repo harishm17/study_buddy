@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import datetime
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -174,7 +175,7 @@ async def ingest_corpus(corpus: dict, rebuild: bool) -> None:
     from app.config import settings
     from app.db.connection import execute_in_transaction, execute_query, execute_update
     from app.services.document_processor.chunker import chunk_document
-    from app.services.embeddings.generator import generate_embeddings
+    from app.services.embeddings.generator import embedding_text, generate_embeddings
 
     await execute_update(
         """
@@ -202,7 +203,12 @@ async def ingest_corpus(corpus: dict, rebuild: bool) -> None:
     )
 
     chunker_hash = chunker_fingerprint()
-    embedder = f"{settings.EMBEDDING_PROVIDER}:{settings.EMBEDDING_MODEL}"
+    # What is embedded (heading path + text) is part of the fingerprint: a change to
+    # `embedding_text` makes stored vectors stale.
+    embedder = (
+        f"{settings.EMBEDDING_PROVIDER}:{settings.EMBEDDING_MODEL}:"
+        f"{sha256_text(inspect.getsource(embedding_text))[:12]}"
+    )
     for document in corpus["documents"]:
         doc_id = document["id"]
         material_id = f"eval-material-{doc_id}"
@@ -238,7 +244,9 @@ async def ingest_corpus(corpus: dict, rebuild: bool) -> None:
 
         started = time.perf_counter()
         chunks = await asyncio.to_thread(chunk_document, str(path), document["filename"])
-        embeddings = await generate_embeddings([chunk.chunk_text for chunk in chunks])
+        embeddings = await generate_embeddings(
+            [embedding_text(chunk.section_hierarchy, chunk.chunk_text) for chunk in chunks]
+        )
         if len(embeddings) != len(chunks):
             raise RuntimeError(f"{len(embeddings)} embeddings for {len(chunks)} chunks")
         records = [
