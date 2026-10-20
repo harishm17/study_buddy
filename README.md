@@ -82,7 +82,7 @@ Progress bars, attempt history, and per-attempt scores shown inline
 ### Prerequisites
 - **Node.js** 24+ and **npm**
 - **Python** 3.13+ and [uv](https://docs.astral.sh/uv/)
-- **PostgreSQL** 15+ with **pgvector** extension
+- **PostgreSQL** 15+ with the **pgvector** extension, version 0.5 or newer (the chunk index is HNSW)
 - **Anthropic API Key** ([Get one here](https://console.anthropic.com/settings/keys))
 - **OpenAI API Key** (optional, only for the Voice Coach)
 
@@ -124,6 +124,20 @@ Progress bars, attempt history, and per-attempt scores shown inline
    npx prisma migrate resolve --applied 0_init
    npx prisma migrate deploy
    ```
+
+   **Upgrading chunks that were embedded earlier.** Migration `20261022000000_retrieval_indexes`
+   makes `material_chunks.chunk_embedding` a `vector(384)` with an HNSW index. It sets the
+   embeddings of any chunk that is not 384 numbers long (the old 1536-number OpenAI vectors) to
+   NULL, which keeps the text but hides the chunk from search by meaning. Chunks embedded
+   before heading text was added to the embedded text also work, but rank slightly worse. Re-embed
+   everything once after deploying:
+   ```bash
+   cd ai-service
+   uv run python scripts/reembed_chunks.py
+   ```
+   `EMBEDDING_PROVIDER=openai` produces 1536-number vectors and does not fit this column; using
+   it would need a new migration that changes `vector(384)` and the index to `vector(1536)`, and
+   a re-embed. The AI service refuses to write vectors of any other size.
 
 4. **Open browser**
    - Frontend: http://localhost:3000
@@ -199,7 +213,8 @@ uv run uvicorn app.main:app --reload
 #### 1. Topic-Scoped Retrieval
 Instead of sending whole documents to the model:
 - **Chunking**: files are read as markdown (PDFs with pymupdf4llm, DOCX, PPTX, and legacy DOC through LibreOffice when installed) and split at headings and paragraphs into chunks of about 350 tokens with 50 tokens of overlap, each tagged with its heading path and pages, then embedded locally (`BAAI/bge-small-en-v1.5`, 384 dimensions, no API key) and stored in pgvector
-- **Topic mapping**: when topics are extracted, each topic is mapped to its top 24 chunks using a blend of keyword matching and vector similarity
+- **Topic mapping**: each topic is mapped to its top 24 chunks. Two searches run over the project's valid materials, vector similarity on `topic name, description and keywords` and Postgres full-text search on the name and keywords, and Reciprocal Rank Fusion merges their rankings. Chunks below a similarity floor are dropped, so a topic the files barely cover gets a short list instead of 24 loose matches. The heading path is embedded together with each chunk's text.
+- **Mapping at generation time**: a topic added by hand has no mappings, and a file uploaded after extraction adds chunks old mappings predate. Before a generator reads a topic's chunks, a topic with no mappings, or with mappings older than the newest chunk in its project, is mapped again with the same search and the result stored. If nothing clears the floor, generation fails with `NO_SOURCE_MATERIAL`
 - **Bounded prompts**: content generation sends at most 24 mapped chunks for the topic, untruncated, so prompt size is capped by the chunk limit rather than by document length
 
 #### 2. Content Variation
@@ -311,7 +326,7 @@ GOOGLE_OAUTH_CLIENT_SECRET=...
 LLM_PROVIDER=anthropic              # or mock: placeholder output, no API calls
 ANTHROPIC_MODEL=claude-opus-5-5     # notes, examples, quizzes, exams
 ANTHROPIC_FAST_MODEL=claude-haiku-5-5  # validation, topics, short-answer grading
-EMBEDDING_PROVIDER=local            # or openai (needs OPENAI_API_KEY)
+EMBEDDING_PROVIDER=local            # openai gives 1536-number vectors; the column is vector(384), see Upgrading
 
 # Voice Coach (AI service; without OPENAI_API_KEY the voice coach is off)
 OPENAI_API_KEY=sk-proj-...
@@ -376,7 +391,14 @@ uv run pytest --cov=app tests/  # With coverage
 - Workflow file: `.github/workflows/ci.yml`
 
 ### Evaluation
-`evals/` defines the evaluation plan for generated content: faithfulness to the source chunks, context precision of retrieval, and quiz-answer correctness, with a sample dataset. See `evals/README.md`.
+`evals/` holds a retrieval eval: for 38 topics over three OpenStax textbook chapters (about 300 chunks), how many of the right chunks land in the 24 stored for a topic, and how high they rank. It uses the app's real chunker, embedder and `hybrid_search_chunks`, needs no API key and runs in under a minute. Current results (macro average over topics, K = 24):
+
+| | recall@24 | MRR | nDCG@24 | hit@5 |
+|---|---|---|---|---|
+| Before (keyword `ILIKE` + vector, flat keyword score) | 0.935 | 0.830 | 0.777 | 0.895 |
+| Now (vector + full-text, Reciprocal Rank Fusion) | 0.989 | 0.961 | 0.932 | 1.000 |
+
+There is no generation-quality eval (faithfulness of notes and quizzes) yet. See `evals/README.md` for how to run the retrieval eval, its limits, and the full results in `evals/results/`.
 
 ---
 

@@ -18,14 +18,25 @@ logger = logging.getLogger(__name__)
 MOCK_NOTES = """# Study notes (mock)
 
 ## Overview
-LLM_PROVIDER is set to `mock`, so these notes were not written by a model.
+LLM_PROVIDER is set to `mock`, so these notes were not written by a model. They stand in
+for real notes so that the rest of the app can be exercised without an API key or any cost.
 
 ## Key Concepts
-- Upload, chunking and retrieval ran for real.
-- Generation returned this fixed text.
+- Upload, validation, chunking, embedding and retrieval ran for real on your files.
+- Topic extraction, quizzes, exams and grading return fixed placeholder output.
+- Every job still goes through the real job runner, so retries, leases and usage tracking work.
+
+## How It Works
+The mock provider returns a fixed example for each output schema and this text for notes.
+It records zero token usage, so the daily budget is never reached.
+
+## Common Pitfalls
+- Placeholder questions are the same for every topic.
+- Short answers are always graded zero.
 
 ## Exam-Ready Recap
 - Set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` to generate real content.
+- Run `scripts/reembed_chunks.py` after changing the embedding model.
 """
 
 

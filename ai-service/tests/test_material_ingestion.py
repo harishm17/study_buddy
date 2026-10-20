@@ -291,6 +291,31 @@ class TestChunkJob:
         self.fake_embeddings(monkeypatch)
         return await Setup.create(db, "chunk_material", gcs_path, "doc.pdf", status="valid")
 
+    async def test_headings_are_embedded_with_the_text_but_not_stored_in_it(self, setup, db, monkeypatch):
+        embedded: list[str] = []
+
+        async def embed(texts):
+            embedded.extend(texts)
+            return [[0.5] * 384 for _ in texts]
+
+        monkeypatch.setattr(jobs, "generate_embeddings", embed)
+
+        await jobs.chunk_material_job(setup.payload)
+
+        rows = await db.fetch(
+            "SELECT chunk_text, section_hierarchy FROM material_chunks WHERE material_id = $1 "
+            "ORDER BY chunk_index",
+            setup.material_id,
+        )
+        headed = [r for r in rows if r["section_hierarchy"]]
+        assert headed, "the fixture PDF has headings"
+        assert len(embedded) == len(rows)
+        for row, text in zip(rows, embedded):
+            assert text.endswith(row["chunk_text"])
+            if row["section_hierarchy"]:
+                assert text.startswith(row["section_hierarchy"] + "\n\n")
+                assert not row["chunk_text"].startswith(row["section_hierarchy"] + "\n\n")
+
     async def test_chunks_are_stored_in_order_with_their_vectors(self, setup, db):
         result = await jobs.chunk_material_job(setup.payload)
 
