@@ -42,12 +42,14 @@ jobs:
       OPENAI_API_KEY: test-key
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10
         with:
-          python-version: '3.11'
-      - run: pip install -r requirements.txt
-      - run: python -m compileall app
-      - run: pytest -q
+          version: '0.12.23'
+          enable-cache: true
+          cache-dependency-glob: ai-service/uv.lock
+      - run: uv sync --locked --python 3.14
+      - run: uv run python -m compileall -q app
+      - run: uv run pytest -q
 
   frontend-image:
     runs-on: ubuntu-latest

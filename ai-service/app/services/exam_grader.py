@@ -7,7 +7,7 @@ import logging
 import math
 import re
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import UTC, datetime
 
 from app.services.llm.factory import LLMFactory
 from app.services.llm.base import LLMMessage
@@ -125,7 +125,7 @@ class ExamGrader:
             'total_points': total_points,
             'earned_points': earned_points,
             'overall_score': round(overall_score, 2),
-            'graded_at': datetime.utcnow().isoformat(),
+            'graded_at': datetime.now(UTC).isoformat(),
         }
 
     def _grade_multiple_choice(self, question: Dict, student_answer: str) -> Dict:

@@ -4,7 +4,7 @@ Creates section quizzes with various question types.
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from app.db.connection import execute_query
@@ -83,7 +83,7 @@ class QuizGenerator:
             'total_questions': len(questions),
             'difficulty_level': difficulty_level,
             'question_types': [qt.value for qt in question_types],
-            'generated_at': datetime.utcnow().isoformat()
+            'generated_at': datetime.now(UTC).isoformat()
         }
 
     async def _fetch_topic_chunks(self, topic_id: str) -> List[Dict]:

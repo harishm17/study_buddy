@@ -1,25 +1,21 @@
-# Standard Multi-stage build for Python AI service
+# Multi-stage build for the Python AI service
 
-# Stage 1: Builder
-FROM python:3.11-slim AS builder
+# Stage 1: install the locked dependencies with uv
+FROM python:3.14-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 
 WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_DOWNLOADS=never
 
-# Install system dependencies (Standard version, no --mount)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first
-COPY requirements.txt .
-
-# Install Python dependencies into a virtualenv the runtime user can read
-RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
 # Stage 2: Runtime
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 

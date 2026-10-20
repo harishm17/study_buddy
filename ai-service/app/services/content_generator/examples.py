@@ -4,7 +4,7 @@ Creates solved and interactive examples from material chunks.
 """
 
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 from app.db.connection import execute_query
@@ -70,7 +70,7 @@ class ExamplesGenerator:
             'examples': examples,
             'example_type': example_type,
             'difficulty_level': difficulty_level,
-            'generated_at': datetime.utcnow().isoformat()
+            'generated_at': datetime.now(UTC).isoformat()
         }
 
     async def _fetch_topic_chunks(self, topic_id: str) -> List[Dict]:
