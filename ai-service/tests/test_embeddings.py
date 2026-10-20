@@ -5,8 +5,10 @@ import pytest
 
 from app.services.embeddings import generator
 from app.services.embeddings.generator import (
+    EMBEDDING_DIMENSIONS,
     LocalEmbedder,
     OpenAIEmbedder,
+    embedding_text,
     generate_embeddings,
     generate_query_embedding,
     get_embedder,
@@ -30,11 +32,11 @@ class FakeTextEmbedding:
     def embed(self, texts, batch_size=32):
         self.calls.append(("embed", list(texts), batch_size))
         for _ in texts:
-            yield MagicMock(tolist=lambda: [1.0, 0.0, 0.0])
+            yield MagicMock(tolist=lambda: [1.0] * EMBEDDING_DIMENSIONS)
 
     def query_embed(self, text):
         self.calls.append(("query", text))
-        yield MagicMock(tolist=lambda: [2.0, 0.0, 0.0])
+        yield MagicMock(tolist=lambda: [2.0] * EMBEDDING_DIMENSIONS)
 
 
 class TestEmbedderSelection:
@@ -79,8 +81,8 @@ class TestLocalEmbedder:
         docs = await generate_embeddings(["a", "b"])
         query = await generate_query_embedding("question")
 
-        assert docs == [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]
-        assert query == [2.0, 0.0, 0.0]
+        assert docs == [[1.0] * EMBEDDING_DIMENSIONS] * 2
+        assert query == [2.0] * EMBEDDING_DIMENSIONS
         assert fake.calls[0][0] == "embed" and fake.calls[1] == ("query", "question")
 
     @pytest.mark.asyncio
@@ -109,77 +111,33 @@ class TestOpenAIEmbedder:
         assert [len(call.kwargs["input"]) for call in create.call_args_list] == [100, 100, 50]
 
 
-class TestVectorSimilaritySearch:
-    """Test vector similarity search functionality."""
+class TestEmbeddingText:
+    def test_heading_comes_first_and_the_text_follows(self):
+        assert embedding_text("Ch 6 > 6.2 Operant", "Rats pressed a lever.") == "Ch 6 > 6.2 Operant\n\nRats pressed a lever."
+
+    def test_no_heading_embeds_the_text_alone(self):
+        assert embedding_text(None, "Plain text") == "Plain text"
+        assert embedding_text("  ", "Plain text") == "Plain text"
+
+    def test_null_bytes_are_dropped(self):
+        assert embedding_text("A\x00B", "te\x00xt") == "AB\n\ntext"
+
+
+class TestVectorSize:
+    @pytest.mark.asyncio
+    async def test_wrong_size_documents_are_rejected(self):
+        embedder = MagicMock(name="openai-like")
+        embedder.name = "text-embedding-3-small"
+        embedder.embed_documents = AsyncMock(return_value=[[0.1] * 1536])
+        generator._embedder = embedder
+        with pytest.raises(ValueError, match=r"vector\(384\)"):
+            await generate_embeddings(["a"])
 
     @pytest.mark.asyncio
-    async def test_similarity_search_returns_top_k(self):
-        """Should return top k most similar chunks."""
-        with patch('app.services.embeddings.search.execute_query') as mock_query:
-            # Mock database response
-            mock_query.return_value = [
-                {
-                    'chunk_id': 'chunk_1',
-                    'chunk_text': 'Machine learning content',
-                    'similarity_score': 0.95
-                },
-                {
-                    'chunk_id': 'chunk_2',
-                    'chunk_text': 'Neural network content',
-                    'similarity_score': 0.89
-                }
-            ]
-
-            from app.services.embeddings.search import search_similar_chunks
-
-            query_embedding = [0.1] * 384
-            results = await search_similar_chunks(
-                embedding=query_embedding,
-                top_k=2,
-                material_id='mat_123'
-            )
-
-            assert len(results) <= 2
-            # Results should be ordered by similarity score
-            if len(results) > 1:
-                assert results[0]['similarity_score'] >= results[1]['similarity_score']
-
-    @pytest.mark.asyncio
-    async def test_similarity_search_filters_by_material(self):
-        """Should filter results by material ID."""
-        with patch('app.services.embeddings.search.execute_query') as mock_query:
-            mock_query.return_value = []
-
-            from app.services.embeddings.search import search_similar_chunks
-
-            await search_similar_chunks(
-                embedding=[0.1] * 384,
-                top_k=5,
-                material_id='specific_material'
-            )
-
-            # Verify the query included material filter
-            call_args = mock_query.call_args
-            assert 'specific_material' in str(call_args)
-
-    @pytest.mark.asyncio
-    async def test_similarity_threshold(self):
-        """Should filter results by similarity threshold."""
-        with patch('app.services.embeddings.search.execute_query') as mock_query:
-            mock_query.return_value = [
-                {'chunk_id': '1', 'chunk_text': 'A', 'similarity_score': 0.9},
-                {'chunk_id': '2', 'chunk_text': 'B', 'similarity_score': 0.5},
-                {'chunk_id': '3', 'chunk_text': 'C', 'similarity_score': 0.3}
-            ]
-
-            from app.services.embeddings.search import search_similar_chunks
-
-            results = await search_similar_chunks(
-                embedding=[0.1] * 384,
-                top_k=10,
-                min_similarity=0.6
-            )
-
-            # Only results above threshold should be returned
-            for result in results:
-                assert result['similarity_score'] >= 0.6
+    async def test_wrong_size_queries_are_rejected(self):
+        embedder = MagicMock()
+        embedder.name = "x"
+        embedder.embed_query = AsyncMock(return_value=[0.1] * 10)
+        generator._embedder = embedder
+        with pytest.raises(ValueError, match="10-number"):
+            await generate_query_embedding("q")

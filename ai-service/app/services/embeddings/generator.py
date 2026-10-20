@@ -6,6 +6,12 @@ available for anyone who prefers text-embedding-3-small.
 
 Chunks and queries are embedded differently: bge models expect a retrieval instruction on
 the query side, which `embed_query` adds.
+
+Vector size is fixed at EMBEDDING_DIMENSIONS: `material_chunks.chunk_embedding` is
+`vector(384)` with an HNSW index (migration 20261022000000_retrieval_indexes). The OpenAI
+provider returns 1536 numbers, which do not fit; switching to it needs a migration that
+changes the column and index size, then scripts/reembed_chunks.py. Embedders that return
+another size fail loudly instead of writing vectors the database would reject.
 """
 import asyncio
 import logging
@@ -16,6 +22,9 @@ from typing import List, Optional
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Size of every stored and query vector. Must match `vector(N)` in the database.
+EMBEDDING_DIMENSIONS = 384
 
 # The local model's runtime is CPU-bound; batches are small enough to keep latency even.
 LOCAL_BATCH_SIZE = 32
@@ -112,15 +121,43 @@ def reset_embedder() -> None:
     _embedder = None
 
 
+def embedding_text(section_hierarchy: Optional[str], chunk_text: str) -> str:
+    """The text that is embedded for a chunk: its heading path, then its text.
+
+    The heading carries context the body often lacks ("Chapter 6 > 6.2 Operant conditioning"
+    over a paragraph that only says "the animal learned..."). The stored chunk_text is not
+    changed. The chunk job and scripts/reembed_chunks.py both use this, so vectors stay
+    comparable.
+    """
+    text = (chunk_text or "").replace("\x00", "")
+    heading = (section_hierarchy or "").replace("\x00", "").strip()
+    return f"{heading}\n\n{text}" if heading else text
+
+
+def _check_dimensions(vectors: List[List[float]], embedder: Embedder) -> None:
+    for vector in vectors:
+        if len(vector) != EMBEDDING_DIMENSIONS:
+            raise ValueError(
+                f"{embedder.name} returned {len(vector)}-number vectors but the database column "
+                f"is vector({EMBEDDING_DIMENSIONS}). See the note at the top of "
+                "app/services/embeddings/generator.py before changing the embedding model."
+            )
+
+
 async def generate_embeddings(texts: List[str]) -> List[List[float]]:
-    """Embeddings for chunk texts, in input order."""
+    """Embeddings for chunk texts, in input order. Build the texts with `embedding_text`."""
     if not texts:
         return []
     embedder = get_embedder()
     logger.info("Embedding %s chunks with %s", len(texts), embedder.name)
-    return await embedder.embed_documents(texts)
+    vectors = await embedder.embed_documents(texts)
+    _check_dimensions(vectors, embedder)
+    return vectors
 
 
 async def generate_query_embedding(text: str) -> List[float]:
     """Embedding for a search query."""
-    return await get_embedder().embed_query(text)
+    embedder = get_embedder()
+    vector = await embedder.embed_query(text)
+    _check_dimensions([vector], embedder)
+    return vector

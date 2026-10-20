@@ -13,7 +13,7 @@ from app.models.jobs import JobPayload, MaterialValidationInput, ContentGenerati
 from app.services.document_processor.validator import validate_material
 from app.services.document_processor.chunker import chunk_document, NoContentError
 from app.services.document_processor.storage import local_copy
-from app.services.embeddings.generator import generate_embeddings
+from app.services.embeddings.generator import embedding_text, generate_embeddings
 from app.services.topic_extractor import extract_topics_from_materials
 from app.services.embeddings.search import hybrid_search_chunks
 from app.services.content_generator import NotesGenerator, ExamplesGenerator, QuizGenerator
@@ -248,7 +248,10 @@ async def chunk_material_job(payload: JobPayload, job: JobContext) -> JobOutcome
             await job.set_stage("embedding", 40)
             # An embedding failure fails the job (and it is retried): chunks stored without
             # vectors would be invisible to semantic search while the job claimed success.
-            embeddings = await generate_embeddings([chunk.chunk_text for chunk in chunks])
+            # The heading path is embedded with the text; the stored chunk_text is unchanged.
+            embeddings = await generate_embeddings(
+                [embedding_text(chunk.section_hierarchy, chunk.chunk_text) for chunk in chunks]
+            )
             if len(embeddings) != len(chunks):
                 raise RuntimeError(
                     f"Embedding returned {len(embeddings)} vectors for {len(chunks)} chunks"
