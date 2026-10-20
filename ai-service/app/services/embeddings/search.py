@@ -1,211 +1,172 @@
-"""Vector similarity search using pgvector."""
+"""Finding the chunks of a project that explain a topic.
+
+Two searches over the project's valid materials, fused by rank:
+
+1. Vector leg: cosine similarity between the topic's query embedding and the chunk
+   embeddings (HNSW index on `material_chunks.chunk_embedding`).
+2. Full-text leg: Postgres full-text search over `material_chunks.search_vector` (heading
+   path weighted above body text) for the topic name and keywords, ordered by `ts_rank_cd`.
+
+Reciprocal Rank Fusion (RRF) combines them: a chunk scores 1 / (RRF_K + rank) in each leg it
+appears in, and the scores add. Only ranks are used, so cosine similarity and `ts_rank_cd`
+never have to be put on one scale. A chunk whose vector similarity is below
+MIN_SIMILARITY is dropped from both legs, so a topic the materials barely cover returns a
+short list (or nothing) instead of 24 loosely related chunks.
+"""
 import logging
-from typing import List, Dict, Optional
-from app.db.connection import execute_query
+import re
+from typing import Dict, Iterable, List, Optional, Sequence
+
+from app.db.connection import execute_in_transaction, execute_query
 from app.services.embeddings.generator import generate_query_embedding
 
 logger = logging.getLogger(__name__)
 
+# Reciprocal Rank Fusion constant. 60 is the value from the original RRF paper; a larger
+# value flattens the difference between rank 1 and rank 10.
+RRF_K = 60
 
-async def hybrid_search_chunks(
-    project_id: str,
-    topic_name: str,
-    topic_description: str,
-    keywords: List[str],
-    limit: int = 20
+# Candidates taken from each leg before fusion.
+CANDIDATE_POOL = 50
+
+# Cosine similarity below which a chunk is not offered for a topic. On the eval corpus
+# (bge-small, heading-prefixed vectors) chunks that explain a topic score 0.67 and up for a
+# full topic query and 0.54 and up for a bare name; half of the other chunks score under 0.55.
+# The model compresses scores, so the floor removes clearly unrelated chunks, not near misses.
+MIN_SIMILARITY = 0.55
+
+# Keywords beyond this many are ignored by the full-text leg.
+MAX_FULLTEXT_PHRASES = 12
+
+# Relevance sources, as stored in topic_chunk_mappings.relevance_source.
+SOURCE_FULLTEXT = "keyword_match"
+SOURCE_VECTOR = "semantic_search"
+SOURCE_BOTH = "keyword_and_semantic"
+
+_CHUNK_COLUMNS = """
+    mc.id,
+    mc.chunk_text,
+    mc.section_hierarchy,
+    mc.page_start,
+    mc.page_end,
+    mc.chunk_index,
+    m.id AS material_id,
+    m.filename
+"""
+
+
+def topic_query_text(topic_name: str, topic_description: str, keywords: Sequence[str]) -> str:
+    """The text embedded as the topic's query: name, description and keywords."""
+    text = f"{topic_name}: {topic_description or ''}".strip()
+    keyword_list = [kw.strip() for kw in keywords or [] if kw and kw.strip()]
+    if keyword_list:
+        text += f" Keywords: {', '.join(keyword_list)}"
+    return text
+
+
+def fulltext_phrases(topic_name: str, keywords: Iterable[str]) -> List[str]:
+    """The phrases the full-text leg looks for: the topic name and each keyword.
+
+    A chunk matches when it contains any one phrase; the words inside one phrase must all
+    be present (after English stemming and stop-word removal).
+    """
+    phrases: List[str] = []
+    seen = set()
+    for raw in [topic_name, *(keywords or [])]:
+        phrase = re.sub(r"\s+", " ", (raw or "")).strip()
+        key = phrase.lower()
+        if phrase and key not in seen:
+            seen.add(key)
+            phrases.append(phrase)
+    return phrases[:MAX_FULLTEXT_PHRASES]
+
+
+def fulltext_query_sql(phrase_count: int, first_param: int) -> str:
+    """SQL for a tsquery that ORs one `websearch_to_tsquery` per phrase.
+
+    Phrases are bound as parameters `$first_param`, `$first_param + 1`, ...; they never
+    become part of the SQL text. `websearch_to_tsquery` does not raise on odd input
+    (quotes, operators, symbols), unlike `to_tsquery`.
+    """
+    if phrase_count < 1:
+        raise ValueError("at least one phrase is needed")
+    return " || ".join(
+        f"websearch_to_tsquery('english', ${first_param + index})" for index in range(phrase_count)
+    )
+
+
+def _vector_literal(values: Sequence[float]) -> str:
+    return "[" + ",".join(repr(float(v)) for v in values) + "]"
+
+
+def _text_key(chunk: Dict) -> str:
+    return re.sub(r"\s+", " ", str(chunk.get("chunk_text") or "")).strip().lower()
+
+
+def fuse_rankings(
+    vector_rows: Sequence[Dict],
+    fulltext_rows: Sequence[Dict],
+    limit: int,
+    *,
+    rrf_k: int,
+    min_similarity: Optional[float],
 ) -> List[Dict]:
-    """
-    Hybrid search for relevant chunks using keyword + semantic search.
+    """Fuse two ranked lists with Reciprocal Rank Fusion. Pure; no database.
 
-    Strategy:
-    1. Keyword search: Find chunks containing topic keywords
-    2. Semantic search: Find chunks similar to topic embedding
-    3. Combine and rank results
-    4. Return top N chunks with relevance scores
+    Each list is best first and holds chunk dicts with an `id` and a `similarity` (None for a
+    chunk with no embedding). Chunks with a similarity below `min_similarity` are dropped
+    before ranks are assigned, so junk does not use up rank positions. A chunk without an
+    embedding can only come from the full-text leg and is kept.
 
-    Args:
-        project_id: Project ID to search within
-        topic_name: Topic name
-        topic_description: Topic description
-        keywords: List of keywords
-        limit: Maximum number of chunks to return
-
-    Returns:
-        List of chunk records with relevance scores
-    """
-    logger.info(f"Hybrid search for topic '{topic_name}' in project {project_id}")
-
-    try:
-        # 1. Keyword search
-        keyword_chunks = await keyword_search(project_id, keywords, limit * 2)
-        logger.debug(f"Found {len(keyword_chunks)} chunks via keyword search")
-
-        # 2. Semantic search (best-effort)
-        topic_text = f"{topic_name}: {topic_description}"
-        semantic_chunks: List[Dict] = []
-        try:
-            semantic_chunks = await semantic_search(project_id, topic_text, limit * 2)
-            logger.debug(f"Found {len(semantic_chunks)} chunks via semantic search")
-        except Exception as semantic_error:
-            logger.warning(
-                "Semantic search unavailable for topic '%s' in project %s: %s. "
-                "Falling back to keyword-only retrieval.",
-                topic_name,
-                project_id,
-                semantic_error,
-            )
-
-        # 3. Combine and deduplicate
-        chunks_by_id = {}
-
-        # Add keyword matches (score: 0.8 base)
-        for chunk in keyword_chunks:
-            chunk_id = str(chunk['id'])
-            chunks_by_id[chunk_id] = {
-                **chunk,
-                'relevance_score': 0.8,
-                'relevance_source': 'keyword_match'
-            }
-
-        # Add/merge semantic matches
-        for chunk in semantic_chunks:
-            chunk_id = str(chunk['id'])
-            if chunk_id in chunks_by_id:
-                # Boost score if found by both methods
-                chunks_by_id[chunk_id]['relevance_score'] = max(
-                    chunks_by_id[chunk_id]['relevance_score'],
-                    chunk['similarity']
-                ) * 1.1  # 10% boost for dual match
-                chunks_by_id[chunk_id]['relevance_source'] = 'keyword_and_semantic'
-            else:
-                chunks_by_id[chunk_id] = {
-                    **chunk,
-                    'relevance_score': chunk['similarity'],
-                    'relevance_source': 'semantic_search'
-                }
-
-        # 4. Sort by relevance and limit
-        ranked_chunks = sorted(
-            chunks_by_id.values(),
-            key=lambda x: x['relevance_score'],
-            reverse=True
-        )[:limit]
-
-        logger.info(
-            f"Hybrid search returned {len(ranked_chunks)} chunks "
-            f"for topic '{topic_name}'"
-        )
-
-        return ranked_chunks
-
-    except Exception as e:
-        logger.error(f"Error in hybrid search: {e}")
-        raise
-
-
-async def keyword_search(
-    project_id: str,
-    keywords: List[str],
-    limit: int
-) -> List[Dict]:
-    """
-    Search for chunks containing keywords.
-
-    Args:
-        project_id: Project ID
-        keywords: List of keywords
-        limit: Maximum results
-
-    Returns:
-        List of matching chunks
-    """
-    if not keywords:
-        return []
-
-    # Escape special SQL LIKE characters and sanitize keywords
-    # Replace % and _ with escaped versions, and remove dangerous characters
-    sanitized_keywords = []
-    for kw in keywords:
-        # Escape SQL LIKE special characters
-        escaped = kw.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-        # Remove any remaining SQL injection attempts
-        escaped = ''.join(c for c in escaped if c.isprintable())
-        if escaped:  # Only add non-empty keywords
-            sanitized_keywords.append(escaped)
-
-    if not sanitized_keywords:
-        return []
-
-    # Build ILIKE conditions with parameterized queries
-    # Use positional parameters to prevent SQL injection
-    conditions = []
-    params = [project_id]
-    param_idx = 2  # Start after $1 (project_id)
-    
-    for kw in sanitized_keywords:
-        conditions.append(f"mc.chunk_text ILIKE ${param_idx}")
-        params.append(f"%{kw}%")
-        param_idx += 1
-
-    keyword_conditions = " OR ".join(conditions)
-
-    query = f"""
-        SELECT
-            mc.id,
-            mc.chunk_text,
-            mc.section_hierarchy,
-            mc.page_start,
-            mc.page_end,
-            mc.chunk_index,
-            m.id as material_id,
-            m.filename
-        FROM material_chunks mc
-        JOIN materials m ON mc.material_id = m.id
-        WHERE m.project_id = $1
-          AND m.validation_status = 'valid'
-          AND ({keyword_conditions})
-        ORDER BY mc.chunk_index
-        LIMIT ${param_idx}
+    Returns up to `limit` chunks, best first, each with `relevance_score` (the RRF score) and
+    `relevance_source`. Chunks with identical text (the same file uploaded twice) appear once.
     """
 
-    params.append(limit)
-    chunks = await execute_query(query, *params)
-    return [dict(chunk) for chunk in chunks]
+    def eligible(rows: Sequence[Dict]) -> List[Dict]:
+        return [
+            row
+            for row in rows
+            if min_similarity is None
+            or row.get("similarity") is None
+            or row["similarity"] >= min_similarity
+        ]
+
+    fused: Dict[str, Dict] = {}
+    for rows, source in ((eligible(vector_rows), SOURCE_VECTOR), (eligible(fulltext_rows), SOURCE_FULLTEXT)):
+        for rank, row in enumerate(rows, start=1):
+            chunk_id = str(row["id"])
+            entry = fused.get(chunk_id)
+            if entry is None:
+                entry = fused[chunk_id] = {**row, "relevance_score": 0.0, "relevance_source": source}
+            elif entry["relevance_source"] != source:
+                entry["relevance_source"] = SOURCE_BOTH
+            entry["relevance_score"] += 1.0 / (rrf_k + rank)
+            if entry.get("similarity") is None and row.get("similarity") is not None:
+                entry["similarity"] = row["similarity"]
+
+    ranked = sorted(
+        fused.values(),
+        key=lambda c: (-c["relevance_score"], -(c["similarity"] if c.get("similarity") is not None else -1.0), str(c["id"])),
+    )
+
+    result: List[Dict] = []
+    seen_text = set()
+    for chunk in ranked:
+        key = _text_key(chunk)
+        if key and key in seen_text:
+            continue
+        seen_text.add(key)
+        result.append(chunk)
+        if len(result) == limit:
+            break
+    return result
 
 
-async def semantic_search(
-    project_id: str,
-    query_text: str,
-    limit: int
-) -> List[Dict]:
-    """
-    Semantic search using vector similarity (pgvector).
-
-    Args:
-        project_id: Project ID
-        query_text: Text to search for
-        limit: Maximum results
-
-    Returns:
-        List of chunks with similarity scores
-    """
-    # Generate embedding for query
-    query_embedding = await generate_query_embedding(query_text)
-
-    # Convert to pgvector format (array string)
-    embedding_str = f"[{','.join(map(str, query_embedding))}]"
-
-    query = """
-        SELECT
-            mc.id,
-            mc.chunk_text,
-            mc.section_hierarchy,
-            mc.page_start,
-            mc.page_end,
-            mc.chunk_index,
-            m.id as material_id,
-            m.filename,
-            1 - (mc.chunk_embedding <=> $1::vector) as similarity
+async def _vector_leg(project_id: str, query_embedding: Sequence[float], pool_size: int) -> List[Dict]:
+    """Nearest chunks of the project's valid materials by cosine similarity."""
+    sql = f"""
+        SELECT {_CHUNK_COLUMNS},
+               1 - (mc.chunk_embedding <=> $1::vector) AS similarity
         FROM material_chunks mc
         JOIN materials m ON mc.material_id = m.id
         WHERE m.project_id = $2
@@ -215,55 +176,109 @@ async def semantic_search(
         LIMIT $3
     """
 
-    chunks = await execute_query(query, embedding_str, project_id, limit)
-    return [dict(chunk) for chunk in chunks]
+    async def run(conn):
+        # An HNSW scan returns at most hnsw.ef_search (default 40) rows, and the project
+        # filter is applied to what it returns, so the setting must cover the pool.
+        await conn.execute("SELECT set_config('hnsw.ef_search', $1, true)", str(max(pool_size, 40)))
+        # pgvector 0.8+ keeps scanning the index until the filter has produced enough rows;
+        # older versions do not have the setting.
+        try:
+            async with conn.transaction():
+                await conn.execute("SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)")
+        except Exception:
+            pass
+        return await conn.fetch(sql, _vector_literal(query_embedding), project_id, pool_size)
+
+    return [dict(row) for row in await execute_in_transaction(run)]
 
 
-async def search_similar_chunks(
-    embedding: List[float],
-    top_k: int = 5,
-    material_id: Optional[str] = None,
-    min_similarity: float = 0.0,
+async def _fulltext_leg(
+    project_id: str,
+    phrases: Sequence[str],
+    query_embedding: Optional[Sequence[float]],
+    pool_size: int,
 ) -> List[Dict]:
-    """
-    Backward-compatible vector search helper used by tests and legacy callers.
-    """
-    if not embedding:
+    """Chunks matching any phrase, best `ts_rank_cd` first. Carries the vector similarity too."""
+    if not phrases:
         return []
-
-    embedding_str = f"[{','.join(map(str, embedding))}]"
-
-    if material_id:
-        query = """
-            SELECT
-                mc.id AS chunk_id,
-                mc.chunk_text,
-                1 - (mc.chunk_embedding <=> $1::vector) AS similarity_score
-            FROM material_chunks mc
-            WHERE mc.material_id = $2
-            ORDER BY mc.chunk_embedding <=> $1::vector
-            LIMIT $3
-        """
-        rows = await execute_query(query, embedding_str, material_id, top_k)
+    # $1 is the project; $2 is the query vector when there is one; the phrases follow.
+    params: List = [project_id]
+    if query_embedding is not None:
+        params.append(_vector_literal(query_embedding))
+        similarity = (
+            "CASE WHEN mc.chunk_embedding IS NULL THEN NULL "
+            "ELSE 1 - (mc.chunk_embedding <=> $2::vector) END"
+        )
     else:
-        query = """
-            SELECT
-                mc.id AS chunk_id,
-                mc.chunk_text,
-                1 - (mc.chunk_embedding <=> $1::vector) AS similarity_score
-            FROM material_chunks mc
-            ORDER BY mc.chunk_embedding <=> $1::vector
-            LIMIT $2
-        """
-        rows = await execute_query(query, embedding_str, top_k)
+        similarity = "NULL::float8"
+    tsquery = fulltext_query_sql(len(phrases), first_param=len(params) + 1)
+    params.extend(phrases)
+    sql = f"""
+        WITH q AS (SELECT {tsquery} AS query)
+        SELECT {_CHUNK_COLUMNS},
+               {similarity} AS similarity,
+               ts_rank_cd(mc.search_vector, q.query) AS text_rank
+        FROM material_chunks mc
+        JOIN materials m ON mc.material_id = m.id
+        CROSS JOIN q
+        WHERE m.project_id = $1
+          AND m.validation_status = 'valid'
+          AND mc.search_vector @@ q.query
+        ORDER BY text_rank DESC, mc.id
+        LIMIT {int(pool_size)}
+    """
+    rows = await execute_query(sql, *params)
+    return [dict(row) for row in rows]
 
-    normalized = [dict(row) for row in rows]
-    filtered = []
-    for row in normalized:
-        similarity = row.get("similarity_score", row.get("similarity", 0))
-        if isinstance(similarity, (int, float)) and similarity >= min_similarity:
-            row["similarity_score"] = float(similarity)
-            filtered.append(row)
 
-    filtered.sort(key=lambda entry: entry.get("similarity_score", 0), reverse=True)
-    return filtered[:top_k]
+async def hybrid_search_chunks(
+    project_id: str,
+    topic_name: str,
+    topic_description: str,
+    keywords: List[str],
+    limit: int = 20,
+) -> List[Dict]:
+    """The chunks of a project that best explain a topic, best first.
+
+    Runs the vector and full-text legs over the project's valid materials, fuses them with
+    RRF and applies the similarity floor (see the module docstring). Returns at most `limit`
+    chunk dicts (id, chunk_text, section_hierarchy, page_start, page_end, chunk_index,
+    material_id, filename, similarity, relevance_score, relevance_source). The list is empty
+    when nothing in the project is related to the topic.
+
+    If the query cannot be embedded, falls back to the full-text leg alone.
+    """
+    logger.info("Searching project %s for topic '%s'", project_id, topic_name)
+
+    query_embedding: Optional[List[float]] = None
+    try:
+        query_embedding = await generate_query_embedding(
+            topic_query_text(topic_name, topic_description, keywords)
+        )
+    except Exception as exc:
+        logger.warning(
+            "Could not embed topic '%s' (%s); using full-text search only", topic_name, exc
+        )
+
+    vector_rows: List[Dict] = []
+    if query_embedding is not None:
+        vector_rows = await _vector_leg(project_id, query_embedding, CANDIDATE_POOL)
+    fulltext_rows = await _fulltext_leg(
+        project_id, fulltext_phrases(topic_name, keywords), query_embedding, CANDIDATE_POOL
+    )
+
+    chunks = fuse_rankings(
+        vector_rows,
+        fulltext_rows,
+        limit,
+        rrf_k=RRF_K,
+        min_similarity=MIN_SIMILARITY if query_embedding is not None else None,
+    )
+    logger.info(
+        "Topic '%s': %s vector and %s full-text candidates, %s chunks kept",
+        topic_name,
+        len(vector_rows),
+        len(fulltext_rows),
+        len(chunks),
+    )
+    return chunks
