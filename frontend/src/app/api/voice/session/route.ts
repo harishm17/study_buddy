@@ -27,6 +27,8 @@ const patchSchema = z.object({
   status: z.enum(['active', 'ended', 'aborted']).optional(),
   lastDetectedLanguage: z.string().regex(/^[a-z]{2,8}$/i).nullable().optional(),
   incrementInterruptCount: z.number().int().min(0).max(20).optional(),
+  // Sent every 30 seconds by an open call; keeps the session counted as live.
+  heartbeat: z.boolean().optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -130,11 +132,17 @@ export async function PATCH(request: NextRequest) {
       select: {
         id: true,
         interruptCount: true,
+        endedAt: true,
       },
     })
 
     if (!session) {
       return apiNotFound('Session not found')
+    }
+
+    // An ended session stays ended: a late status update must not reopen it.
+    if (session.endedAt && payload.status === 'active') {
+      return NextResponse.json({ session: { id: session.id, endedAt: session.endedAt } })
     }
 
     const nextInterruptCount = payload.incrementInterruptCount
@@ -149,8 +157,9 @@ export async function PATCH(request: NextRequest) {
           ? { lastDetectedLanguage: payload.lastDetectedLanguage }
           : {}),
         ...(payload.status === 'ended' || payload.status === 'aborted'
-          ? { endedAt: new Date() }
+          ? { endedAt: session.endedAt ?? new Date() }
           : {}),
+        ...(payload.heartbeat ? { lastSeenAt: new Date() } : {}),
         ...(payload.incrementInterruptCount
           ? { interruptCount: nextInterruptCount }
           : {}),
