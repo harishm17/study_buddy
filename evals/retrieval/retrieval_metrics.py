@@ -80,6 +80,12 @@ def topic_metrics(ranked: Sequence[str], relevant: Set[str], k: int) -> Dict[str
 
 
 METRIC_NAMES = ["recall@k", "precision@k", "mrr", "ndcg@k", "hit@5"]
+CUTOFF_METRIC_NAMES = ["recall", "ndcg"]
+
+
+def cutoff_metrics(ranked: Sequence[str], relevant: Set[str], k: int) -> Dict[str, float]:
+    """Recall and nDCG at a cutoff other than the app's K."""
+    return {"recall": recall_at_k(ranked, relevant, k), "ndcg": ndcg_at_k(ranked, relevant, k)}
 
 
 def mean_metrics(rows: Iterable[Dict[str, float]]) -> Dict[str, float]:

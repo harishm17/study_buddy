@@ -40,8 +40,21 @@
       "subject": "computer science",
       "filename": "intro-python-ch5-loops-ch6-functions.pdf",
       "chapters": "Chapter 5 Loops; Chapter 6 Functions",
-      "pages": [[125, 142], [147, 171]],
-      "note": "PDF page numbers of the source book. End-of-chapter summaries, quizzes and answer keys are left out."
+      "pages": [
+        [
+          125,
+          142
+        ],
+        [
+          147,
+          171
+        ]
+      ],
+      "note": "PDF page numbers of the source book. End-of-chapter summaries, quizzes and answer keys are left out.",
+      "expected_structure": {
+        "chunks": 74,
+        "structure_sha256": "db9bea86d5bc31678a7a49b585b44fb1597c4e5dea3f5183293789e604b9254b"
+      }
     },
     {
       "id": "biology-cellular-respiration",
@@ -49,8 +62,17 @@
       "subject": "science",
       "filename": "biology-2e-ch7-cellular-respiration.pdf",
       "chapters": "Chapter 7 Cellular Respiration",
-      "pages": [[207, 230]],
-      "note": "Stops before Key Terms, so summaries and review questions are left out."
+      "pages": [
+        [
+          207,
+          230
+        ]
+      ],
+      "note": "Stops before Key Terms, so summaries and review questions are left out.",
+      "expected_structure": {
+        "chunks": 70,
+        "structure_sha256": "63cb5afadf2d95faecc3c95562802887e019c842038590690f20678c98ab8d2e"
+      }
     },
     {
       "id": "psychology-learning-memory",
@@ -58,8 +80,22 @@
       "subject": "social science",
       "filename": "psychology-2e-ch6-learning-ch8-memory.pdf",
       "chapters": "Chapter 6 Learning; Chapter 8 Memory",
-      "pages": [[193, 218], [259, 284]],
-      "note": "Stops before Key Terms in each chapter, so summaries and review questions are left out."
+      "pages": [
+        [
+          193,
+          218
+        ],
+        [
+          259,
+          284
+        ]
+      ],
+      "note": "Stops before Key Terms in each chapter, so summaries and review questions are left out.",
+      "expected_structure": {
+        "chunks": 162,
+        "structure_sha256": "93621b93be10cb2bc23826abe519c6af1bfd149ac522dbcf6f7574460f98fb1d"
+      }
     }
-  ]
+  ],
+  "expected_structure_note": "Chunk count and a hash of every chunk's section path, as produced by app/services/document_processor/chunker.py on the commit that recorded the baseline. run_eval.py warns when they differ, because topics.jsonl chunk_range specs depend on them."
 }
