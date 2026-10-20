@@ -33,7 +33,7 @@ type UseRealtimeVoiceOptions = {
   tools: any[]
   language?: string
   languageMode?: 'english_only' | 'auto_confirm'
-  audioRef: RefObject<HTMLAudioElement>
+  audioRef: RefObject<HTMLAudioElement | null>
   onMetrics?: (entry: MetricState) => void
   onToolOutput?: (output: ToolOutput) => void
   onInterrupt?: () => void

@@ -1,17 +1,17 @@
 # Standard Multi-stage build for Next.js frontend
 
 # Stage 1: Dependencies
-FROM node:20-slim AS deps
+FROM node:24-slim AS deps
 WORKDIR /app
 
 # Copy package files
 COPY package.json package-lock.json* ./
 
 # Install dependencies (Standard version)
-RUN npm ci --legacy-peer-deps
+RUN npm ci
 
 # Stage 2: Builder
-FROM node:20-slim AS builder
+FROM node:24-slim AS builder
 WORKDIR /app
 
 # Install OpenSSL for Prisma
@@ -31,7 +31,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # Stage 3: Runner
-FROM node:20-slim AS runner
+FROM node:24-slim AS runner
 WORKDIR /app
 
 # Install OpenSSL for Prisma (Required for runtime)

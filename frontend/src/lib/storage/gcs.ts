@@ -18,7 +18,8 @@ async function writeLocalFile(file: Buffer, storagePath: string): Promise<string
 
   let lastError: unknown = null
   for (const base of bases) {
-    const localFilePath = pathModule.join(base, storagePath)
+    // Runtime upload folder, not project files: keep Turbopack from tracing the whole project.
+    const localFilePath = pathModule.join(/* turbopackIgnore: true */ base, storagePath)
     try {
       fs.mkdirSync(pathModule.dirname(localFilePath), { recursive: true })
       fs.writeFileSync(localFilePath, file)
@@ -38,7 +39,8 @@ async function deleteLocalFile(relativePath: string): Promise<void> {
   const bases = [LOCAL_UPLOAD_BASE, LOCAL_UPLOAD_FALLBACK_BASE]
 
   for (const base of bases) {
-    const localFilePath = pathModule.join(base, relativePath)
+    // Runtime upload folder, not project files: keep Turbopack from tracing the whole project.
+    const localFilePath = pathModule.join(/* turbopackIgnore: true */ base, relativePath)
     if (fs.existsSync(localFilePath)) {
       fs.unlinkSync(localFilePath)
       return
