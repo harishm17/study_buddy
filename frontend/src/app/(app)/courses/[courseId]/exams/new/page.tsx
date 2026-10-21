@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { preselectTopics } from '@/features/exams/exam-options'
 import { NewExamForm } from '@/features/exams/new-exam-form'
 import { getCourseShell } from '@/server/queries/courses'
-import { findActiveExamJob } from '@/server/queries/mock-exams'
+import { courseHasExamStyle, findActiveExamJob } from '@/server/queries/mock-exams'
 import { requireUser } from '@/server/session'
 
 export const metadata: Metadata = { title: 'New mock exam' }
@@ -22,7 +22,10 @@ export default async function NewExamPage({ params }: { params: Promise<{ course
   if (!course) notFound()
 
   const topics = course.topics.filter((topic) => topic.confirmed)
-  const activeJob = await findActiveExamJob(user.id, courseId)
+  const [activeJob, hasExamStyle] = await Promise.all([
+    findActiveExamJob(user.id, courseId),
+    courseHasExamStyle(user.id, courseId),
+  ])
 
   return (
     <Page className="max-w-[704px] pt-8">
@@ -48,6 +51,7 @@ export default async function NewExamPage({ params }: { params: Promise<{ course
             serverClock()
           )}
           activeJob={activeJob}
+          hasExamStyle={hasExamStyle}
         />
       )}
     </Page>

@@ -41,7 +41,8 @@ def test_job_and_voice_routes_are_all_listed():
     assert "/grade/quiz" in paths
     assert "/jobs/reap" in paths
     assert "/chat/answer" in paths
-    assert len(PROTECTED) == 11
+    assert {"/jobs/profile-exam", "/jobs/exam-relevance"} <= paths
+    assert len(PROTECTED) == 13
 
 
 @pytest.mark.parametrize("method,path", PROTECTED)

@@ -34,6 +34,8 @@ type Props = {
   preselected: string[]
   /** An exam being written already, found on the server after a refresh. */
   activeJob: { id: string; startedAt: string } | null
+  /** The course has a past exam with a style profile, so there is something to match. */
+  hasExamStyle: boolean
 }
 
 // Exams can take a couple of minutes to write.
@@ -51,13 +53,14 @@ function SectionLabel({ id, children, hint }: { id: string; children: React.Reac
 }
 
 /** The mock exam form, then the "Writing your exam" wait, then the lobby of the new exam. */
-export function NewExamForm({ courseId, topics, preselected, activeJob }: Props) {
+export function NewExamForm({ courseId, topics, preselected, activeJob, hasExamStyle }: Props) {
   const router = useRouter()
   const [selected, setSelected] = React.useState<Set<string>>(() => new Set(preselected))
   const [totalQuestions, setTotalQuestions] = React.useState<number>(DEFAULT_EXAM_CONFIG.totalQuestions)
   const [durationMinutes, setDurationMinutes] = React.useState<number>(DEFAULT_EXAM_CONFIG.durationMinutes)
   const [difficulty, setDifficulty] = React.useState<Difficulty>(DEFAULT_EXAM_CONFIG.difficultyLevel)
   const [mix, setMix] = React.useState<QuestionMix>(DEFAULT_EXAM_CONFIG.mix)
+  const [matchPastExams, setMatchPastExams] = React.useState(true)
   const [jobId, setJobId] = React.useState<string | null>(activeJob?.id ?? null)
   const [startedAt, setStartedAt] = React.useState<string | null>(activeJob?.startedAt ?? null)
   const [submitting, setSubmitting] = React.useState(false)
@@ -97,6 +100,7 @@ export function NewExamForm({ courseId, topics, preselected, activeJob }: Props)
           durationMinutes,
           difficultyLevel: difficulty,
           questionTypeDistribution: QUESTION_MIXES[mix].distribution,
+          ...(hasExamStyle && matchPastExams ? { matchPastExams: true } : {}),
         },
       })
       setStartedAt(new Date().toISOString())
@@ -239,6 +243,31 @@ export function NewExamForm({ courseId, topics, preselected, activeJob }: Props)
           className="self-start"
         />
       </section>
+
+      {hasExamStyle ? (
+        <section aria-labelledby="exam-style" className="flex flex-col gap-2">
+          <SectionLabel id="exam-style">Style</SectionLabel>
+          <label
+            className={cn(
+              'flex min-h-11 cursor-pointer items-start gap-2.5 rounded-control border px-3 py-2.5 text-body text-fg',
+              'transition-colors duration-120 hover:bg-surface-2',
+              matchPastExams ? 'border-accent bg-accent-soft hover:bg-accent-soft' : 'border-border-strong bg-surface'
+            )}
+          >
+            <Checkbox
+              checked={matchPastExams}
+              onCheckedChange={(value) => setMatchPastExams(value === true)}
+              className="mt-0.5"
+            />
+            <span className="min-w-0 flex-1">
+              <span className="block">Match my past exams</span>
+              <span className="mt-0.5 block text-caption font-normal text-fg-3">
+                Questions follow the wording, task verbs and answer length of the exams you uploaded. The question mix above stays as chosen.
+              </span>
+            </span>
+          </label>
+        </section>
+      ) : null}
 
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
 

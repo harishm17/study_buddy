@@ -25,6 +25,7 @@ from app.services.content_generator.quiz import (
     QUESTION_FORMAT_RULES,
     minimum_usable,
 )
+from app.services.exam_style import project_style_profile, style_guidance
 from app.services.llm.base import LLMError, LLMOutputError
 from app.services.llm.factory import LLMFactory
 from app.services.llm.schemas import QuestionSet
@@ -98,6 +99,8 @@ class ExamGenerator:
                 - duration_minutes: Exam duration
                 - question_type_distribution: e.g., {"multiple_choice": 60, "short_answer": 30, "numerical": 10}
                 - difficulty_level: easy, medium, or hard
+                - match_past_exams: write the questions in the style of the project's past exams
+                  (their merged style profile), when any has one
 
         Returns:
             Dict with exam questions and metadata
@@ -110,12 +113,16 @@ class ExamGenerator:
         type_dist = config.get('question_type_distribution') or DEFAULT_TYPE_DISTRIBUTION
         difficulty = config.get('difficulty_level', 'medium')
         plan = plan_exam([t["id"] for t in topics], total_questions, type_dist)
+        style = ""
+        if config.get('match_past_exams'):
+            profile = await project_style_profile(project_id)
+            style = style_guidance(profile) if profile else ""
 
         semaphore = asyncio.Semaphore(TOPIC_CONCURRENCY)
 
         async def run(topic: Dict) -> List[Dict]:
             async with semaphore:
-                return await self._generate_topic_questions(topic, plan[topic["id"]], difficulty)
+                return await self._generate_topic_questions(topic, plan[topic["id"]], difficulty, style)
 
         planned_topics = [t for t in topics if t["id"] in plan]
         results = await asyncio.gather(*(run(t) for t in planned_topics), return_exceptions=True)
@@ -146,6 +153,7 @@ class ExamGenerator:
             'total_questions': len(all_questions),
             'duration_minutes': config.get('duration_minutes', 120),
             'difficulty_level': difficulty,
+            'matched_past_exams': bool(style),
             'topics_covered': [t['name'] for t in planned_topics],
             'generated_at': datetime.now(UTC).isoformat(),
         }
@@ -171,8 +179,10 @@ class ExamGenerator:
         topic: Dict,
         type_counts: Dict[str, int],
         difficulty: str,
+        style: str = "",
     ) -> List[Dict]:
-        """Questions for one topic, in the planned type mix."""
+        """Questions for one topic, in the planned type mix, in the style of the past exams when
+        `style` (their guidance block) is given."""
         context = await fetch_topic_context(topic["id"])
         chunks = context.chunks
         if not chunks:
@@ -181,6 +191,7 @@ class ExamGenerator:
         requested = sum(type_counts.values())
         mix = ", ".join(f"{n} {q_type}" for q_type, n in type_counts.items())
         guidance = DIFFICULTY_GUIDANCE.get(difficulty, DIFFICULTY_GUIDANCE['medium'])
+        style_block = f"{style}\n" if style else ""
         instructions = f"""Write {requested} exam questions on "{topic['name']}" from the excerpts above, for a timed practice exam.
 
 Use exactly this mix: {mix}.
@@ -188,7 +199,7 @@ Difficulty: {difficulty}. {guidance}
 
 {APPLICATION_RULES}
 {do_not_reuse_block(await existing_content_digest(topic["id"]))}
-{QUESTION_FORMAT_RULES}
+{style_block}{QUESTION_FORMAT_RULES}
 Set difficulty to "{difficulty}"."""
 
         result = await self.llm.generate_structured(
