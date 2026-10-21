@@ -48,7 +48,7 @@ test('the landing page tells the story with real screenshots', async ({ page }) 
   expect(errors).toEqual([])
 
   // Structured data and the canonical link are present.
-  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://studymargins.com/')
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://studymargins.com')
   expect(await page.locator('script[type="application/ld+json"]').count()).toBe(1)
 })
 
