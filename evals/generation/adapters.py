@@ -1,12 +1,12 @@
 """Everything the generation eval needs from app code, in one place.
 
-The app is changing under this eval (learning v2 stages 1A and 2 replace the two model tiers with a
-per-purpose map and replace topic extraction with a planner). Each function below calls the
-app's own code the way the app does; when the app changes, edit these functions and keep their
-return shapes. Nothing else in the harness imports from `app`.
+The app is changing under this eval (learning v2 stage 2 replaces topic extraction with a
+planner). Each function below calls the app's own code the way the app does; when the app
+changes, edit these functions and keep their return shapes. Nothing else in the harness imports
+from `app`.
 
-    parse_model_spec / build_provider   a provider for one model and effort
-    MeteredProvider                     wraps a provider: spend gate, usage, latency, raw output
+    parse_model_spec / build_provider   the app's provider; `MeteredProvider` pins one model and effort
+    MeteredProvider                     wraps a provider: model pin, spend gate, usage, latency, raw output
     extract_topics                      the app's topic extraction (stage 2 swaps this one)
     store_topics / map_topic            topic rows and chunk mappings, as the extract-topics job writes them
     make_generators / generate          the app's notes, examples and quiz generators
@@ -16,11 +16,16 @@ return shapes. Nothing else in the harness imports from `app`.
 import os
 import re
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.model_spec import ModelChoice
+from app.services.llm import anthropic_provider
 from app.services.llm.base import LLMMessage, LLMProvider, LLMUsage
+from app.services.llm.models import resolve_model as app_resolve_model
 
 from spend import SpendTracker, estimate_prompt_tokens
 
@@ -80,49 +85,61 @@ def load_api_key(env_file: Optional[Path] = None) -> str:
     return ""
 
 
-def build_provider(spec: ModelSpec, *, mock: bool, api_key: str = "", timeout: float = 600.0) -> LLMProvider:
-    """A provider whose every call uses `spec`'s model and effort (both tiers)."""
+# Which model and effort a call uses is decided inside the app's provider, from the call's
+# `purpose` (app/services/llm/models.py: MODEL_* settings). To compare models, the eval pins one
+# model and effort for the duration of a call with this ContextVar, and the provider's resolver is
+# wrapped once to honour it. A ContextVar is per task, so models running at the same time do not
+# see each other's pin, and app behaviour is unchanged whenever no pin is set (topic extraction,
+# for one, runs with the app's own choice).
+_PINNED: ContextVar[Optional[ModelChoice]] = ContextVar("eval_pinned_model", default=None)
+_installed = False
+
+
+def install_model_pin() -> None:
+    """Wrap `resolve_model` inside the Anthropic provider module so a pin takes effect. Idempotent."""
+    global _installed
+    if _installed:
+        return
+    if getattr(anthropic_provider, "resolve_model", None) is not app_resolve_model:
+        raise RuntimeError("anthropic_provider.resolve_model changed; update adapters.install_model_pin")
+
+    def resolve(purpose: str) -> ModelChoice:
+        return _PINNED.get() or app_resolve_model(purpose)
+
+    anthropic_provider.resolve_model = resolve
+    _installed = True
+
+
+@contextmanager
+def pinned_model(spec: Optional["ModelSpec"]):
+    token = _PINNED.set(ModelChoice(spec.model_id, spec.effort) if spec else None)
+    try:
+        yield
+    finally:
+        _PINNED.reset(token)
+
+
+def build_provider(*, mock: bool, api_key: str = "", timeout: float = 600.0) -> LLMProvider:
+    """The app's provider, built the way LLMFactory builds it (but with this eval's timeout).
+
+    It does not choose the model: wrap it in a MeteredProvider with a ModelSpec to pin one.
+    """
     if mock:
         from app.services.llm.mock_provider import MockProvider
 
         return MockProvider()
     from app.config import settings
-    from app.services.llm.anthropic_provider import AnthropicProvider
 
-    return AnthropicProvider(
-        api_key=api_key,
-        model=spec.model_id,
-        fast_model=spec.model_id,
-        effort=spec.effort,
-        fast_effort=spec.effort,
-        timeout=timeout,
-        max_retries=settings.LLM_MAX_RETRIES,
+    install_model_pin()
+    return anthropic_provider.AnthropicProvider(
+        api_key=api_key, timeout=timeout, max_retries=settings.LLM_MAX_RETRIES
     )
 
 
-def build_app_default_provider(*, mock: bool, api_key: str = "", timeout: float = 600.0) -> tuple[LLMProvider, ModelSpec]:
-    """The provider the app itself would use (its configured main and fast models and efforts).
-
-    Used for topic extraction, so the default topics are what the app produces. Returns the
-    provider and a spec describing the fast tier, which topic extraction uses today.
-    """
-    from app.config import settings
-
-    fast = parse_model_spec(f"{settings.ANTHROPIC_FAST_MODEL}:{settings.ANTHROPIC_FAST_EFFORT}")
-    if mock:
-        return build_provider(fast, mock=True), fast
-    from app.services.llm.anthropic_provider import AnthropicProvider
-
-    provider = AnthropicProvider(
-        api_key=api_key,
-        model=settings.ANTHROPIC_MODEL,
-        fast_model=settings.ANTHROPIC_FAST_MODEL,
-        effort=settings.ANTHROPIC_EFFORT,
-        fast_effort=settings.ANTHROPIC_FAST_EFFORT,
-        timeout=timeout,
-        max_retries=settings.LLM_MAX_RETRIES,
-    )
-    return provider, fast
+def app_choice_spec(purpose: str) -> ModelSpec:
+    """The model and effort the app itself resolves for `purpose`, as a ModelSpec (for labels)."""
+    choice = app_resolve_model(purpose)
+    return ModelSpec(alias=choice.model, model_id=choice.model, effort=choice.effort or "none")
 
 
 # ---------------------------------------------------------------------------------------
@@ -156,28 +173,32 @@ def estimate_cost(model: str, input_tokens: int, output_tokens: int, cache_write
 
 
 class MeteredProvider(LLMProvider):
-    """Wraps a provider for one model.
+    """Wraps the app's provider for one model.
 
-    Before each call it asks the SpendTracker for permission (raising SpendLimitReached when the
+    With a `spec`, every call is pinned to that model and effort. Without one, the app's own
+    choice for the call's purpose applies. Before each call it asks the SpendTracker for permission (raising SpendLimitReached when the
     call would pass a cap). After each call it records purpose, latency, token usage, cost and
     the raw model output in `calls`. Only `generate_text` and `generate_structured` are
     supported, which is all the content generators and the judge use.
     """
 
-    def __init__(self, inner: LLMProvider, spec: ModelSpec, tracker: SpendTracker, kind: str):
+    def __init__(self, inner: LLMProvider, spec: Optional[ModelSpec], tracker: SpendTracker, kind: str):
         self.inner = inner
         self.spec = spec
         self.tracker = tracker
         self.kind = kind
         self.calls: List[Dict[str, Any]] = []
 
-    def model_for(self, tier):
-        return self.spec.model_id
+    def model_for(self, purpose: str):
+        return self._model_id(purpose)
+
+    def _model_id(self, purpose: str) -> str:
+        return self.spec.model_id if self.spec else app_resolve_model(purpose).model
 
     def _gate(self, messages: List[LLMMessage], purpose: str, schema=None):
         schema_json = schema.model_json_schema() if schema is not None else None
         prompt_tokens = estimate_prompt_tokens([m.content for m in messages], schema_json)
-        return self.tracker.reserve(self.kind, self.spec.model_id, purpose, prompt_tokens)
+        return self.tracker.reserve(self.kind, self._model_id(purpose), purpose, prompt_tokens)
 
     async def _metered(self, call, messages, purpose, schema, raw_of):
         from app.services.llm.usage import track_llm_usage
@@ -186,7 +207,7 @@ class MeteredProvider(LLMProvider):
         started = time.perf_counter()
         error: Optional[BaseException] = None
         result = None
-        with track_llm_usage() as usages:
+        with track_llm_usage() as usages, pinned_model(self.spec):
             try:
                 result = await call()
             except Exception as exc:  # recorded, then raised
@@ -194,12 +215,12 @@ class MeteredProvider(LLMProvider):
         latency = time.perf_counter() - started
         cost = sum(app_cost(u) for u in usages)
         output_tokens = sum(u.output_tokens for u in usages)
-        self.tracker.settle(token, self.spec.model_id, purpose, cost, output_tokens if error is None else None)
+        self.tracker.settle(token, self._model_id(purpose), purpose, cost, output_tokens if error is None else None)
         self.calls.append(
             {
                 "purpose": purpose,
-                "model": self.spec.model_id,
-                "effort": self.spec.effort,
+                "model": self._model_id(purpose),
+                "effort": self.spec.effort if self.spec else app_resolve_model(purpose).effort,
                 "latency_s": round(latency, 2),
                 "estimate_usd": round(estimate, 5),
                 "cost_usd": round(cost, 6),
@@ -216,18 +237,18 @@ class MeteredProvider(LLMProvider):
             raise error
         return result
 
-    async def generate_text(self, messages, *, tier="main", max_tokens=16000, purpose=""):
+    async def generate_text(self, messages, *, purpose, max_tokens=16000):
         return await self._metered(
-            lambda: self.inner.generate_text(messages, tier=tier, max_tokens=max_tokens, purpose=purpose),
+            lambda: self.inner.generate_text(messages, purpose=purpose, max_tokens=max_tokens),
             messages,
             purpose,
             None,
             lambda response: response.content,
         )
 
-    async def generate_structured(self, messages, schema, *, tier="main", max_tokens=16000, purpose=""):
+    async def generate_structured(self, messages, schema, *, purpose, max_tokens=16000):
         return await self._metered(
-            lambda: self.inner.generate_structured(messages, schema, tier=tier, max_tokens=max_tokens, purpose=purpose),
+            lambda: self.inner.generate_structured(messages, schema, purpose=purpose, max_tokens=max_tokens),
             messages,
             purpose,
             schema,

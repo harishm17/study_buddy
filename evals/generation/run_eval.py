@@ -412,15 +412,12 @@ async def run(args: argparse.Namespace) -> int:
     if not args.no_generate:
         corpora = [load_corpus(c) for c in args.corpus_list]
 
-        providers = {
-            s.slug: adapters.MeteredProvider(
-                adapters.build_provider(s, mock=args.mock, api_key=api_key, timeout=args.timeout), s, tracker, GENERATION
-            )
-            for s in specs
-        }
+        # One provider (the app's own); each MeteredProvider pins its model and effort per call.
+        inner = adapters.build_provider(mock=args.mock, api_key=api_key, timeout=args.timeout)
+        providers = {s.slug: adapters.MeteredProvider(inner, s, tracker, GENERATION) for s in specs}
         generators = {slug: adapters.make_generators(p) for slug, p in providers.items()}
-        extractor_inner, extractor_spec = adapters.build_app_default_provider(mock=args.mock, api_key=api_key, timeout=args.timeout)
-        extractor = adapters.MeteredProvider(extractor_inner, extractor_spec, tracker, "topics")
+        # Topic extraction runs with the app's own model choice for its purpose (no pin).
+        extractor = adapters.MeteredProvider(inner, None, tracker, "topics")
 
         topics_all: Dict[str, Any] = {}
         excerpts_all: Dict[str, Any] = {}
@@ -466,7 +463,7 @@ async def run(args: argparse.Namespace) -> int:
         outputs = analysis.outputs_by_model(records)
         excerpts = json.loads((run_dir / "excerpts.json").read_text())
         judge_provider = adapters.MeteredProvider(
-            adapters.build_provider(judge_spec, mock=args.mock, api_key=api_key, timeout=args.timeout), judge_spec, tracker, JUDGE
+            adapters.build_provider(mock=args.mock, api_key=api_key, timeout=args.timeout), judge_spec, tracker, JUDGE
         )
         log("Judging")
         judge_info = await run_judge(

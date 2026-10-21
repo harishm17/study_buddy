@@ -100,9 +100,9 @@ class SpendTracker:
         return DEFAULT_OUTPUT_TOKENS.get(purpose, FALLBACK_OUTPUT_TOKENS)
 
     def estimate_call(self, model: str, purpose: str, prompt_tokens: int) -> float:
-        # Every input token is priced as a cache write (the dearest case), because the excerpt
-        # block is marked cacheable.
-        cost = self.cost_fn(model, 0, self.expected_output_tokens(model, purpose), prompt_tokens)
+        # Every input token is priced as plain input. The first generation of a content type
+        # caches only the short system prompt, so cache writes and reads are negligible.
+        cost = self.cost_fn(model, prompt_tokens, self.expected_output_tokens(model, purpose), 0)
         return cost or 0.0
 
     # -- the gate

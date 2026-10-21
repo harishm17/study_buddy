@@ -208,7 +208,7 @@ class FakeProvider(LLMProvider):
         self.output_tokens = output_tokens
         self.fail = fail
 
-    async def generate_text(self, messages, *, tier="main", max_tokens=16000, purpose=""):
+    async def generate_text(self, messages, *, purpose, max_tokens=16000):
         self.calls += 1
         usage = LLMUsage(model="claude-haiku-5-5", purpose=purpose, input_tokens=100, output_tokens=self.output_tokens, cache_creation_input_tokens=900)
         record_usage(usage)
@@ -216,7 +216,7 @@ class FakeProvider(LLMProvider):
             raise RuntimeError("cut off")
         return LLMResponse(content="notes text", model=usage.model, stop_reason="end_turn", usage=usage)
 
-    async def generate_structured(self, messages, schema, *, tier="main", max_tokens=16000, purpose=""):
+    async def generate_structured(self, messages, schema, *, purpose, max_tokens=16000):
         raise NotImplementedError
 
     def stream_cited_answer(self, **kwargs):
@@ -272,3 +272,76 @@ def test_parse_model_spec():
     for bad in ("opus", "opus:", "opus:turbo", ":low"):
         with pytest.raises(SystemExit):
             adapters.parse_model_spec(bad)
+
+
+def test_the_model_pin_reaches_the_apps_resolver_per_task_and_leaves_no_trace():
+    import adapters
+    from app.services.llm import anthropic_provider
+
+    adapters.install_model_pin()
+    adapters.install_model_pin()  # idempotent
+    opus, haiku = adapters.parse_model_spec("opus:high"), adapters.parse_model_spec("haiku:low")
+    outside = anthropic_provider.resolve_model("section_notes")
+
+    async def seen(spec):
+        with adapters.pinned_model(spec):
+            await asyncio.sleep(0)  # let the other task run while this pin is set
+            return anthropic_provider.resolve_model("section_notes")
+
+    async def both():
+        return await asyncio.gather(seen(opus), seen(haiku), seen(None))
+
+    first, second, third = asyncio.run(both())
+    assert (first.model, first.effort) == ("claude-opus-5-5", "high")
+    assert (second.model, second.effort) == ("claude-haiku-5-5", "low")
+    assert third == outside  # no pin: the app's own choice
+    assert anthropic_provider.resolve_model("section_notes") == outside
+    # A purpose the app does not know (the judge) works while pinned, and still fails outside a pin.
+    with adapters.pinned_model(opus):
+        assert anthropic_provider.resolve_model("judge").model == "claude-opus-5-5"
+    with pytest.raises(ValueError):
+        anthropic_provider.resolve_model("judge")
+
+
+def test_metered_provider_pins_the_model_during_the_call():
+    import adapters
+    from app.services.llm import anthropic_provider
+
+    seen = {}
+
+    class Probe(FakeProvider):
+        async def generate_text(self, messages, *, purpose, max_tokens=16000):
+            seen["choice"] = anthropic_provider.resolve_model(purpose)
+            return await super().generate_text(messages, purpose=purpose, max_tokens=max_tokens)
+
+    adapters.install_model_pin()
+    provider, _ = _metered(1.0, Probe())
+    asyncio.run(provider.generate_text([LLMMessage(role="user", content="hi")], purpose="section_notes"))
+    assert (seen["choice"].model, seen["choice"].effort) == ("claude-haiku-5-5", "medium")
+
+
+def test_real_provider_sends_the_pinned_model_and_effort(monkeypatch):
+    """Through MeteredProvider and the app's AnthropicProvider, with the HTTP call replaced."""
+    import types
+
+    import adapters
+
+    sent = []
+
+    async def fake_create(**params):
+        sent.append(params)
+        usage = types.SimpleNamespace(input_tokens=10, output_tokens=20, cache_read_input_tokens=0, cache_creation_input_tokens=0)
+        return types.SimpleNamespace(
+            model=params["model"], usage=usage, stop_reason="end_turn", stop_details=None,
+            content=[types.SimpleNamespace(type="text", text="hello notes")],
+        )
+
+    inner = adapters.build_provider(mock=False, api_key="not-a-real-key")
+    monkeypatch.setattr(inner.client.beta.messages, "create", fake_create)
+    tracker = SpendTracker(1.0, 1.0, adapters.estimate_cost)
+    for label, model, effort in (("opus:high", "claude-opus-5-5", "high"), ("haiku:low", "claude-haiku-5-5", "low")):
+        provider = adapters.MeteredProvider(inner, adapters.parse_model_spec(label), tracker, GENERATION)
+        response = asyncio.run(provider.generate_text([LLMMessage(role="user", content="hi")], purpose="section_notes"))
+        assert response.content == "hello notes"
+        assert sent[-1]["model"] == model and sent[-1]["output_config"]["effort"] == effort
+        assert provider.calls[0]["model"] == model and provider.calls[0]["effort"] == effort
