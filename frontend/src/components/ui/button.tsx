@@ -22,9 +22,9 @@ export const buttonVariants = cva(
         link: 'h-auto rounded-chip p-0 text-accent hover:underline active:scale-100',
       },
       size: {
-        sm: 'h-7 gap-1.5 px-2.5 text-small',
-        md: 'h-[34px] gap-1.5 px-3.5 text-body',
-        lg: 'h-10 gap-1.5 px-[18px] text-[15px] leading-[22px]',
+        sm: 'h-7 gap-1.5 px-2.5 text-small max-sm:h-11',
+        md: 'h-[34px] gap-1.5 px-3.5 text-body max-sm:h-11',
+        lg: 'h-10 gap-1.5 px-[18px] text-[15px] leading-[22px] max-sm:h-11',
       },
       fullWidth: { true: 'w-full', false: '' },
     },

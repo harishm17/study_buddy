@@ -6,7 +6,11 @@ import { safeNextPath } from '@/lib/safe-redirect'
 import { LoginForm } from '@/features/auth/login-form'
 import { getSessionUser } from '@/server/session'
 
-export const metadata: Metadata = { title: 'Sign in' }
+export const metadata: Metadata = {
+  title: 'Sign in',
+  alternates: { canonical: '/login' },
+  robots: { index: false, follow: true },
+}
 
 type SearchParams = Promise<{ next?: string; error?: string }>
 

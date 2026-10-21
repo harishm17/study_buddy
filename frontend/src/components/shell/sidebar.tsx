@@ -40,7 +40,7 @@ function NavLink({ item, rail }: { item: NavItem; rail: boolean }) {
       aria-current={item.active ? 'page' : undefined}
       aria-label={rail ? item.label : undefined}
       className={cn(
-        'group flex h-[34px] items-center gap-2.5 rounded-control px-2.5 text-body-strong text-fg-2',
+        'group flex h-[34px] max-lg:h-11 items-center gap-2.5 rounded-control px-2.5 text-body-strong text-fg-2',
         'transition-colors duration-120 hover:bg-surface-2 hover:text-fg',
         'rail:justify-center rail:px-0',
         item.active && 'bg-surface-2 text-fg'
@@ -177,7 +177,7 @@ export function SidebarContent({ allowRail = false }: { allowRail?: boolean }) {
                     href={`${base}/topics/${topic.id}`}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex h-8 items-center gap-2.5 rounded-control px-2.5 text-[13.5px] text-fg-2',
+                      'flex h-8 max-lg:h-11 items-center gap-2.5 rounded-control px-2.5 text-[13.5px] text-fg-2',
                       'transition-colors duration-120 hover:bg-surface-2 hover:text-fg',
                       active && 'bg-surface-2 text-fg'
                     )}

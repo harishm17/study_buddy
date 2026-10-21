@@ -30,6 +30,13 @@ const nextConfig = {
         has: [{ type: 'query', key: 'tab', value }],
       })
     return [
+      // www and the apex are one site: the apex is canonical.
+      {
+        source: '/:path*',
+        has: [{ type: 'host', value: 'www.studymargins.com' }],
+        destination: 'https://studymargins.com/:path*',
+        permanent: true,
+      },
       course('/dashboard', '/home'),
       // Specific old pages first, then the generic prefix rule.
       tab('materials', 'materials'),

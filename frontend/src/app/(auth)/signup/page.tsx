@@ -5,7 +5,10 @@ import { safeNextPath } from '@/lib/safe-redirect'
 import { SignupForm } from '@/features/auth/signup-form'
 import { getSessionUser } from '@/server/session'
 
-export const metadata: Metadata = { title: 'Create your account' }
+export const metadata: Metadata = {
+  title: 'Create your account',
+  alternates: { canonical: '/signup' },
+}
 
 type SearchParams = Promise<{ next?: string }>
 

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { CommandPalette } from '@/components/shell/command-palette'
 import { MobileNav } from '@/components/shell/mobile-nav'
 import { ShellProvider } from '@/components/shell/shell-provider'
@@ -7,6 +8,8 @@ import { SkipLink } from '@/components/shell/skip-link'
 import { Topbar } from '@/components/shell/topbar'
 import { getNavIndex } from '@/server/queries/courses'
 import { requireUser } from '@/server/session'
+
+export const metadata: Metadata = { robots: { index: false, follow: false } }
 
 /** Signed-in app: sidebar, top bar, command palette. Signed-out visitors go to /login?next=. */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {

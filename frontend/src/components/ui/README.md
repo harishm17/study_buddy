@@ -7,6 +7,7 @@ elements (`icon={<Plus />}`), which keeps every primitive usable from server com
 
 | File | Exports | Notes |
 |---|---|---|
+| `relative-time.tsx` | `RelativeTime`, `DueLabel` | "2h ago" and "Due today" labels |
 | `button.tsx` | `Button`, `buttonVariants` | primary, secondary, ghost, danger, link; sm, md, lg; `icon`, `kbd`, `loading`, `asChild` |
 | `icon-button.tsx` | `IconButton` | square, `label` is the aria-label and the tooltip |
 | `input.tsx` | `Input` | leading `icon`, `trailing` slot, `invalid` |

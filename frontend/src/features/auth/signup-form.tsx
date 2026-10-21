@@ -141,6 +141,17 @@ export function SignupForm({ googleEnabled }: { googleEnabled: boolean }) {
           <Button type="submit" variant="primary" size="lg" fullWidth loading={pending}>
             Create account
           </Button>
+          <p className="text-caption font-normal text-fg-3">
+            By creating an account you agree to the{' '}
+            <Link href="/terms" className="underline underline-offset-2 hover:text-fg">
+              Terms
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="underline underline-offset-2 hover:text-fg">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </form>
 
         <p className="text-small text-fg-2">

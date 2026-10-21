@@ -21,8 +21,8 @@ const iconButtonVariants = cva(
         primary: 'bg-accent text-accent-fg hover:bg-accent-hover',
       },
       size: {
-        sm: 'size-7 [&>svg]:size-4',
-        md: 'size-[34px] [&>svg]:size-[18px]',
+        sm: 'size-7 max-sm:size-11 [&>svg]:size-4',
+        md: 'size-[34px] max-sm:size-11 [&>svg]:size-[18px]',
         lg: 'size-10 [&>svg]:size-5',
       },
     },
