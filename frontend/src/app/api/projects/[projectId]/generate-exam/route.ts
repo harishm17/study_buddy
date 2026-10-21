@@ -20,6 +20,8 @@ const generateExamSchema = z.object({
   totalQuestions: z.number().min(5).max(100),
   durationMinutes: z.number().min(15).max(300),
   difficultyLevel: z.enum(['easy', 'medium', 'hard']),
+  // Write the questions in the style of the course's past exams (their merged style profile).
+  matchPastExams: z.boolean().optional(),
   questionTypeDistribution: z.object({
     multiple_choice: z.number().min(0).max(100),
     short_answer: z.number().min(0).max(100),
@@ -83,7 +85,7 @@ export async function POST(
     }
 
     const uniqueTopicIds = Array.from(new Set(validation.data.topicIds));
-    const { totalQuestions, durationMinutes, difficultyLevel, questionTypeDistribution } = validation.data;
+    const { totalQuestions, durationMinutes, difficultyLevel, questionTypeDistribution, matchPastExams } = validation.data;
 
     // Verify all topics belong to this project
     const topics = await prisma.topic.findMany({
@@ -113,6 +115,8 @@ export async function POST(
       duration_minutes: durationMinutes,
       difficulty_level: difficultyLevel,
       question_type_distribution: questionTypeDistribution || defaultDistribution,
+      // Only when asked for, so the idempotency key of an exam without it is what it always was.
+      ...(matchPastExams ? { match_past_exams: true } : {}),
     };
 
     const idempotencyKey = `${projectId}:${uniqueTopicIds.sort().join(',')}:${stableStringify(config)}`;

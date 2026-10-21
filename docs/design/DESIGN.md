@@ -936,6 +936,12 @@ no confirmed topics).
 - Difficulty: Easy / Medium / Hard (default Medium).
 - Question mix: SegmentedControl "Balanced" (60/30/10), "More concepts" (40/50/10), "More
   calculation" (40/20/40) mapped to questionTypeDistribution.
+- Style (only when a past exam of the course has a style profile): one bordered checkbox row,
+  "Match my past exams", on by default, with a caption in fg-3: "Questions follow the wording, task
+  verbs and answer length of the exams you uploaded. The question mix above stays as chosen." The
+  row uses the same selected treatment as a ticked topic (accent border and accent-soft fill). It
+  is hidden entirely when no profile exists (no past exam, or none processed yet), not shown
+  disabled. On sends `matchPastExams: true`.
 - Primary "Create exam". Then the page shows JobStatus "Writing your exam" (about 1-2 minutes)
   with a skeleton; on completion go to the exam lobby. Resumes after refresh.
 

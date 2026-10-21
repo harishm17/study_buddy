@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { gradeExamTarget } from '@/lib/jobs/active-jobs'
 import {
@@ -321,4 +322,17 @@ export async function findActiveExamJob(
     select: { id: true, createdAt: true },
   })
   return job ? { id: job.id, startedAt: job.createdAt.toISOString() } : null
+}
+
+/** Whether any past exam of the course has a style profile, so "Match my past exams" has something to match. */
+export async function courseHasExamStyle(userId: string, courseId: string): Promise<boolean> {
+  const count = await prisma.material.count({
+    where: {
+      role: 'exam',
+      validationStatus: 'valid',
+      styleProfile: { not: Prisma.DbNull },
+      project: { id: courseId, userId },
+    },
+  })
+  return count > 0
 }
