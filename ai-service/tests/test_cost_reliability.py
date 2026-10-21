@@ -573,3 +573,19 @@ class TestGenerationChain:
         assert row["status"] == "pending" and dispatched == []
         assert await generation_chain.dispatch(planned) == planned.job_id
         assert [job["job_id"] for job in dispatched] == [planned.job_id]
+
+
+class TestHandlerHeaders:
+    async def test_the_non_job_error_handler_also_asks_for_a_wait(self):
+        import json
+
+        from app.main import llm_error_handler
+
+        error = LLMRateLimitError("slow down")
+        error.retry_after = 12.2
+        response = await llm_error_handler(None, error)
+        assert response.status_code == 503 and response.headers["retry-after"] == "13"
+        assert json.loads(response.body)["error_code"] == "LLM_RATE_LIMITED"
+
+        other = await llm_error_handler(None, LLMUnavailableError("down"))
+        assert other.status_code == 503 and other.headers["retry-after"] == "10"
