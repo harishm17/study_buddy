@@ -158,7 +158,9 @@ model Topic {
 
   // Course structure. unitId is null for topics added by hand and for courses planned before
   // units existed. objectives are verb phrases that finish "By the end you can ...".
-  // prerequisiteIds are topics of the same project that come earlier in the course.
+  // prerequisiteIds are topics of the same project that come earlier in the course. Both lists
+  // have a database default of an empty array (migrations/20261101000000_course_structure) so rows
+  // written by raw SQL read as []; `prisma migrate dev` may propose dropping those defaults: keep them.
   unitId             String?  @map("unit_id")
   objectives         String[]
   prerequisiteIds    String[] @map("prerequisite_ids")

@@ -175,11 +175,7 @@ async def _supporting_chunks(topic: Dict[str, Any], primary: Sequence[Dict[str, 
     except Exception as exc:  # supporting excerpts are a bonus: never fail the lesson for them
         logger.warning("Supporting search failed for topic %s: %s", topic["id"], exc)
         return []
-    chunks = []
-    for chunk in found[:limit]:
-        row = await execute_one("SELECT category FROM materials WHERE id = $1", chunk["material_id"])
-        chunks.append({**chunk, "category": row["category"] if row else None, "source_kind": "supporting"})
-    return chunks
+    return [{**chunk, "source_kind": "supporting"} for chunk in found[:limit]]
 
 
 async def _mapped_chunks(topic_id: str, limit: int) -> List[Dict[str, Any]]:

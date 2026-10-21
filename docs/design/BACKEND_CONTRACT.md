@@ -1096,7 +1096,7 @@ A course is **units** (week, chapter, lecture group) of **topics**. Each topic h
 
 Same job, endpoint, target key (`extract:{projectId}`), polling and "Find again" button as before; only what it writes changed.
 1. **Outline, no model.** Per content file, consecutive chunks with the same first two heading levels form a section (a file without headings: a section per ~1,500 tokens; a huge section is cut into parts of ~4,500). Sections are numbered S1..Sn in upload order, then document order.
-2. **One plan call** (purpose `extract_topics`, model setting `MODEL_TOPICS`, now defaulting to `claude-opus-5-5:low`): units of topics with name, description, 3-5 objectives, keywords, section ids, prerequisite keys and estimated minutes. An outline over `PLANNER_MAX_OUTLINE_TOKENS` (120,000) or `PLANNER_MAX_SECTIONS_PER_CALL` (220) sections is planned per group of files, then a cheap `order_units` call orders the units.
+2. **One plan call** (purpose `extract_topics`, model setting `MODEL_TOPICS`, now defaulting to `claude-opus-5-5:low`): units of topics with name, description, 3-5 objectives, keywords, section ids, prerequisite keys and estimated minutes. A course whose outline is over `PLANNER_MAX_OUTLINE_TOKENS` (120,000 tokens) or `PLANNER_MAX_SECTIONS_PER_CALL` (400 sections), or whose source is over `PLANNER_MAX_SOURCE_TOKENS_PER_CALL` (150,000 tokens, about 50 topics), is planned per group of files, then a cheap `order_units` call orders the units.
 3. **Validation:** unknown section ids dropped; a section named twice stays with the first topic; an unplaced section joins the topic of the neighbouring section in the same file (previous, else next); topics with no section and units with no topic are dropped; prerequisites keep only earlier topics. Two additions to the spec: a file nothing in the plan touched becomes a topic of its own in a last unit "Other material", and a plan with a single topic gives it every section.
 4. **One transaction** writes units, topics (unconfirmed) and one `topic_sources` row per section (plus `topic_chunk_mappings` for those chunks, `relevance_source = 'course_plan'`).
 5. **Find again / new files after confirmation:** see `POST .../extract-topics` in §2. The UI should expect new topics to arrive *unconfirmed* in a course that is otherwise confirmed (`deriveSetup` then shows "Review topics" again until they are confirmed); confirmed topics are never touched. After a new upload the AI service starts this job by itself once the last file is chunked, as before.
@@ -1190,7 +1190,7 @@ The existing flat editor keeps working unchanged (it only sends `orderIndex`, re
 | `MODEL_TOPICS` | `claude-opus-5-5:low` | model and effort of the one planning call (was Haiku) |
 | `TOPIC_SOURCE_TOKEN_BUDGET` | 16000 | tokens of primary source per generation |
 | `TOPIC_SUPPORTING_CHUNKS` | 4 | supporting chunks from other content files |
-| `PLANNER_MAX_OUTLINE_TOKENS` / `PLANNER_MAX_SECTIONS_PER_CALL` | 120000 / 220 | past either, plan per group of files |
+| `PLANNER_MAX_OUTLINE_TOKENS` / `PLANNER_MAX_SECTIONS_PER_CALL` / `PLANNER_MAX_SOURCE_TOKENS_PER_CALL` | 120000 / 400 / 150000 | past any of them, plan per group of files |
 | `PLANNER_SYLLABUS_TOKENS` | 6000 | syllabus text given to the planner |
 | `GLOBAL_DAILY_LLM_BUDGET_USD` | 40 | ceiling on all users together per UTC day (0 = off) |
 

@@ -350,6 +350,16 @@ class TestLargeOutline:
         for t in valid.topics():
             assert all(position[key] < position[t.key] for key in t.prerequisite_keys)
 
+    async def test_a_lot_of_source_text_also_triggers_grouping(self, fake_model, monkeypatch):
+        monkeypatch.setattr(settings, "PLANNER_MAX_SOURCE_TOKENS_PER_CALL", 13000)  # sections are 2,000 tokens
+        await planner.plan_sections("C", outline({"a": 6, "b": 6}))
+        assert len(fake_model.plan_calls) == 2
+
+    def test_groups_respect_the_source_limit(self):
+        sections = outline({"a": 5, "b": 5})
+        groups = planner.group_sections(sections, 10**9, 10**9, max_source_tokens=7000)
+        assert all(sum(s.tokens for s in g) <= 7000 for g in groups) and len(groups) == 4
+
     async def test_too_many_sections_also_triggers_grouping(self, fake_model, monkeypatch):
         monkeypatch.setattr(settings, "PLANNER_MAX_SECTIONS_PER_CALL", 5)
         await planner.plan_sections("C", outline({"a": 4, "b": 4}))

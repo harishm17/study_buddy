@@ -62,10 +62,12 @@ class Settings(BaseSettings):
     TOPIC_SOURCE_TOKEN_BUDGET: int = 16000
     # Chunks from content files the topic is not taught from, added as supporting excerpts.
     TOPIC_SUPPORTING_CHUNKS: int = 4
-    # The course planner sends the whole outline in one call. Past this many outline tokens, or
-    # this many sections, it plans per group of files and then fixes the order across them.
+    # The course planner sends the whole outline in one call. Past this many outline tokens, this
+    # many sections, or this many tokens of source (the plan lists about one topic per 3,000 and
+    # must fit one answer), it plans per group of files and then fixes the order across them.
     PLANNER_MAX_OUTLINE_TOKENS: int = 120000
-    PLANNER_MAX_SECTIONS_PER_CALL: int = 220
+    PLANNER_MAX_SECTIONS_PER_CALL: int = 400
+    PLANNER_MAX_SOURCE_TOKENS_PER_CALL: int = 150000
     # Syllabus or calendar text given to the planner, for ordering and unit names.
     PLANNER_SYLLABUS_TOKENS: int = 6000
 

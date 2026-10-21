@@ -392,7 +392,7 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
           </Button>
         </p>
         <p className="text-small text-fg-2">PDF, DOCX, PPTX or DOC, up to {maxUploadMb} MB each.</p>
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+        <div className="flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2">
           <span id={`category-label-${variant}`} className="text-small text-fg-2">
             These are:
           </span>
@@ -401,6 +401,7 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
             options={CATEGORY_OPTIONS}
             value={category}
             onValueChange={setCategory}
+            className="min-w-0"
           />
         </div>
         <input

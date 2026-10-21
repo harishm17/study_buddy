@@ -489,10 +489,14 @@ async def _plan_call(messages: List[LLMMessage]) -> CoursePlan:
     return await llm.generate_structured(messages, CoursePlan, max_tokens=16000, purpose="extract_topics")
 
 
-def group_sections(sections: Sequence[Section], max_tokens: int, max_sections: int) -> List[List[Section]]:
+def group_sections(
+    sections: Sequence[Section], max_tokens: int, max_sections: int, max_source_tokens: int = 10**12
+) -> List[List[Section]]:
     """Consecutive groups of whole files (a file bigger than a group is cut between sections)
-    whose outlines fit one call. Used when the outline is too big to plan in one."""
+    whose outlines, section counts and source sizes fit one call. Used when a course is too big
+    to plan in one call."""
     per_section = {s.id: count_tokens(format_outline([s])) for s in sections}
+    source = {s.id: s.tokens for s in sections}
     groups: List[List[Section]] = []
     current: List[Section] = []
     size = 0
@@ -502,21 +506,33 @@ def group_sections(sections: Sequence[Section], max_tokens: int, max_sections: i
             files[-1].append(section)
         else:
             files.append([section])
+    current_source = 0
     for file_sections in files:
         file_size = sum(per_section[s.id] for s in file_sections)
-        if current and (size + file_size > max_tokens or len(current) + len(file_sections) > max_sections):
+        file_source = sum(source[s.id] for s in file_sections)
+        if current and (
+            size + file_size > max_tokens
+            or len(current) + len(file_sections) > max_sections
+            or current_source + file_source > max_source_tokens
+        ):
             groups.append(current)
-            current, size = [], 0
-        if file_size > max_tokens or len(file_sections) > max_sections:
+            current, size, current_source = [], 0, 0
+        if file_size > max_tokens or len(file_sections) > max_sections or file_source > max_source_tokens:
             for section in file_sections:
-                if current and (size + per_section[section.id] > max_tokens or len(current) + 1 > max_sections):
+                if current and (
+                    size + per_section[section.id] > max_tokens
+                    or len(current) + 1 > max_sections
+                    or current_source + source[section.id] > max_source_tokens
+                ):
                     groups.append(current)
-                    current, size = [], 0
+                    current, size, current_source = [], 0, 0
                 current.append(section)
                 size += per_section[section.id]
+                current_source += source[section.id]
             continue
         current.extend(file_sections)
         size += file_size
+        current_source += file_source
     if current:
         groups.append(current)
     return groups
@@ -566,6 +582,7 @@ async def plan_sections(
     """Plan `sections`: one call, or one per group of files when the outline is too big."""
     too_big = (
         len(sections) > settings.PLANNER_MAX_SECTIONS_PER_CALL
+        or sum(section.tokens for section in sections) > settings.PLANNER_MAX_SOURCE_TOKENS_PER_CALL
         or outline_tokens(sections) > settings.PLANNER_MAX_OUTLINE_TOKENS
     )
     if not too_big:
@@ -578,7 +595,12 @@ async def plan_sections(
                     len(valid.units), len(valid.topics()), valid.stats)
         return valid
 
-    groups = group_sections(sections, settings.PLANNER_MAX_OUTLINE_TOKENS, settings.PLANNER_MAX_SECTIONS_PER_CALL)
+    groups = group_sections(
+        sections,
+        settings.PLANNER_MAX_OUTLINE_TOKENS,
+        settings.PLANNER_MAX_SECTIONS_PER_CALL,
+        settings.PLANNER_MAX_SOURCE_TOKENS_PER_CALL,
+    )
     logger.info("Outline of %s sections is too big for one call: planning %s groups", len(sections), len(groups))
     units: List[ValidUnit] = []
     additions: Dict[str, List[str]] = {}
