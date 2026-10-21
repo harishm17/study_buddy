@@ -1,14 +1,13 @@
 import { expect, test, type Page } from '@playwright/test'
-import fs from 'node:fs'
+import { DEMO_EMAIL, DEMO_PASSWORD, demoIds } from './helpers/seed-demo'
 
-// Runs against the demo course on the dev stack (mock AI service), see docs/design/IMPLEMENTER_BRIEF.md.
-const ids = JSON.parse(fs.readFileSync('/tmp/sb-design/seed-ids.json', 'utf8')) as { course: string }
-const course = `/courses/${ids.course}`
+// Runs against the demo course (seeded by global-setup.ts) on a stack with the mock AI service.
+const course = `/courses/${demoIds().course}`
 
 async function signIn(page: Page) {
   await page.goto('/login')
-  await page.getByLabel('Email').fill('demo@studymargins.com')
-  await page.getByLabel('Password', { exact: true }).fill('study-buddy-demo')
+  await page.getByLabel('Email').fill(DEMO_EMAIL)
+  await page.getByLabel('Password', { exact: true }).fill(DEMO_PASSWORD)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(/\/home$/, { timeout: 60_000 })
 }

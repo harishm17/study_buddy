@@ -27,7 +27,7 @@ const ids = {
 }
 
 test.beforeAll(async ({ baseURL }) => {
-  fixture = await ensureVoiceFixture(baseURL ?? 'http://localhost:3700')
+  fixture = await ensureVoiceFixture(baseURL ?? 'http://localhost:3000')
 })
 
 test.beforeEach(async ({ page }) => {

@@ -11,7 +11,8 @@
  *  - a `\$` inside a `$...$` span stays a dollar sign in KaTeX, without ending the span early;
  *  - a `$...$` span holding only words is written as plain text.
  *
- * Code (fenced or inline) and display math (`$$...$$`) are left alone.
+ * A `$$...$$` alone on one line becomes a display block (remark-math would set it inline). Code
+ * (fenced or inline) and other display math are left alone.
  */
 
 // Code fences, display math and inline code, kept as they are.
@@ -108,18 +109,28 @@ function protectLine(line: string): string {
   return out
 }
 
+/** `$$x$$` alone on its line: remark-math sets it inline, so it becomes a display block. */
+const SINGLE_LINE_DISPLAY = /^\$\$([^\n]*\S[^\n]*)\$\$$/
+
 /** The text with currency and prose protected from math mode, as described above. */
 export function protectMathText(text: string): string {
   if (!text.includes('$')) return text
-  return text
-    .split(PROTECTED)
-    .map((part, index) =>
-      index % 2 === 1
-        ? part
-        : part
-            .split('\n')
-            .map(protectLine)
-            .join('\n')
-    )
+  const parts = text.split(PROTECTED)
+  return parts
+    .map((part, index) => {
+      if (index % 2 === 0) {
+        return part
+          .split('\n')
+          .map(protectLine)
+          .join('\n')
+      }
+      const display = SINGLE_LINE_DISPLAY.exec(part)
+      if (!display) return part
+      const before = parts[index - 1]
+      const after = parts[index + 1] ?? ''
+      const startsLine = /(^|\n)[ \t]*$/.test(before)
+      const endsLine = /^[ \t]*(\n|$)/.test(after)
+      return startsLine && endsLine ? `$$\n${display[1].trim()}\n$$` : part
+    })
     .join('')
 }

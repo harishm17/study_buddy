@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
+import { FIXTURE_PDF } from './helpers/seed-demo'
 
 // One account per run. The AI service behind the dev stack is a mock, so generating content is
 // free and fast; the spec writes every kind of content through the page itself.
@@ -7,7 +8,7 @@ const stamp = Date.now()
 const email = `topic-${stamp}@example.com`
 const password = 'topic-test-password'
 // Content is written from uploaded files, so the course needs one. Set E2E_PDF to use another.
-const pdfPath = process.env.E2E_PDF ?? '/tmp/sb-e2e/files/algorithms.pdf'
+const pdfPath = process.env.E2E_PDF ?? FIXTURE_PDF
 const TOPICS = ['Graph traversal', 'Sorting algorithms']
 
 async function createCourse(page: Page) {

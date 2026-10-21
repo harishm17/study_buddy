@@ -84,6 +84,15 @@ test('code and display math are not touched', () => {
   assert.equal(protectMathText(text), text)
 })
 
+test('a formula alone on its line becomes display math, one in a sentence stays inline', () => {
+  assert.equal(protectMathText('Intro\n\n$$S = x$$\n\nafter'), 'Intro\n\n$$\nS = x\n$$\n\nafter')
+  assert.equal(protectMathText('$$a+b$$'), '$$\na+b\n$$')
+  assert.equal(protectMathText('so $$x$$ holds'), 'so $$x$$ holds')
+  assert.equal(protectMathText('- $$x$$'), '- $$x$$')
+  assert.equal(protectMathText('$$\nalready\n$$'), '$$\nalready\n$$')
+  assert.ok(render('Intro\n\n$$S = x$$\n\nafter').includes('katex-display'))
+})
+
 test('lines are handled one at a time', () => {
   assert.equal(protectMathText('Costs $5\nand $x$ is a variable'), 'Costs \\$5\nand $x$ is a variable')
 })

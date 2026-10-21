@@ -1,14 +1,15 @@
 import { expect, test, type Page } from '@playwright/test'
+import { DEMO_EMAIL, DEMO_PASSWORD, FIXTURE_DOCX, FIXTURE_PDF } from './helpers/seed-demo'
 
 // Course setup end to end: materials, topic editor, content build, topics list, then Home and
 // the Today view. One account per run so it can run again against the same database.
-// Test files: /tmp/sb-e2e/files/algorithms.pdf and hashing.docx.
+// Test files: tests/e2e/fixtures/algorithms.pdf and hashing.docx.
 const stamp = Date.now()
 const email = `course-${stamp}@example.com`
 const password = 'course-test-password'
 const courseName = `Course spec ${stamp}`
-const PDF = '/tmp/sb-e2e/files/algorithms.pdf'
-const DOCX = '/tmp/sb-e2e/files/hashing.docx'
+const PDF = FIXTURE_PDF
+const DOCX = FIXTURE_DOCX
 
 test.describe.configure({ mode: 'serial' })
 test.setTimeout(180_000)
@@ -162,7 +163,7 @@ test('build content shows progress or failures, then topics list and materials',
 })
 
 test('Home has no dashed new course tile and never says 0 strong; the demo course shows Today', async ({ page }) => {
-  await signIn(page, 'demo@studymargins.com', 'study-buddy-demo')
+  await signIn(page, DEMO_EMAIL, DEMO_PASSWORD)
   await page.goto('/home')
 
   // The header button stays; the tile is gone.
