@@ -40,7 +40,11 @@ density 5 (daily app). Landing page only: variance 7, motion 4, density 3.
 | Backend | UI word |
 |---|---|
 | project | **Course** |
-| material, categories lecture_notes / sample_exams / book_chapters | **Materials**: Lecture notes / Past exams / Book chapters |
+| material, categories lecture_notes / sample_exams / book_chapters / syllabus | **Materials**: Lecture notes / Past exams / Book chapters / Syllabus or schedule |
+| material role content / syllabus / exam / other | **Used as**: Content / Syllabus / Past exam / Other |
+| unit | **Unit** (a week, chapter or lecture group; its week label is shown as a Badge) |
+| topic objectives | **By the end you can ...** |
+| topic sources | **Taught from** (in the topic header), **From <file>, p. N** (under an item) |
 | topic | **Topic** |
 | section_notes | **Notes** |
 | solved_examples | **Worked examples** |
@@ -289,7 +293,16 @@ Sidebar (surface bg, right hairline, full height, sticky):
 - Topics section (only inside an active course): plain heading "Topics" in caption fg-3 (sentence
   case, not uppercase), then a scrollable list of topic links (32px rows, 13.5px, MasteryIndicator
   16 ring on the left, name truncated, current topic highlighted like a nav item). Shows all
-  topics; scrolls independently.
+  topics; scrolls independently. **Units:** a course with units lists them as disclosure buttons
+  (32px, 13.5px/500: CaretDown 12 that turns to point right when closed, unit title truncated, the
+  unit's mastery ring 16 on the right; the week label is read by screen readers and shown in the
+  tooltip, not in the row), each controlling a list of its topics indented under a 1px `--border`
+  rule (margin-left 15px). `aria-expanded` and `aria-controls` on the button; Enter and Space
+  toggle. The student's open and closed choices are kept per course in localStorage
+  (`margins:sidebar-units:<courseId>`, unit id -> boolean); a unit without a choice is open when it
+  holds the current topic, or, away from a topic, when it is the first with unfinished work. Opening
+  a topic opens its unit. Topics with no unit follow the units as plain rows (no header). A flat
+  course is the plain list above.
 - Bottom: "Search" row with Ctrl K / Cmd K kbd (opens the command palette), then the account row:
   avatar circle with initials (accent-soft bg) + name + chevron; menu: email (caption, not
   clickable), Theme (submenu System / Light / Dark with check), separator, Sign out.
@@ -543,7 +556,16 @@ midterm-2025.pdf              Past exams      640 KB   (x) Not usable: scanned i
   pipeline: Uploading (with % from XHR), Checking the file, Reading pages, Indexing, Ready,
   Not usable (danger text, reason from validationNotes, full reason in a tooltip), Failed (with
   "Remove and upload again" hint). Row menu: Open (opens `/api/materials/[id]/file` in a new tab),
-  Delete (ConfirmDialog "Delete week1-sorting.pdf? Topics built from it keep their content.").
+  Use as (submenu of radio items Content / Syllabus / Past exam / Other, the current one checked;
+  `PATCH /api/materials/[id] { role }`), Delete (ConfirmDialog "Delete week1-sorting.pdf? Topics
+  built from it keep their content.").
+- **Role badge** ("Used as" column on desktop; on mobile it follows "Lecture notes, 1.2 MB" in the
+  row's second line): a Badge with the role word, neutral for Content and Other, accent for
+  Syllabus and Past exam. The word carries the meaning, the tone only supports it. Changing the
+  role shows at once and a toast says what follows: a syllabus or past exam stops being a topic
+  source ("Marked as syllabus. Topics no longer use it. Find topics again to update them."), a
+  content or other file is placed by "Find topics again". The upload category control has a fourth
+  option, "Syllabus or schedule"; it wraps inside the 390px width.
 - Live updates: rows with `validationStatus=pending` poll their jobs (resume via GET
   /api/jobs?active=1&types=validate_material,chunk_material and the chunking-job route); when a
   row turns Ready, `router.refresh()`.
@@ -581,6 +603,29 @@ We found these in your materials. Rename, merge or remove any. You can change th
 - Sticky footer bar (surface, top hairline): count + primary "Confirm topics". After confirming:
   go to the course overview (setup step 3 becomes current).
 - While extraction runs: JobStatus in place of the list with skeleton rows.
+
+**Units.** A course planned into units shows them in both modes; a flat course (no units) is
+exactly the single list described here.
+
+- *Editor:* each unit is a group: a title row (heading 18/26, week label Badge, "3 topics" in small
+  fg-3 tabular, and a `...` menu with Edit unit, Move unit up / down, Delete unit; Delete is
+  disabled while the unit has topics and the menu says "Move or delete its topics first."), then
+  its rows. Topics that belong to no unit come last under a plain "Topics" heading, only when the
+  course has units. An empty unit shows one line, "No topics in this unit yet. Move one here from
+  its menu, or add a topic below." Row numbers run across the whole course. Reordering (handle with
+  Up and Down, drag, or Move up / down) works inside a unit; moving to another unit is the row
+  menu's "Move to unit..." which opens a small dialog with a Select of the units plus "No unit"
+  (the topic lands last in that unit). "Merge into..." lists the other topics under their unit
+  names. Under the description each row shows the files the topic is taught from, read-only, as
+  small fg-3 text with a file icon ("algorithms.pdf, pp. 1-2"). Header actions: Find again, Add
+  unit (dialog: Title, Week (optional)), Add topic. The add-topic field has a unit Select beside
+  it (the last unit by default; stacked under the field on mobile). The footer reads "5 topics in
+  2 units".
+- *List:* a section per unit (`region` named by the unit): heading 18/26 with the week label Badge,
+  "2 topics", and on the right the unit's mastery (MasteryIndicator with percent; mean over all the
+  unit's topics, not-started counting as 0); the unit summary under it in small fg-2 when present;
+  then the list of rows, `aria-label="Topics in <unit>"`. Sections are 32px apart. The topics with
+  no unit follow under a "Topics" heading. "Needs work" is one flat list across units.
 
 **List mode** (all confirmed):
 
@@ -623,8 +668,21 @@ How BFS and DFS explore a graph, and when to use each.
 ```
 
 Header:
+- Above the title, when the topic has a unit: "Week 3: Sorting" (small fg-3, link to the topics
+  list; just the title when there is no week label).
 - Title (title style), description (body fg-2, max 2 lines), meta row (small fg-2): mastery
-  indicator, best quiz, next review ("Due today" in warning tone). Previous/next topic icon
+  indicator, best quiz, next review ("Due today" in warning tone), "About 35 min" with a 16px
+  Clock.
+- **Objectives block** (hidden entirely for a topic with no objectives, prerequisites or sources,
+  such as one added by hand): a hairline above, then "By the end you can" (body-strong) and a
+  bulleted list of the objectives (body fg-2, model text through MathText), max width 68ch. Under
+  640px the heading is a full-width disclosure button (44px, CaretDown that turns, count in
+  parentheses, `aria-expanded`, `aria-controls`) and the list is closed until opened. Then a
+  two-column definition list (label 80px, small fg-3): "Builds on" with the prerequisite topics as
+  links (underlined with a `--border-strong` underline, wrapping), and "Taught from" with one
+  entry per file and page range, a file icon and "algorithms.pdf, pp. 1-2" as a link to the file
+  viewer at that page (same target as the notes citations; plain text when the file has no id).
+  Below 640px the label sits above the value. Previous/next topic icon
   buttons on the right of the title (with tooltips naming the topics; shortcuts `[` `]`).
 - Topbar actions: "Ask about this" (opens the Ask sheet scoped to the topic) and an overflow
   menu: Regenerate notes / examples / practice / quiz (each opens the generate popover with
@@ -647,6 +705,21 @@ Views:
 - After the notes: a completion row: if not completed, primary "Mark as read" (check icon); when
   completed: accent-soft InlineAlert "You've read these notes." with link "Next: Worked examples".
 - Strip leftover "[Citation: ...]" lines and "If you want, I can..." lines (existing helper).
+
+**Check yourself** (inside the notes). A fenced block with the language `check` renders as an item
+instead of a code block: a Card-like box (12px radius, 1px border, surface, 16px padding) with the
+caption "Question", the question as compact markdown at 16/26 (math allowed), a secondary small
+button "Show answer" (Eye icon; becomes "Hide answer" with EyeSlash) with `aria-expanded` and
+`aria-controls`, and, when open, a surface-2 panel (8px radius) captioned "Answer" holding the
+answer as markdown. The first line is `Q: ...`, the answer starts at `A: ...` (either may run over
+several lines). A block that does not read that way stays an ordinary code block. Notes written
+before check blocks exist render as they did.
+
+**Sources under an item.** Under each worked example (at the end of its body), practice problem
+(under the statement and chips), and quiz or mock exam review item, a line in small fg-3: "From
+algorithms.pdf, p. 2" (several: "From a.pdf, pp. 1-2 and b.docx"). Pages of one file are merged.
+Each file is a link to the viewer at the page, underlined like the header's links; a file with no
+id is plain text. Nothing is shown when the item has no sources (content written earlier).
 
 **Worked examples**
 - Toolbar: count ("3 examples"), "More examples" (secondary; popover with an optional focus input
@@ -674,7 +747,9 @@ Views:
 - One problem at a time with a problem switcher (numbers; solved problems show a check).
 - Steps as a vertical stepper. Completed steps collapse to one line with the student's answer and
   a check. The current step shows the question (Markdown), the input by `answer_type` (numeric:
-  Input with inputmode decimal; text: Input; multiple_choice: option rows like the quiz), "Check"
+  Input with inputmode decimal; text: Input; multiple_choice: option rows like the quiz, from the step's stored `options` (lettered
+  tiles, math allowed in each; content written before options existed splits them out of the
+  question text), answered with the arrow keys or Space), "Check"
   primary, "Hint" ghost (reveals the hint in a neutral InlineAlert). After Check: correct ->
   accent-soft panel with feedback_correct + explanation, button "Next step"; incorrect ->
   danger-soft panel with feedback_incorrect, buttons "Try again" and "Show answer" (shows the

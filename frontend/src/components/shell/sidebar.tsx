@@ -24,7 +24,7 @@ import { Brand } from './brand'
 import { CourseSwitcher } from './course-switcher'
 import { useShell } from './shell-provider'
 import { useSidebarCollapsed } from './sidebar-state'
-import { useUnitState } from './unit-state'
+import { readUnitChoices, useUnitState } from './unit-state'
 import type { NavCourse, NavTopic } from '@/server/queries/courses'
 
 type NavItem = {
@@ -110,13 +110,10 @@ function TopicList({ course, activeTopicId }: { course: NavCourse; activeTopicId
   const defaultUnit = activeUnitId ?? firstUnfinished ?? groups.find((group) => group.unit)?.unit?.id ?? null
 
   // Opening a topic from anywhere (a link, the palette, the next button) shows it in the list.
-  const choicesRef = React.useRef(choices)
+  const courseId = course.id
   React.useEffect(() => {
-    choicesRef.current = choices
-  })
-  React.useEffect(() => {
-    if (activeUnitId && choicesRef.current[activeUnitId] === false) setOpen(activeUnitId, true)
-  }, [activeTopicId, activeUnitId, setOpen])
+    if (activeUnitId && readUnitChoices(courseId)[activeUnitId] === false) setOpen(activeUnitId, true)
+  }, [courseId, activeTopicId, activeUnitId, setOpen])
 
   if (course.units.length === 0) {
     return (

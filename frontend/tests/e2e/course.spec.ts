@@ -74,7 +74,8 @@ test('topic editor: rename, add, reorder, merge, delete, confirm', async ({ page
 
   await page.goto(`${courseUrl}/topics`)
   await expect(page.getByRole('heading', { level: 1, name: 'Check the topics' })).toBeVisible()
-  const rows = page.getByRole('list', { name: 'Topics' }).getByRole('listitem')
+  // With units there is one list per unit ("Topics in <unit>"); the rows are every topic in all of them.
+  const rows = page.getByRole('list', { name: /^Topics/ }).getByRole('listitem')
   const initial = await rows.count()
   expect(initial).toBeGreaterThanOrEqual(2)
 
@@ -155,7 +156,7 @@ test('starting the first topic writes its notes, then topics list and materials'
   await expect(page.getByRole('link', { name: 'Edit topics' })).toBeVisible()
   await expect(page.getByRole('button', { name: /Build missing content/ })).toHaveCount(0)
   await page.getByRole('radio', { name: 'Needs work' }).click()
-  await expect(page.getByRole('list', { name: 'Topics' }).getByRole('listitem').first()).toBeVisible()
+  await expect(page.getByRole('list', { name: /^Topics/ }).getByRole('listitem').first()).toBeVisible()
 
   // Materials: open the row menu and delete one file with a confirmation.
   await page.goto(`${courseUrl}/materials`)
