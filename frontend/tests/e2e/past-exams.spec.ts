@@ -70,11 +70,19 @@ test('a past exam gets a style profile and the new-exam form offers to match it'
       intervals: [2000],
     })
     .toBeGreaterThan(0)
-  const flags = await withPrisma((prisma) =>
-    prisma.$queryRaw<{ exam_relevant: boolean }[]>`SELECT exam_relevant FROM topics WHERE project_id = ${courseId}`
+  // The planner marks the topics the exam questions test (the mock leaves the last topic out).
+  const flagged = () =>
+    withPrisma((prisma) =>
+      prisma.$queryRaw<{ exam_relevant: boolean }[]>`SELECT exam_relevant FROM topics WHERE project_id = ${courseId} ORDER BY order_index`
+    )
+  await expect.poll(async () => (await flagged()).some((row) => row.exam_relevant), { timeout: 60_000, intervals: [1000] }).toBe(true)
+  const flags = await flagged()
+  if (flags.length > 1) expect(flags[flags.length - 1].exam_relevant).toBe(false)
+  const map = await withPrisma(
+    async (prisma) => (await prisma.material.findUnique({ where: { id: examId }, select: { examTopicMap: true } }))?.examTopicMap
   )
-  expect(flags.length).toBeGreaterThan(0)
-  expect(flags.every((row) => typeof row.exam_relevant === 'boolean')).toBe(true)
+  expect(map).toMatchObject({ version: 1, questions: expect.any(Array) })
+  expect((map as { questions: unknown[] }).questions.length).toBeGreaterThan(0)
   await page.request.post(`/api/projects/${courseId}/topics/confirm`)
 })
 
@@ -118,6 +126,9 @@ test('when the file stops being an exam the profile and the toggle go; making it
   const away = await json(await page.request.patch(`/api/materials/${examId}`, { data: { role: 'content' } }))
   expect(away.material.role).toBe('content')
   expect(await styleProfile()).toBeNull()
+  await expect
+    .poll(() => withPrisma((prisma) => prisma.material.findUnique({ where: { id: examId }, select: { examTopicMap: true } })).then((row) => row?.examTopicMap ?? null), { timeout: 5_000 })
+    .toBeNull()
   await expect.poll(() => completedJobs('exam_relevance'), { timeout: 60_000, intervals: [1000] }).toBeGreaterThan(relevanceJobs)
   await page.goto(`/courses/${courseId}/exams/new`)
   await expect(page.getByRole('radio', { name: '10', exact: true })).toBeVisible()

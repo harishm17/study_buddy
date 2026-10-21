@@ -364,12 +364,12 @@ class TestJobs:
             await jobs._start_exam_jobs(await exam_file(course, role=role), course.project_id, course.user_id)
         assert dispatched.profiles == [] and dispatched.relevance == []
 
-    async def test_without_a_model_only_the_relevance_job_runs(self, course, dispatched, monkeypatch):
+    async def test_without_a_model_no_job_starts(self, course, dispatched, monkeypatch):
         monkeypatch.setattr(settings, "LLM_PROVIDER", "anthropic")
         monkeypatch.setattr(settings, "ANTHROPIC_API_KEY", "")
         material = await exam_file(course)
         await jobs._start_exam_jobs(material, course.project_id, course.user_id)
-        assert dispatched.profiles == [] and len(dispatched.relevance) == 1
+        assert dispatched.profiles == [] and dispatched.relevance == []
 
     async def test_the_profile_job_stores_the_profile_and_records_usage_rows(self, course):
         material = await exam_file(course)

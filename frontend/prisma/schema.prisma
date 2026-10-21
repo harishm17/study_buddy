@@ -107,6 +107,10 @@ model Material {
   // extracted once the file is chunked and only while role is "exam". Shape: ExamStyleProfile in
   // ai-service/app/services/llm/schemas.py. Null for every other file.
   styleProfile     Json?     @map("style_profile")
+  // For a past exam: what each question tests, as {version, input_hash, questions: [{label,
+  // summary (a paraphrase of at most 12 words), topic_ids}]}. Written with topics.exam_relevant by
+  // ai-service app/services/exam_relevance.py; topic_ids can name topics deleted since. Null otherwise.
+  examTopicMap     Json?     @map("exam_topic_map")
 
   // Relations
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)

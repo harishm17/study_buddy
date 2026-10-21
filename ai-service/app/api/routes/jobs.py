@@ -34,7 +34,9 @@ from app.services.generation_chain import content_exists, continue_chain, dispat
 from app.services.job_reaper import reap_expired_jobs
 from app.services.llm.base import LLMRefusalError
 from app.services.llm.limiter import topic_lock
+from app.services.budget import over_budget_message
 from app.services.job_runner import (
+    DailyBudgetExceeded,
     JobContext,
     JobOutcome,
     PermanentJobError,
@@ -330,29 +332,30 @@ async def chunk_material_job(payload: JobPayload, job: JobContext) -> JobOutcome
 
 async def _start_exam_jobs(material_id: str, project_id: Optional[str], user_id: str) -> None:
     """After a file is chunked: when it is a past exam, start the job that marks the topics it
-    covers and the one that writes its style profile (needs the model, so only when one is set up).
+    covers and the one that writes its style profile (both need the model, so only when one is set up).
     The role is read now, not at the start of the chunk job: the student may have changed it."""
     if not project_id:
         return
     row = await execute_one("SELECT role FROM materials WHERE id = $1", material_id)
     if not row or row["role"] != "exam":
         return
+    if not settings.llm_configured:
+        return  # both jobs need the model
     await start_exam_relevance_job(project_id, user_id)
-    if settings.llm_configured:
-        job_id, created = await create_job(
-            user_id=user_id,
-            project_id=project_id,
-            job_type="profile_exam",
-            stage="extracting",
-            input_data={"materialId": material_id},
-            target_key=f"profile:{material_id}",
-        )
-        if created:
-            try:
-                await enqueue_exam_profile_job(job_id, material_id)
-            except Exception as exc:
-                logger.error("Could not dispatch exam profile job %s: %s", job_id, exc)
-                await mark_undelivered(job_id, str(exc))
+    job_id, created = await create_job(
+        user_id=user_id,
+        project_id=project_id,
+        job_type="profile_exam",
+        stage="extracting",
+        input_data={"materialId": material_id},
+        target_key=f"profile:{material_id}",
+    )
+    if created:
+        try:
+            await enqueue_exam_profile_job(job_id, material_id)
+        except Exception as exc:
+            logger.error("Could not dispatch exam profile job %s: %s", job_id, exc)
+            await mark_undelivered(job_id, str(exc))
 
 
 async def start_exam_relevance_job(project_id: str, user_id: str) -> None:
@@ -397,11 +400,21 @@ async def profile_exam_job(payload: JobPayload, job: JobContext) -> JobOutcome:
     stage="extracting",
 )
 async def exam_relevance_job(payload: JobPayload, job: JobContext) -> JobOutcome:
-    """Mark the topics of a project that its past exams cover. No model call."""
+    """Mark the topics of a project that its past exams test (one model call, only when there are
+    past exams and something changed). The daily budget is checked just before that call, so
+    clearing the flags after the last past exam is removed works even over budget."""
     project_id = payload.data.get("projectId")
     if not project_id:
         raise PermanentJobError("projectId required", "INVALID_INPUT")
-    return JobOutcome(result=await mark_exam_relevant_topics(project_id))
+
+    async def within_budget() -> None:
+        if not settings.llm_configured:
+            raise PermanentJobError("No model is configured", "LLM_NOT_CONFIGURED")
+        message = await over_budget_message(job.user_id)
+        if message:
+            raise DailyBudgetExceeded(message)
+
+    return JobOutcome(result=await mark_exam_relevant_topics(project_id, before_model=within_budget))
 
 
 @router.post("/jobs/extract-topics")

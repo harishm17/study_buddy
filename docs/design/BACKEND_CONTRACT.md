@@ -147,7 +147,7 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 **`PATCH /api/materials/[materialId]`** (new)
 - Body: `{ role: 'content' | 'syllabus' | 'exam' | 'other' }` (the student's say on what a file is for; the UI offers it from the file menu with the labels Content, Syllabus, Past exam, Other).
 - Becoming `syllabus` or `exam` removes that file's `topic_sources` and its `topic_chunk_mappings` in the same transaction, so topics stop being taught from it at once (content already written stays). Becoming `content` or `other` adds nothing by itself: "Find topics again" places its sections.
-- Past exams (§11): a file that becomes `exam` (and is valid with chunks) gets a `profile_exam` job; a file that stops being one has `styleProfile` set to null in the same transaction. Either change starts an `exam_relevance` job for the course. A file still being processed is handled by the AI service when it finishes chunking, from the role it has then. Job start is best effort: the PATCH never fails because of it.
+- Past exams (§11): a file that becomes `exam` (and is valid with chunks) gets a `profile_exam` job; a file that stops being one has `styleProfile` and `examTopicMap` set to null in the same transaction. Either change starts an `exam_relevance` job for the course. A file still being processed is handled by the AI service when it finishes chunking, from the role it has then. Job start is best effort: the PATCH never fails because of it.
 - 200: `{ material: { id, role, removedSources } }`. 400 `{ error: 'Invalid input', details }`, 404, 401 (A-shape).
 
 **`DELETE /api/materials/[materialId]`**
@@ -566,7 +566,7 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - `generate_content`: `{content_id, content_type, metadata}`
 - `generate_exam`: `{exam_id, total_questions, topics_covered, matched_past_exams}`
 - `profile_exam`: `{status:'profiled', question_count, stems}` or `{status:'skipped', reason}`
-- `exam_relevance`: `{topics, relevant, changed}`
+- `exam_relevance`: `{topics, relevant, changed, questions, model_calls}`
 - `grade_exam`: `{submission_id, overall_score, earned_points, total_points}`
 
 **Error codes the UI must handle** (`FE/lib/jobs/failure-message.ts` has user-safe text; the raw `errorMessage` is for logs):
@@ -607,12 +607,13 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
   - `category: lecture_notes|sample_exams|book_chapters|syllabus`
   - `role: content|syllabus|exam|other` (default `content`): what the file is for (§9, "Material roles")
   - `styleProfile Json?` (`style_profile`): the style profile of a past exam (§11); null for every other file
+  - `examTopicMap Json?` (`exam_topic_map`): which topics each question of a past exam tests (§11.3); null for every other file
   - `filename, gcsPath, sizeBytes (BigInt)`
   - `validationStatus: pending|valid|invalid`, `validationNotes?`, `metadata {mimeType, extension}`, `uploadedAt, validatedAt?`
   - `MaterialChunk`: text, `vector(384)` embedding, generated `tsvector`, `sectionHierarchy`, `pageStart/End`, `chunkIndex`, `tokenCount`.
 - **Unit** (new): `id, projectId, title, summary?, orderIndex, weekLabel?, createdAt`; index `(projectId, orderIndex)`; deleting a unit sets its topics' `unitId` to null.
 - **TopicSource** (new): `id, topicId, materialId, pageStart?, pageEnd?, chunkIndexStart, chunkIndexEnd, role: primary|supporting`. The planner writes one `primary` row per planned section: a contiguous range of one file's chunks. Cascades with the topic and the material.
-- **Topic:** `name, description?, keywords[], orderIndex, sourceMaterialIds[], userConfirmed`, plus (new) `unitId?`, `objectives[]`, `prerequisiteIds[]`, `estimatedMinutes?`, and `examRelevant` (§10; the column belongs to the learning-loop migration).
+- **Topic:** `name, description?, keywords[], orderIndex, sourceMaterialIds[], userConfirmed`, plus (new) `unitId?`, `objectives[]`, `prerequisiteIds[]`, `estimatedMinutes?`, and `examRelevant` (§11; the column belongs to the learning-loop migration).
   - There is **no `Topic.status` field**. The only state is `userConfirmed`, plus the project status.
   - `TopicChunkMapping(topicId, chunkId, relevanceScore, relevanceSource: keyword_match|semantic_search|llm_validated)`.
   - Flow: extract (an AI job creates topics with `userConfirmed=false`), review, then confirm. During review the student can rename, reorder (up/down via `orderIndex`), merge, delete, add manually (auto-confirmed) and re-extract. `topics/confirm` confirms all topics. Re-extract deletes unconfirmed leftovers but keeps confirmed topics.
@@ -1257,7 +1258,7 @@ When a topic is due, two actions (the Review page and the topic's quiz lobby):
 
 ## 11. Past exams (learning v2, stage 3)
 
-A file with role `exam` teaches the app how the student's exams are written and which topics they test. Migration `20261102000000_past_exam_style` adds `materials.style_profile jsonb` (nullable). The code also writes `topics.exam_relevant`; that column is added by the learning-loop migration (`Topic.examRelevant Boolean @default(false)`). While this branch stood alone, `20261102000001_topic_exam_relevant_tmp` added it with `IF NOT EXISTS`; drop that directory when the branches are combined.
+A file with role `exam` teaches the app how the student's exams are written and which topics they test. Migration `20261102000000_past_exam_style` adds `materials.style_profile jsonb` (nullable). The code also writes `topics.exam_relevant` (and, in `20261102000002_exam_question_topics`, `materials.exam_topic_map`); that column is added by the learning-loop migration (`Topic.examRelevant Boolean @default(false)`). While this branch stood alone, `20261102000001_topic_exam_relevant_tmp` added it with `IF NOT EXISTS`; drop that directory when the branches are combined.
 
 ### 11.1 The style profile (`Material.styleProfile`)
 
@@ -1288,13 +1289,22 @@ Built by the `profile_exam` job once a past exam is chunked: one model call (pur
 
 `hasExamStyle` (server query `courseHasExamStyle`: any valid `exam` material of the course with a non-null `styleProfile`) decides whether the form shows a "Style" section with the checkbox **Match my past exams**. It is hidden when no profile exists and **on by default** when one does. When on, the form sends `matchPastExams: true` to `POST /api/projects/[projectId]/generate-exam` (§2). It leaves the question mix as chosen.
 
-### 11.3 Exam relevance (`Topic.examRelevant`)
+### 11.3 Exam relevance (`Topic.examRelevant`, `Material.examTopicMap`)
 
-`true` when the topic's concepts appear in the course's past-exam text: each topic (name, description, keywords) is searched against the chunks of valid `exam` files only, with the same hybrid search that finds a topic's lesson material (`hybrid_search_chunks(..., include_roles=("exam",))`: coverage test, then the similarity floor `MIN_SIMILARITY`). One chunk above the floor marks the topic.
+A topic is `examRelevant` when at least one question of the course's past exams tests it. One model call per course (purpose `exam_style`: the `MODEL_TOPICS` model at low effort) gets the text of the valid `exam` files and the topics (key, name, objectives) and returns, for each real question, a label, a paraphrase of at most 12 words and 0 to 3 topic keys. The flag is derived from those answers: true for every topic some question names, false for all others (every topic of the course is set).
 
-- It is a full recompute of the course (every topic is set true or false), so it is idempotent and safe to repeat.
-- It runs inside the `extract_topics` job after the plan is written (a failure there never fails planning), and as the `exam_relevance` job (no model call) after a past exam is chunked, after a file's role changes to or from `exam`, and after a past exam is deleted.
-- The default topic search still excludes syllabus and exam chunks; `include_roles` is an explicit opt-in.
+- **Input.** Chunks that are mostly numbers (formula sheets, tables) are left out, whole chunks only, up to about 30k tokens (120,000 characters) shared between the exam files. The prompt tells the model to ignore cover pages and instructions.
+- **Stored per exam file**: `Material.examTopicMap` (`materials.exam_topic_map`, migration `20261102000002_exam_question_topics`; null for every other file and cleared when the role changes away from `exam`):
+  ```ts
+  { version: 1, input_hash: string,
+    questions: { label: string /* "Problem 3", 40 chars max */,
+                 summary: string /* paraphrase, 12 words max; "" if it could not be made without copying */,
+                 topic_ids: string[] /* 0..3 topics; may name topics deleted since: tolerate unknown ids */ }[] }
+  ```
+  The UI or the plan can use it to say which question tested a topic. No exam text is stored: a summary sharing 8 or more words with the exam is asked for again once, then blanked.
+- **Recompute.** `input_hash` covers the topics and the exam text, so a recompute where neither changed reads the stored maps and makes no model call. With no past exam it clears every flag and map without one.
+- **When.** Inside the `extract_topics` job after the plan is written (a failure there never fails planning), and as the `exam_relevance` job after a past exam is chunked, after a file's role changes to or from `exam`, and after a past exam is deleted. The job is budget-gated just before the model call, so clearing flags works over budget; it fails permanently (`LLM_DAILY_BUDGET`, `LLM_NOT_CONFIGURED`) when it needs the model and cannot have it, leaving the flags as they were. The AI service does not start either past-exam job when no model is configured.
+- **No embedding fallback.** A similarity-floor version (hybrid search of each topic against exam chunks) was built first and dropped: on the eval corpus it flagged 8 of 9 topics for one exam and a dynamic-programming topic for a quiz that never mentions it, because the embedder scores boilerplate and every topic alike. Without a model there is also no course plan to mark.
 - The learning-loop UI reads the flag for the "On past exams" tag and for planning.
 
 ---

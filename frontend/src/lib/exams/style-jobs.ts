@@ -4,7 +4,7 @@
  * app/api/routes/jobs.py), so these cover the other ways the set of past exams changes:
  *
  * - `profile_exam` writes the style profile of one file (a model call);
- * - `exam_relevance` recomputes which topics of the course the past exams cover (no model call).
+ * - `exam_relevance` recomputes which topics of the course the past exams test (a model call, skipped when nothing changed).
  *
  * Both are best effort: a student's role change or delete never fails because a job could not start.
  */

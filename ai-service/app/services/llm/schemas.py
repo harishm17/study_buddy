@@ -817,6 +817,56 @@ class ExamStyleProfile(BaseModel):
         return profile
 
 
+# ---------------------------------------------------------------- which topics the exams test
+
+
+class ExamQuestionTopics(BaseModel):
+    exam: int = Field(description="Number of the exam file this question is in, as listed (1, 2, ...)")
+    label: str = Field(description="The question's own number or label, such as 'Problem 3' or 'Q2(b)'; 40 characters at most")
+    summary: str = Field(
+        description="What the question tests, REWRITTEN IN YOUR OWN WORDS in 12 words or fewer. Never copy wording from the exam"
+    )
+    topic_keys: List[str] = Field(
+        description="Keys (T1, T2...) of the topics a student needs to answer the question: none, one, or at most three"
+    )
+
+
+class ExamTopicMap(BaseModel):
+    """Which topics each question of the past exams tests. A topic no question tests is not on the exams."""
+
+    questions: List[ExamQuestionTopics] = Field(
+        description="Every real question of every exam, once each (a question with parts is one entry). No cover page, instructions, formula sheets or tables"
+    )
+
+    @classmethod
+    def example(cls) -> "ExamTopicMap":
+        return cls(questions=[ExamQuestionTopics(exam=1, label="Question 1", summary="A core idea applied once (mock)", topic_keys=["T1"])])
+
+    @classmethod
+    def example_for(cls, prompt: str) -> "ExamTopicMap":
+        """The mock provider's answer: one question per 'Problem N' / 'N.' label in each exam, the
+        questions spread over the topics except the last, which no question tests."""
+        keys = re.findall(r"(?m)^(T\d+) \| ", prompt)
+        usable = keys[:-1] if len(keys) > 1 else keys
+        questions: List[ExamQuestionTopics] = []
+        sections = re.findall(r'(?s)<exam n="(\d+)"[^>]*>(.*?)</exam>', prompt) or [("1", "")]
+        for number, body in sections:
+            labels = []
+            for match in re.finditer(r"(?m)^[\W_]*(?:Problem|Question|Q)?[\W_]*(\d{1,2})[.):](?:\s|\*)", body):
+                if match.group(1) not in labels:
+                    labels.append(match.group(1))
+            for index, label in enumerate(labels or ["1"]):
+                questions.append(
+                    ExamQuestionTopics(
+                        exam=int(number),
+                        label=f"Question {label}",
+                        summary=f"Tests one idea from the course (mock {label})",
+                        topic_keys=[usable[index % len(usable)]] if usable else [],
+                    )
+                )
+        return cls(questions=questions)
+
+
 class ShortAnswerGrade(BaseModel):
     points_earned: float
     feedback: str = Field(description="2-3 sentences on what was good and what was missing")

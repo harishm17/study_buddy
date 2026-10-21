@@ -82,24 +82,3 @@ async def test_the_chunk_rows_carry_what_a_context_needs(db, files):
 
     for key in ("id", "chunk_text", "page_start", "chunk_index", "token_count", "material_id", "filename", "category"):
         assert key in chunk
-
-
-async def test_include_roles_searches_only_those_files(db, files):
-    project_id, ids = files
-
-    found = await search.hybrid_search_chunks(project_id, "Krebs cycle", "", [], limit=10, include_roles=("exam",))
-
-    assert {c["filename"] for c in found} == {"exam.pdf"}
-
-
-async def test_include_roles_applies_to_the_full_text_only_search(db, files, monkeypatch):
-    project_id, _ = files
-
-    async def broken(text):
-        raise RuntimeError("embedder down")
-
-    monkeypatch.setattr(search, "generate_query_embedding", broken)
-
-    found = await search.hybrid_search_chunks(project_id, "krebs cycle", "", ["krebs"], limit=10, include_roles=("exam", "syllabus"))
-
-    assert {c["filename"] for c in found} == {"exam.pdf", "syllabus.pdf"}

@@ -58,10 +58,10 @@ export async function PATCH(
 
     const wasExam = material.role === 'exam';
     const removedSources = await prisma.$transaction(async (tx) => {
-      // The profile describes a past exam: it goes as soon as the file is no longer one.
+      // The profile and the question map describe a past exam: they go as soon as the file is no longer one.
       await tx.material.update({
         where: { id: materialId },
-        data: { role, ...(role !== 'exam' ? { styleProfile: Prisma.DbNull } : {}) },
+        data: { role, ...(role !== 'exam' ? { styleProfile: Prisma.DbNull, examTopicMap: Prisma.DbNull } : {}) },
       });
       if (canBeTopicSource(role)) return 0;
       const removed = await tx.topicSource.deleteMany({ where: { materialId } });
