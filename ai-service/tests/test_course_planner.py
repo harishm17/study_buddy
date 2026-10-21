@@ -233,7 +233,7 @@ class TestValidation:
         plan = plan_of([PlannedTopic(
             key="t1", name="  Bayes   rule \n", description="", section_ids=["S1", "S2"],
             objectives=["You can compute a posterior", "by the end you can name the terms", "  ", "compute a posterior"],
-            keywords=["Bayes", "bayes", "", "posterior"], estimated_minutes=0,
+            keywords=["Bayes", "bayes", "", "posterior"], prerequisite_keys=[], estimated_minutes=0,
         )])
         t = validate_plan(plan, sections).topics()[0]
         assert t.name == "Bayes rule"

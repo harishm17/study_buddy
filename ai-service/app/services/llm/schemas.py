@@ -570,7 +570,11 @@ class PlannedTopic(BaseModel):
     keywords: List[str] = Field(description="3-8 search keywords")
     section_ids: List[str] = Field(description="Ids of the outline sections this topic is taught from")
     prerequisite_keys: List[str] = Field(
-        default_factory=list, description="Keys of earlier topics this one builds on"
+        description=(
+            "Keys of EARLIER topics in this plan that a student must know before this one "
+            "(usually one or two; for example Bayes' theorem builds on conditional probability). "
+            "Empty only for the first topic or one that needs nothing earlier"
+        )
     )
     estimated_minutes: int = Field(description="Minutes to study the topic, 10-90")
 
@@ -617,6 +621,7 @@ class CoursePlan(BaseModel):
                             objectives=["explain the core idea", "apply it to a small case", "spot a common mistake"],
                             keywords=["core", "concepts", "overview"],
                             section_ids=[],
+                            prerequisite_keys=[],
                             estimated_minutes=20,
                         )
                     ],
