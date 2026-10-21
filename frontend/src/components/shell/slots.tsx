@@ -13,6 +13,8 @@ type SlotsValue = {
   /** Breadcrumbs a page set itself, replacing the ones worked out from the URL. */
   crumbs: Crumb[] | null
   setCrumbs: (crumbs: Crumb[] | null) => void
+  /** Asked before the focus layout's Exit link navigates; returning false stops it. */
+  exitGuard: React.RefObject<(() => boolean) | null>
 }
 
 const SlotsContext = React.createContext<SlotsValue | null>(null)
@@ -24,12 +26,16 @@ export function SlotsProvider({ children }: { children: React.ReactNode }) {
     title: null,
   })
   const [crumbs, setCrumbs] = React.useState<Crumb[] | null>(null)
+  const exitGuard = React.useRef<(() => boolean) | null>(null)
 
   const setTarget = React.useCallback((name: SlotName, element: HTMLElement | null) => {
     setTargets((current) => (current[name] === element ? current : { ...current, [name]: element }))
   }, [])
 
-  const value = React.useMemo(() => ({ targets, setTarget, crumbs, setCrumbs }), [targets, setTarget, crumbs])
+  const value = React.useMemo(
+    () => ({ targets, setTarget, crumbs, setCrumbs, exitGuard }),
+    [targets, setTarget, crumbs]
+  )
   return <SlotsContext.Provider value={value}>{children}</SlotsContext.Provider>
 }
 
@@ -84,4 +90,18 @@ export function FocusHeader({
       {actions && targets.actions ? createPortal(actions, targets.actions) : null}
     </>
   )
+}
+
+/**
+ * Lets a focus page confirm before the Exit link leaves it. The guard returns true to let the
+ * navigation go ahead, or false to stop it (and, for example, open a confirm dialog).
+ */
+export function useFocusExitGuard(guard: (() => boolean) | null) {
+  const { exitGuard: exitGuardRef } = useSlots()
+  React.useEffect(() => {
+    exitGuardRef.current = guard
+    return () => {
+      exitGuardRef.current = null
+    }
+  }, [exitGuardRef, guard])
 }

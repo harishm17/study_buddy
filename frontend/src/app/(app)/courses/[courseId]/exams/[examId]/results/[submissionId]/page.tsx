@@ -1,24 +1,45 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { Page, PageIntro } from '@/components/shell/page'
 import { PageHeader } from '@/components/shell/slots'
-import { ComingSoon } from '@/features/courses/coming-soon'
 import { examCrumbs } from '@/features/courses/exam-crumbs'
+import { GradedResults, GradingFailed, GradingPanel } from '@/features/exams/exam-results'
+import { formatDateTime } from '@/lib/format'
 import { getCourseShell } from '@/server/queries/courses'
-import { getExamBasics } from '@/server/queries/exams'
+import { getExamResult } from '@/server/queries/mock-exams'
 import { requireUser } from '@/server/session'
 
-export const metadata = { title: 'Exam results' }
+export const metadata: Metadata = { title: 'Mock exam results' }
 
-type Params = Promise<{ courseId: string; examId: string; submissionId: string }>
-
-export default async function ExamResultsPage({ params }: { params: Params }) {
+export default async function ExamResultsPage({
+  params,
+}: {
+  params: Promise<{ courseId: string; examId: string; submissionId: string }>
+}) {
   const user = await requireUser()
-  const { courseId, examId } = await params
-  const [course, exam] = await Promise.all([getCourseShell(user.id, courseId), getExamBasics(user.id, courseId, examId)])
-  if (!course || !exam) notFound()
+  const { courseId, examId, submissionId } = await params
+  const [course, result] = await Promise.all([
+    getCourseShell(user.id, courseId),
+    getExamResult(user.id, courseId, examId, submissionId),
+  ])
+  if (!course || !result) notFound()
+
   return (
-    <>
-      <PageHeader crumbs={examCrumbs(course, exam, 'Results')} />
-      <ComingSoon title="Results" description={exam.name} />
-    </>
+    <Page className="max-w-[848px] pt-8">
+      <PageHeader
+        crumbs={examCrumbs({ id: course.id, name: course.name }, { id: result.examId, name: result.examTitle }, 'Results')}
+      />
+      {result.status === 'graded' ? (
+        <>
+          <h1 className="sr-only">Results for {result.examTitle}</h1>
+          <GradedResults result={result} submittedLabel={formatDateTime(result.submittedAt)} />
+        </>
+      ) : (
+        <>
+          <PageIntro title="Your results" description={`${result.examTitle}, submitted ${formatDateTime(result.submittedAt)}`} />
+          {result.status === 'grading' ? <GradingPanel result={result} /> : <GradingFailed result={result} />}
+        </>
+      )}
+    </Page>
   )
 }
