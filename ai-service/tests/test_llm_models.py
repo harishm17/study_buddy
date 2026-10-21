@@ -84,6 +84,13 @@ class TestResolveModel:
         monkeypatch.setattr(settings, "ANTHROPIC_MODEL", "claude-sonnet-5-5")
         assert resolve_model("chat") == ModelChoice("claude-sonnet-5-5", "high")
 
+    def test_exam_style_uses_the_topics_model_at_low_effort_whatever_its_setting(self, monkeypatch):
+        monkeypatch.setattr(settings, "MODEL_TOPICS", "claude-sonnet-5-5:high")
+        assert resolve_model("exam_style") == ModelChoice("claude-sonnet-5-5", "low")
+        assert resolve_model("extract_topics") == ModelChoice("claude-sonnet-5-5", "high")
+        monkeypatch.setattr(settings, "MODEL_TOPICS", "claude-opus-5-5:none")
+        assert resolve_model("exam_style") == ModelChoice("claude-opus-5-5", "low")
+
     def test_voice_and_drills_share_a_setting(self, monkeypatch):
         monkeypatch.setattr(settings, "MODEL_VOICE", "claude-haiku-5-5:medium")
         assert resolve_model("voice") == resolve_model("voice_drill") == ModelChoice("claude-haiku-5-5", "medium")

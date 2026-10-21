@@ -157,7 +157,13 @@ async def extract_style_profile(exam_text: str, filename: str) -> Dict[str, Any]
 
 
 def _json_value(value: Any) -> Any:
-    return json.loads(value) if isinstance(value, str) else value
+    """A jsonb column as asyncpg returns it (text); text that is not JSON reads as nothing."""
+    if not isinstance(value, str):
+        return value
+    try:
+        return json.loads(value)
+    except ValueError:
+        return None
 
 
 def _round_robin(lists: Sequence[Sequence[str]], limit: int) -> List[str]:
