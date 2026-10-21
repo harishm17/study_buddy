@@ -28,7 +28,7 @@ export default defineRailway(() => {
   const AUTO_DEPLOY_FROM_GITHUB = true;
   const fromGithub = (rootDirectory: string) =>
     AUTO_DEPLOY_FROM_GITHUB
-      ? { source: github("harishm17/study_buddy", { branch: "main", rootDirectory, checkSuites: true }) }
+      ? { source: github("harishm17/margins", { branch: "main", rootDirectory, checkSuites: true }) }
       : {};
   // Watch paths are relative to the repository, so they only make sense for GitHub deploys.
   const watch = (folder: string) => (AUTO_DEPLOY_FROM_GITHUB ? { watchPatterns: [`/${folder}/**`] } : {});

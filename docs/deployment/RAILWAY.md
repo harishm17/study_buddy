@@ -1,6 +1,6 @@
 # Deploying on Railway
 
-StudyBuddy runs as one Railway project, `study-buddy`, in the `us-west2` region:
+Margins (studymargins.com) runs as one Railway project, `study-buddy`, in the `us-west2` region:
 
 | Resource | What it is |
 |---|---|
@@ -51,7 +51,7 @@ Railway deploys each
 service on every push to `main`, after CI passes and only when that service's folder changed. This is on; to set it up again elsewhere:
 
 1. In the Railway dashboard, open the `web` service, Settings, Source, and connect the
-   GitHub repository. That installs the Railway GitHub app; give it access to `study_buddy`.
+   GitHub repository. That installs the Railway GitHub app; give it access to `margins`.
    The deploy this starts builds from the repository root and fails; step 2 fixes that.
 2. Set `AUTO_DEPLOY_FROM_GITHUB = true` in `.railway/railway.ts`, then `railway config plan`
    and `railway config apply`. This points both services at `main` with their own folder as
