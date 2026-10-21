@@ -1,8 +1,11 @@
 # Evals
 
-This folder holds the evaluations for Margins. Right now there is one: a **retrieval eval** that measures how well the app maps a topic to the chunks of the course material that explain it. It is free to run (no paid API calls) and takes under a minute.
+This folder holds the evaluations for Margins. There are two:
 
-There is no generation-quality eval yet. See [Generation quality](#generation-quality-not-built-yet).
+- A **retrieval eval** that measures how well the app maps a topic to the chunks of the course material that explain it. It is free to run (no paid API calls) and takes under a minute.
+- A **generation eval** that runs the app's real generators (notes, worked examples, practice problems, quiz) on two real courses with several models, then checks the output with code and, optionally, an Opus judge. It makes paid API calls, so it has a spend cap. See [Generation eval](#generation-eval).
+
+The rest of this file up to "Generation eval" is about the retrieval eval.
 
 ## What the retrieval eval measures
 
@@ -44,6 +47,9 @@ They show how much the app's hybrid helps or hurts compared with the simplest po
 ```
 evals/
   README.md
+  common/
+    ingest.py            chunk + embed + store documents (shared by both evals)
+  generation/            see "Generation eval" below
   retrieval/
     corpus.json          sources, licences, checksums, page ranges, expected chunk structure
     fetch_corpus.py      downloads the books and cuts out the chapters (into evals/.cache/)
@@ -219,8 +225,170 @@ OpenStax republishes its PDFs from time to time. If a checksum no longer matches
 - **Tuned on this corpus.** The floor and the full-text query shape were chosen by looking at these 38 topics. The sweep below is flat across most settings, but a different corpus (lecture slides, scanned notes) may want a different floor.
 - **The full-text leg is English only** (`to_tsvector('english', ...)`).
 
-## Generation quality (not built yet)
+## Generation eval
 
-The old version of this file described faithfulness, context precision and quiz-correctness checks with Ragas or DeepEval, and shipped three placeholder questions. None of that was implemented, and the placeholders have been removed. Nothing in this folder calls an LLM.
+`evals/generation/` answers: for the same topic and the same source excerpts, how do different models compare at writing the study material Margins shows, in cost, speed, mechanical quality, and (with a judge) correctness and teaching quality? It exists to decide which model to use for which purpose, and to catch regressions in generated content (stray LaTeX, answer-letter references, quizzes that copy the worked examples).
 
-A later change may add a small generation eval (grounding of generated notes and quizzes in the retrieved chunks, judged by a model). That would make paid API calls, so it should be a separate, explicitly run script with a cost estimate printed first, and reuse the corpus and topics here.
+It calls the app's own generators (`NotesGenerator`, `ExamplesGenerator` for worked and practice problems, `QuizGenerator`) with a provider built for each model, so every model gets identical excerpts and identical prompts. It makes paid API calls. Read [Spending](#spending) before a large run.
+
+### What it does
+
+1. **Corpora.** `corpora/mit-18.05.json` is the seven files of the live audit of studymargins.com: MIT 18.05 Introduction to Probability and Statistics (Spring 2022) syllabus and calendar (OCW web pages printed to PDF), four class reading PDFs and one past exam. `corpora/mit-6.006.json` is a computer science course: MIT 6.006 Introduction to Algorithms (Spring 2020), three lecture note PDFs (hashing, binary heaps, dynamic programming) and one quiz. Each corpus file lists, per document, the URL, licence, SHA-256 and the category the app would see it under.
+2. **Ingest.** Each corpus is chunked with the app's `chunk_document` and embedded with the app's embedder (the same code as the retrieval eval, in `common/ingest.py`) into one synthetic user and project per corpus.
+3. **Topics.** By default the app's own topic extraction runs (`extract_topics_from_materials`, with the app's configured fast model), so the eval sees the same topics a student would. The topics are then mapped to chunks exactly as the extract-topics job does, and N of them are picked, spread evenly over the list (`--num-topics`, default 4). All models in a run share the same topics and excerpts. `--topics-file` fixes the topics instead (see [Fixed topics](#fixed-topics)).
+4. **Generation.** For each topic and each model, the generators run one after another in the app's order (notes, worked examples, practice problems, quiz), so prompt caching behaves as it does in production. Different models run at the same time (`--sequential-models` turns that off). The raw output, token usage, cost and latency of every call go to `results/<date>-<label>/raw/`.
+5. **Checks** (no model), **judge** (optional) and **report**, described below.
+
+### Layout
+
+```
+evals/generation/
+  run_eval.py        the runner
+  fetch_corpus.py    downloads and verifies the corpora into evals/.cache/generation/
+  print_pages.py     prints OCW web pages to PDF with Playwright (started by fetch_corpus.py)
+  corpora/*.json     the corpora
+  corpus.py          loads corpus files
+  adapters.py        every call into app code (see "When the app changes")
+  checks.py          automatic checks
+  spend.py           the spend gate
+  judge.py           the judge: prompt, anonymisation, aggregation
+  analysis.py        checks, cost, latency and judge scores from a results folder
+  report.py          markdown report
+  test_*.py          tests (no database, no network, no model)
+```
+
+### Setup
+
+The eval database needs all of the app's migrations, like the retrieval eval's. The database name must contain `eval` (the harness refuses otherwise; `--allow-any-db` overrides). The examples use `postgresql://postgres@127.0.0.1:5544/sb_gen_evals`; the default is `.../sb_evals`.
+
+```bash
+# 1. Create the database and its schema (once; needs a Postgres 16 with the vector extension, which the first migration enables)
+createdb -h 127.0.0.1 -p 5544 -U postgres sb_gen_evals
+cd frontend && npm ci
+DATABASE_URL=postgresql://postgres@127.0.0.1:5544/sb_gen_evals npx prisma migrate deploy
+
+# 2. Download the course files (about 2 MB) and print the two OCW pages to PDF
+cd ../ai-service && uv sync
+uv run python -I ../evals/generation/fetch_corpus.py
+```
+
+`fetch_corpus.py` downloads into `evals/.cache/generation/` (gitignored), checks every PDF's SHA-256, and prints the syllabus and calendar pages with Playwright. Playwright is not an ai-service dependency, so the script starts `uv run --no-project --with playwright` for that step; it needs Chromium (`uv run --no-project --with playwright playwright install chromium`; the box has it). Printed bytes differ on every run, so a printed page is checked against the hash of its extracted text. If a hash no longer matches, the script stops and prints the new one; check the file is still the same document before updating the corpus file.
+
+The API key is read from `ANTHROPIC_API_KEY` or from `ai-service/.env`. It is never printed or stored.
+
+### Running
+
+```bash
+cd ai-service
+
+# See the plan and a cost estimate first. Calls nothing.
+uv run python -I ../evals/generation/run_eval.py --dry-run --judge opus
+
+# Free end-to-end check with the app's mock provider (placeholder text, zero cost)
+uv run python -I ../evals/generation/run_eval.py --mock --label mock --num-topics 2 --judge opus --out-dir /tmp/gen-mock
+
+# Small paid smoke run: one topic, Haiku only, notes and quiz, about one cent
+uv run python -I ../evals/generation/run_eval.py --db postgresql://postgres@127.0.0.1:5544/sb_gen_evals \
+  --label smoke --corpora mit-6.006 --num-topics 1 --models haiku:medium --types notes,quiz --max-usd 0.30
+
+# The model comparison: both corpora, 4 topics each, three models at medium effort, Opus judge
+uv run python -I ../evals/generation/run_eval.py --db postgresql://postgres@127.0.0.1:5544/sb_gen_evals \
+  --label model-choice --models opus:medium,sonnet:medium,haiku:medium --num-topics 4 \
+  --judge opus --max-usd 25 --max-judge-usd 10
+```
+
+Always give the effort explicitly (`opus:medium`); the script refuses a bare model name, because the API's default effort differs by model (Sonnet 5.5 defaults to high, Haiku 5.5 to medium). Model aliases are `opus`, `sonnet` and `haiku` (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-haiku-5-5`); full ids also work.
+
+Options:
+
+| Option | Meaning |
+|---|---|
+| `--corpora` | comma-separated corpus ids (default both) |
+| `--models` | comma-separated `<model>:<effort>` |
+| `--types` | any of `notes,solved,interactive,quiz` (default all four) |
+| `--num-topics N`, `--topic-indexes 0,3,5` | which topics to generate; the first spreads N evenly over the extracted list |
+| `--topics-file F` | fixed topics (below) |
+| `--examples`, `--questions`, `--difficulty`, `--detail-level` | what the generators are asked for (defaults 3, 10, medium, comprehensive: the app's defaults) |
+| `--judge opus[:effort]` | turn the judge on (effort defaults to medium) |
+| `--max-usd`, `--max-judge-usd` | spend caps, default 8 and 3 |
+| `--label`, `--out-dir` | results folder name and place |
+| `--resume DIR` | continue a results folder: finished generations and judged pairs are not repeated, and the budget counts what was already spent |
+| `--resume DIR --no-generate` | redo checks, judge and report from the stored files only (no database) |
+| `--mock`, `--dry-run`, `--sequential-models`, `--seed`, `--timeout`, `--rebuild`, `--env-file` | see `--help` |
+
+The calls use a 600 s timeout (the app uses 180 s) so a slow Opus call is not billed and then thrown away; change it with `--timeout`.
+
+#### Fixed topics
+
+To hold topics constant across separate runs (for example after changing a prompt), pass `--topics-file`. It can be a previous run's `results/<run>/topics.json` (the same topics are generated again) or your own JSON, either a list or one list per corpus:
+
+```json
+{
+  "mit-18.05": [
+    {"name": "Bayes' theorem", "description": "Updating a probability with new evidence.", "keywords": ["prior", "posterior", "likelihood"]}
+  ],
+  "mit-6.006": [ ... ]
+}
+```
+
+With your own file, all topics in it are generated unless you also give `--num-topics`. The topics are still mapped to chunks by the app's retrieval, and every model sees the same excerpts. `--resume` reuses the folder's own `topics.json` automatically.
+
+Run the tests (no database, network or model):
+
+```bash
+cd ai-service && uv run pytest ../evals/generation ../evals/retrieval -q
+```
+
+### Spending
+
+Every model call goes through a gate. Before a call, the harness estimates its cost with the app's own price table (`ai-service/app/services/llm/usage.py`): the prompt size in tokens (characters divided by 3.2), priced as cache writes, plus the output length (a default per purpose until a call of that model and purpose has finished, then 1.25 times the mean seen). If the money spent so far, plus calls in flight, plus this estimate would pass `--max-usd` (generation, topic extraction and judge together) or, for the judge, `--max-judge-usd`, the call is not made. A generation stop ends the run, and the report says so. The estimate can be low by the size of its own error, so one call can overshoot a cap slightly; nothing is sent after the cap is reached. Costs are the tokens the API reports times the app's price table. Hidden SDK retries and the server-side fallback model (used by Opus and Sonnet on a safety refusal) are not priced separately.
+
+`--dry-run` prints an estimate for the planned run. It is deliberately pessimistic. For the full command above it says about $16.50 ($8.30 generation, $8.20 judge). The smoke run cost about $0.01, close to its estimate of $0.01.
+
+### Results
+
+`results/<date>-<label>.md` is the report. `results/<date>-<label>/` holds `run.json` (settings, code version, spend), `topics.json`, `summary.json` (everything in the report), and three things that are not committed because they contain source text or text derived from it (the course files are CC BY-NC-SA): `raw/*.json` (every output with its calls, usage, latency and raw model text), `excerpts.json` and `judge/*.json`. They are listed in `.gitignore`; keep them locally if you want to re-run checks with `--resume DIR --no-generate`.
+
+The report has, per model: cost per topic (and projected for a 12-topic course), cost and latency per content type, tokens including cache reads and writes, check results, judge means with every error the judge listed, and a side-by-side of one notes section and two quiz questions. The projection is the mean cost of each content type summed (all types generated in this run) times 12.
+
+### Automatic checks
+
+`checks.py` has no model, database or app imports, and `test_checks.py` tests it. All of them are lexical heuristics. They find things worth reading; they do not show content is right.
+
+| Check | What it counts | What it can miss or get wrong |
+|---|---|---|
+| LaTeX hygiene | `$` or backslash sequences in fields the UI shows as plain text today (titles, key-concept chips, step titles, one-line correct answers); fields with unbalanced `$`; bare currency (a `$` before a digit that starts money, not math, using the rule from the spec) | The plain-text field list is in `checks.iter_text_fields`; after stage 1B it should shrink. Currency inside a longer math span, or math with prose words and no backslash, can be misjudged. |
+| MC option letters | Multiple-choice explanations that name a letter: strict (`Option C`, `(B)`) and loose (`C is`, `D gives`) | Math and code are removed first. A prose "A is ..." not about an option counts as a loose hit. A reference like "the first one" is not found. |
+| Recall-copy rate | Quiz questions with two or more distinct numbers (ignoring 0, 1, 2) all present in the same model's notes and examples for that topic | Only the question text is compared, not options. It compares numbers, not ideas: a copied scenario with new numbers passes. The rate is over questions with two or more numbers, so it is empty for non-numeric topics. |
+| Structure | Required notes sections (from the app's own `_SECTION_LABELS`), notes word count against the requested band, 5-8 recap bullets, examples, practice sets and quizzes against the requested counts, steps per practice problem against the difficulty band | Section names are matched on the heading start. Counts after the app's own filtering of unusable items. |
+| Grounding proxy | Share of notes sentences with two or more words (5+ letters, minus a stoplist) that also appear in the topic's excerpts, or a math expression sharing a symbol or number with them | Not a faithfulness measure. A wrong sentence in the excerpts' words passes; a correct restatement in new words fails. Report only, no threshold. |
+| Topic overlap | Pairs of worked-example and practice problem statements in different topics with token Jaccard above 0.6 | Same idea in different words is not found. |
+
+### Judge
+
+With `--judge opus`, one call per (topic, content type) sees the topic's excerpts and every model's output as anonymous candidates (A, B, C) in an order that is shuffled per pair (seeded, so a re-run keeps the same letters), rendered in the same plain layout for every model. It checks every computation, scores each candidate 1 to 5 on correctness, grounding and teaching quality (plus question quality for quizzes), and lists every error with a kind (mathematical, factual, unsupported by the excerpts, ambiguous key, other), where it is and what is wrong. The raw judge output and the letter-to-model mapping are stored.
+
+Know what it is: one model's opinion, at the effort you set. Opus is also a candidate, so it may favour its own style, even anonymised. It cannot run code, so an arithmetic slip can pass and a correct step can be flagged. The 1-5 scale is coarse and the sample is small (a few topics per corpus), so look at the error lists, not only the means. Check an error against the source before relying on it. The decision rule in the spec needs "no mathematical error in the error lists", which is why the report counts mathematical errors per model and per type.
+
+### When the app changes
+
+The harness calls app code in one file, `adapters.py`. Learning v2 stages 1A and 2 change what it calls:
+
+- `build_provider` builds an `AnthropicProvider` with one model and effort for both tiers. After stage 1A replaces the two tiers with a per-purpose map, change this function to build whatever gives one model and effort for every purpose.
+- `extract_topics` calls `extract_topics_from_materials`. Stage 2's planner replaces it; change this one function and keep the return value (a list of `{name, description, keywords}` in study order). Because planner topics come with sources and units, `store_topics` and `map_topic` may also need to write them.
+- `make_generators` and `generate` mirror `generate_content_job` in `jobs.py`.
+- `notes_expectations` reads the notes section labels from `notes.py`, so the structure check follows the prompt. `checks.INTERACTIVE_STEP_BANDS` and `DEFAULT_NOTES_WORD_BAND` mirror prompt text and need updating by hand.
+
+### Limitations
+
+- **One sample per cell.** Each (topic, model, type) is generated once. Model output varies run to run, so differences between models a few percent apart are noise. Run more topics before drawing a conclusion.
+- **Small corpora.** 6.006 is three short lecture notes plus one quiz (61 chunks), so a topic's 24 excerpts can be a third of the course; 18.05 is 58 pages. Topics come from the app's extraction, which is not deterministic and, today, sees the syllabus, calendar and past exam like any other file. The first topic can be a logistics topic. Use `--topic-indexes` or `--topics-file` to choose.
+- **Excerpts, not the whole course.** Every model sees the same 24 mapped chunks, as in the app. A model cannot be faulted for what is not in them, and the grounding proxy and the judge both see only those excerpts.
+- **Checks are lexical** (see the table). Zero hits means none were found, not that none exist.
+- **Costs are estimates** from reported tokens and the app's price table, not an invoice. The projection assumes a 12-topic course generated in full.
+- **The mock provider** returns the same placeholder for every model, so a mock run proves the plumbing, not the numbers.
+- **Source text is not committed.** `raw/`, `excerpts.json` and `judge/` stay on the machine that ran the eval.
+
+### Licence
+
+The corpora are MIT OpenCourseWare materials under **CC BY-NC-SA 4.0** (Attribution-NonCommercial-ShareAlike). The attribution lines are in each corpus file. For 18.05: Jeremy Orloff and Jonathan Bloom, Spring 2022. For 6.006: Erik Demaine, Jason Ku and Justin Solomon, Spring 2020. This is fine for an internal evaluation. Because the licence is non-commercial, the files and the text derived from them (excerpts, raw model output) are not committed; the report shows only short samples.
