@@ -1,0 +1,58 @@
+{
+  "label": "model-choice",
+  "date": "2026-10-20",
+  "code": {
+    "commit": "09fa368b1b8fa014e23b698e75fd2f329591a8b3",
+    "branch": "feat/gen-eval",
+    "app_dirty": false
+  },
+  "corpora": [
+    "mit-18.05",
+    "mit-6.006"
+  ],
+  "types": [
+    "notes",
+    "solved",
+    "interactive",
+    "quiz"
+  ],
+  "models": [
+    {
+      "slug": "opus-low",
+      "label": "opus:low",
+      "model_id": "claude-opus-5-5",
+      "effort": "low"
+    },
+    {
+      "slug": "opus-medium",
+      "label": "opus:medium",
+      "model_id": "claude-opus-5-5",
+      "effort": "medium"
+    }
+  ],
+  "params": {
+    "examples": 3,
+    "questions": 10,
+    "difficulty": "medium",
+    "detail_level": "comprehensive"
+  },
+  "judge": "opus:medium",
+  "mock": false,
+  "seed": 0,
+  "max_usd": 16.0,
+  "max_judge_usd": 6.0,
+  "notes_sections": [
+    "Overview",
+    "Key Concepts",
+    "How It Works",
+    "Common Pitfalls",
+    "Exam-Ready Recap"
+  ],
+  "topics_source": "fixed topics file",
+  "stopped": "generation spend cap reached: $11.8840 spent, next call estimated at $0.1186, cap $12.00",
+  "spend": {
+    "generation": 7.9121,
+    "topics": 0.0016,
+    "judge": 2.7194
+  }
+}

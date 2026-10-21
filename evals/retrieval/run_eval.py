@@ -20,12 +20,8 @@ No paid API is called. Embeddings are the app's local fastembed model.
 import argparse
 import asyncio
 import datetime
-import hashlib
-import inspect
 import json
-import logging
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -43,6 +39,19 @@ RESULTS_DIR = EVALS_DIR / "results"
 
 # Run with `python -I`, so nothing is importable by accident; add exactly what is needed.
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(EVALS_DIR))
+
+from common.ingest import (  # noqa: E402
+    IngestDocument,
+    check_db_name,
+    chunker_fingerprint,
+    file_sha256,
+    git,
+    ingest_documents,
+    prepare_app_environment,
+    structure_fingerprint,
+)
+from common.ingest import load_chunks as load_chunks_for_project  # noqa: E402
 
 from ground_truth import resolve_topics  # noqa: E402
 from retrieval_metrics import (  # noqa: E402
@@ -126,23 +135,6 @@ def app_top_k() -> int:
 # Setup
 # --------------------------------------------------------------------------------------
 
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def git(*args: str) -> str:
-    try:
-        return subprocess.run(
-            ["git", "-C", str(REPO_ROOT), *args], capture_output=True, text=True, check=True
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return ""
-
-
 def load_topics() -> List[dict]:
     topics = [json.loads(line) for line in TOPICS_FILE.read_text().splitlines() if line.strip()]
     ids = [topic["id"] for topic in topics]
@@ -151,168 +143,38 @@ def load_topics() -> List[dict]:
     return topics
 
 
-def chunker_fingerprint() -> str:
-    """Changes when the code that decides chunk boundaries changes."""
-    parts = []
-    for name in ("chunker.py", "extractors.py"):
-        path = AI_SERVICE_DIR / "app" / "services" / "document_processor" / name
-        parts.append(file_sha256(path))
-    return sha256_text("|".join(parts))
-
-
-def structure_fingerprint(chunks: List[dict]) -> str:
-    """Hash of the section path of every chunk, in order (not the text)."""
-    lines = [f"{c['chunk_index']}|{c['section_hierarchy'] or ''}" for c in chunks]
-    return sha256_text("\n".join(lines))
-
-
 async def ingest_corpus(corpus: dict, rebuild: bool) -> None:
-    """Chunk, embed and store every corpus document.
+    """Chunk, embed and store every corpus document (see evals/common/ingest.py).
 
-    Rows are written with the same SQL shape as the chunk job in jobs.py. Ids are fixed
-    (`eval-material-<doc>-<index>`) so runs are reproducible and tie order is stable.
+    Ids are fixed (`eval-material-<doc>-<index>`) so runs are reproducible and tie order is stable.
     """
-    from app.config import settings
-    from app.db.connection import execute_in_transaction, execute_query, execute_update
-    from app.services.document_processor.chunker import chunk_document
-    from app.services.embeddings.generator import embedding_text, generate_embeddings
-
-    await execute_update(
-        """
-        INSERT INTO users (id, email, name, updated_at)
-        VALUES ($1, 'retrieval-evals@example.invalid', 'Retrieval evals', NOW())
-        ON CONFLICT (id) DO NOTHING
-        """,
-        EVAL_USER_ID,
-    )
-    await execute_update(
-        """
-        INSERT INTO projects (id, user_id, name, status, updated_at)
-        VALUES ($1, $2, 'Retrieval eval corpus', 'topics_pending', NOW())
-        ON CONFLICT (id) DO NOTHING
-        """,
-        EVAL_PROJECT_ID,
-        EVAL_USER_ID,
-    )
-
-    material_ids = [f"eval-material-{d['id']}" for d in corpus["documents"]]
-    await execute_update(
-        "DELETE FROM materials WHERE project_id = $1 AND id <> ALL($2::text[])",
-        EVAL_PROJECT_ID,
-        material_ids,
-    )
-
-    chunker_hash = chunker_fingerprint()
-    # What is embedded (heading path + text) is part of the fingerprint: a change to
-    # `embedding_text` makes stored vectors stale.
-    embedder = (
-        f"{settings.EMBEDDING_PROVIDER}:{settings.EMBEDDING_MODEL}:"
-        f"{sha256_text(inspect.getsource(embedding_text))[:12]}"
-    )
+    documents = []
     for document in corpus["documents"]:
-        doc_id = document["id"]
-        material_id = f"eval-material-{doc_id}"
-        path = DOCUMENTS_DIR / document["filename"]
-        if not path.exists():
-            raise SystemExit(
-                f"{path} is missing. Run: cd ai-service && uv run python -I ../evals/retrieval/fetch_corpus.py"
-            )
         source = corpus["sources"][document["source"]]
-        fingerprint = sha256_text(
-            json.dumps(
-                {"book": source["sha256"], "pages": document["pages"], "chunker": chunker_hash, "embedder": embedder},
-                sort_keys=True,
+        documents.append(
+            IngestDocument(
+                id=document["id"],
+                path=DOCUMENTS_DIR / document["filename"],
+                filename=document["filename"],
+                category=MATERIAL_CATEGORY,
+                fingerprint_inputs={"book": source["sha256"], "pages": document["pages"]},
+                missing_hint="Run: cd ai-service && uv run python -I ../evals/retrieval/fetch_corpus.py",
             )
         )
-
-        existing = await execute_query(
-            """
-            SELECT m.metadata, (SELECT COUNT(*) FROM material_chunks WHERE material_id = m.id) AS chunk_count
-            FROM materials m WHERE m.id = $1
-            """,
-            material_id,
-        )
-        reuse = False
-        if existing and not rebuild:
-            metadata = existing[0]["metadata"]
-            metadata = json.loads(metadata) if isinstance(metadata, str) else (metadata or {})
-            reuse = metadata.get("eval_fingerprint") == fingerprint and existing[0]["chunk_count"] > 0
-
-        if reuse:
-            print(f"  {doc_id}: reusing {existing[0]['chunk_count']} stored chunks")
-            continue
-
-        started = time.perf_counter()
-        chunks = await asyncio.to_thread(chunk_document, str(path), document["filename"])
-        embeddings = await generate_embeddings(
-            [embedding_text(chunk.section_hierarchy, chunk.chunk_text) for chunk in chunks]
-        )
-        if len(embeddings) != len(chunks):
-            raise RuntimeError(f"{len(embeddings)} embeddings for {len(chunks)} chunks")
-        records = [
-            (
-                f"{material_id}-{chunk.chunk_index:04d}",
-                material_id,
-                chunk.chunk_text.replace("\x00", ""),
-                f"[{','.join(map(str, embedding))}]",
-                chunk.section_hierarchy.replace("\x00", "") if chunk.section_hierarchy else None,
-                chunk.page_start,
-                chunk.page_end,
-                chunk.chunk_index,
-                chunk.token_count,
-            )
-            for chunk, embedding in zip(chunks, embeddings)
-        ]
-        metadata = json.dumps({"eval_fingerprint": fingerprint, "document": doc_id})
-
-        async def replace_material(conn, material_id=material_id, document=document, path=path, metadata=metadata, records=records):
-            await conn.execute("DELETE FROM materials WHERE id = $1", material_id)
-            await conn.execute(
-                """
-                INSERT INTO materials
-                (id, project_id, category, filename, gcs_path, size_bytes, validation_status, metadata, validated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, 'valid', $7::jsonb, NOW())
-                """,
-                material_id,
-                EVAL_PROJECT_ID,
-                MATERIAL_CATEGORY,
-                document["filename"],
-                f"eval://{document['filename']}",
-                path.stat().st_size,
-                metadata,
-            )
-            await conn.executemany(
-                """
-                INSERT INTO material_chunks
-                (id, material_id, chunk_text, chunk_embedding, section_hierarchy,
-                 page_start, page_end, chunk_index, token_count, created_at)
-                VALUES ($1, $2, $3, $4::vector, $5, $6, $7, $8, $9, NOW())
-                """,
-                records,
-            )
-
-        await execute_in_transaction(replace_material)
-        print(f"  {doc_id}: ingested {len(records)} chunks in {time.perf_counter() - started:.1f}s")
+    await ingest_documents(
+        project_id=EVAL_PROJECT_ID,
+        user_id=EVAL_USER_ID,
+        project_name="Retrieval eval corpus",
+        user_email="retrieval-evals@example.invalid",
+        user_name="Retrieval evals",
+        documents=documents,
+        rebuild=rebuild,
+    )
 
 
 async def load_chunks(corpus: dict) -> Dict[str, List[dict]]:
     """Stored chunks per document id, in chunk order, with embeddings as text."""
-    from app.db.connection import execute_query
-
-    rows = await execute_query(
-        """
-        SELECT mc.id, mc.material_id, mc.chunk_index, mc.section_hierarchy, mc.chunk_embedding::text AS embedding
-        FROM material_chunks mc
-        JOIN materials m ON m.id = mc.material_id
-        WHERE m.project_id = $1
-        ORDER BY mc.material_id, mc.chunk_index
-        """,
-        EVAL_PROJECT_ID,
-    )
-    by_material: Dict[str, List[dict]] = {}
-    for row in rows:
-        by_material.setdefault(row["material_id"], []).append(dict(row))
-    return {d["id"]: by_material.get(f"eval-material-{d['id']}", []) for d in corpus["documents"]}
+    return await load_chunks_for_project(EVAL_PROJECT_ID, [d["id"] for d in corpus["documents"]])
 
 
 # --------------------------------------------------------------------------------------
@@ -501,16 +363,6 @@ def render_markdown(report: dict) -> str:
 # Main
 # --------------------------------------------------------------------------------------
 
-def check_db_name(url: str, allow_any: bool) -> str:
-    name = urlparse(url).path.lstrip("/")
-    if "eval" not in name.lower() and not allow_any:
-        raise SystemExit(
-            f"Refusing to write to database '{name}': the name does not contain 'eval'. "
-            "The harness inserts a synthetic user, project and materials. Pass --allow-any-db to override."
-        )
-    return name
-
-
 async def run(args: argparse.Namespace) -> dict:
     from app.config import settings
     from app.db.connection import close_db_pool
@@ -630,11 +482,7 @@ def main() -> int:
         parser.error("--db is required (or set EVAL_DATABASE_URL)")
     check_db_name(args.db, args.allow_any_db)
 
-    # app.config reads DATABASE_URL when it is first imported, so set it before any app import.
-    os.environ["DATABASE_URL"] = args.db
-    os.environ.setdefault("EMBEDDING_PROVIDER", "local")
-    sys.path.insert(0, str(AI_SERVICE_DIR))
-    logging.basicConfig(level=logging.WARNING)
+    prepare_app_environment(args.db)
 
     report = asyncio.run(run(args))
 

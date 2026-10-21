@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     JOB_MAX_REDISPATCHES: int = 3
     # Most a user's LLM-backed jobs and chat answers may cost per UTC day, from the stored
     # costs. 0 turns the cap off.
-    DAILY_LLM_BUDGET_USD: float = 3.00
+    DAILY_LLM_BUDGET_USD: float = 8.00
 
     # Dispatching jobs to this service. With ENABLE_CLOUD_TASKS the service creates Cloud
     # Tasks (project, location and queue below); otherwise it posts to AI_SERVICE_URL itself.

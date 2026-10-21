@@ -1,0 +1,317 @@
+{
+  "mit-18.05": {
+    "all": [
+      {
+        "name": "Counting and Sets",
+        "description": "Set notation and operations such as union, intersection, complement, and difference, along with counting techniques including permutations and combinations. These tools are used to count outcomes when computing probabilities.",
+        "keywords": [
+          "sets",
+          "union",
+          "intersection",
+          "complement",
+          "permutations",
+          "combinations",
+          "counting",
+          "Venn diagrams"
+        ]
+      },
+      {
+        "name": "Conditional Probability and Independence",
+        "description": "Defines conditional probability, the multiplication rule, and the law of total probability, and explains when events are independent. Tree diagrams are used to organize these computations.",
+        "keywords": [
+          "conditional probability",
+          "multiplication rule",
+          "law of total probability",
+          "independence",
+          "tree diagrams",
+          "probability urns"
+        ]
+      },
+      {
+        "name": "Bayes' Theorem",
+        "description": "Covers Bayes' theorem for reversing conditional probabilities, including the base rate fallacy and its application in 18.05. It shows how probabilities are updated in light of new evidence.",
+        "keywords": [
+          "Bayes theorem",
+          "base rate fallacy",
+          "posterior probability",
+          "prior probability",
+          "updating",
+          "conditional probability"
+        ]
+      },
+      {
+        "name": "Random Variables and Distributions",
+        "description": "Introduces discrete random variables, probability mass functions, and cumulative distribution functions, along with arithmetic on random variables. It also covers specific distributions such as Bernoulli, binomial, geometric, and uniform.",
+        "keywords": [
+          "random variable",
+          "probability mass function",
+          "cumulative distribution function",
+          "Bernoulli",
+          "binomial",
+          "geometric",
+          "uniform distribution",
+          "expectation"
+        ]
+      },
+      {
+        "name": "Bayesian Updating with Discrete Priors",
+        "description": "Applies Bayes' theorem in tabular form to update prior distributions into posterior distributions over discrete hypotheses, updating repeatedly as new data arrive.",
+        "keywords": [
+          "Bayesian updating",
+          "discrete priors",
+          "posterior distribution",
+          "likelihood",
+          "tabular Bayes",
+          "predictive probability",
+          "hypotheses"
+        ]
+      }
+    ],
+    "selected": [
+      {
+        "name": "Counting and Sets",
+        "description": "Set notation and operations such as union, intersection, complement, and difference, along with counting techniques including permutations and combinations. These tools are used to count outcomes when computing probabilities.",
+        "keywords": [
+          "sets",
+          "union",
+          "intersection",
+          "complement",
+          "permutations",
+          "combinations",
+          "counting",
+          "Venn diagrams"
+        ],
+        "index": 0,
+        "key": "t00-counting-and-sets"
+      },
+      {
+        "name": "Conditional Probability and Independence",
+        "description": "Defines conditional probability, the multiplication rule, and the law of total probability, and explains when events are independent. Tree diagrams are used to organize these computations.",
+        "keywords": [
+          "conditional probability",
+          "multiplication rule",
+          "law of total probability",
+          "independence",
+          "tree diagrams",
+          "probability urns"
+        ],
+        "index": 1,
+        "key": "t01-conditional-probability-and-independence"
+      },
+      {
+        "name": "Random Variables and Distributions",
+        "description": "Introduces discrete random variables, probability mass functions, and cumulative distribution functions, along with arithmetic on random variables. It also covers specific distributions such as Bernoulli, binomial, geometric, and uniform.",
+        "keywords": [
+          "random variable",
+          "probability mass function",
+          "cumulative distribution function",
+          "Bernoulli",
+          "binomial",
+          "geometric",
+          "uniform distribution",
+          "expectation"
+        ],
+        "index": 3,
+        "key": "t03-random-variables-and-distributions"
+      },
+      {
+        "name": "Bayesian Updating with Discrete Priors",
+        "description": "Applies Bayes' theorem in tabular form to update prior distributions into posterior distributions over discrete hypotheses, updating repeatedly as new data arrive.",
+        "keywords": [
+          "Bayesian updating",
+          "discrete priors",
+          "posterior distribution",
+          "likelihood",
+          "tabular Bayes",
+          "predictive probability",
+          "hypotheses"
+        ],
+        "index": 4,
+        "key": "t04-bayesian-updating-with-discrete-priors"
+      }
+    ]
+  },
+  "mit-6.006": {
+    "all": [
+      {
+        "name": "Comparison Model and Lower Bounds",
+        "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+        "keywords": [
+          "comparison model",
+          "decision tree",
+          "lower bound",
+          "root-to-leaf path",
+          "tree height",
+          "comparison search"
+        ]
+      },
+      {
+        "name": "Direct Access Arrays",
+        "description": "Covers using integer keys as array indices for O(1) operations, which is efficient when the key universe is small relative to available memory.",
+        "keywords": [
+          "direct access array",
+          "word-RAM",
+          "random access",
+          "key universe",
+          "indexing",
+          "O(1) operations"
+        ]
+      },
+      {
+        "name": "Hashing and Hash Functions",
+        "description": "Explains mapping large key universes into smaller tables via hash functions, including division and universal hashing methods and their collision properties.",
+        "keywords": [
+          "hashing",
+          "hash function",
+          "division method",
+          "universal hashing",
+          "hash table",
+          "collisions",
+          "modulo prime"
+        ]
+      },
+      {
+        "name": "Collision Resolution with Chaining",
+        "description": "Describes handling hash collisions by storing colliding items in chains, and analyzes how chain length affects operation running time.",
+        "keywords": [
+          "chaining",
+          "collision",
+          "hash table",
+          "chain length",
+          "load factor",
+          "expected time"
+        ]
+      },
+      {
+        "name": "Binary Heaps and Priority Queues",
+        "description": "Introduces the priority queue interface and binary heaps stored as implicit complete trees, with insert, delete-max, and linear-time build operations.",
+        "keywords": [
+          "priority queue",
+          "binary heap",
+          "heap insert",
+          "delete max",
+          "implicit complete tree",
+          "build heap"
+        ]
+      },
+      {
+        "name": "Heap Sort and In-place Sorting",
+        "description": "Shows how priority queues yield sorting algorithms, including heap sort and in-place variants, and compares them with other sorting approaches.",
+        "keywords": [
+          "heap sort",
+          "in-place sort",
+          "priority queue sort",
+          "sorting",
+          "O(n log n)",
+          "array"
+        ]
+      },
+      {
+        "name": "Balanced BST Priority Queues",
+        "description": "Compares priority queue implementations using AVL trees, sorted arrays, and sets versus multisets, weighing their operation costs against binary heaps.",
+        "keywords": [
+          "AVL tree",
+          "sorted array",
+          "set",
+          "multiset",
+          "balanced BST",
+          "priority queue implementation"
+        ]
+      },
+      {
+        "name": "Dynamic Programming Fundamentals",
+        "description": "Introduces dynamic programming through subproblem definition, the SRT BOT steps, and subproblem constraints and expansion.",
+        "keywords": [
+          "dynamic programming",
+          "subproblems",
+          "SRT BOT",
+          "memoization",
+          "recurrence",
+          "subproblem constraints"
+        ]
+      },
+      {
+        "name": "Classic Dynamic Programming Problems",
+        "description": "Applies dynamic programming to sequence and game problems such as longest common subsequence, longest increasing subsequence, and the alternating coin game.",
+        "keywords": [
+          "longest common subsequence",
+          "longest increasing subsequence",
+          "coin game",
+          "DP table",
+          "sequence alignment",
+          "optimal strategy"
+        ]
+      },
+      {
+        "name": "Exam Practice and Review",
+        "description": "Uses sample quiz problems to test understanding across hashing, heaps, and dynamic programming under exam conditions.",
+        "keywords": [
+          "quiz",
+          "practice exam",
+          "sample problems",
+          "review",
+          "exam strategy",
+          "problem solving"
+        ]
+      }
+    ],
+    "selected": [
+      {
+        "name": "Comparison Model and Lower Bounds",
+        "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+        "keywords": [
+          "comparison model",
+          "decision tree",
+          "lower bound",
+          "root-to-leaf path",
+          "tree height",
+          "comparison search"
+        ],
+        "index": 0,
+        "key": "t00-comparison-model-and-lower-bounds"
+      },
+      {
+        "name": "Collision Resolution with Chaining",
+        "description": "Describes handling hash collisions by storing colliding items in chains, and analyzes how chain length affects operation running time.",
+        "keywords": [
+          "chaining",
+          "collision",
+          "hash table",
+          "chain length",
+          "load factor",
+          "expected time"
+        ],
+        "index": 3,
+        "key": "t03-collision-resolution-with-chaining"
+      },
+      {
+        "name": "Balanced BST Priority Queues",
+        "description": "Compares priority queue implementations using AVL trees, sorted arrays, and sets versus multisets, weighing their operation costs against binary heaps.",
+        "keywords": [
+          "AVL tree",
+          "sorted array",
+          "set",
+          "multiset",
+          "balanced BST",
+          "priority queue implementation"
+        ],
+        "index": 6,
+        "key": "t06-balanced-bst-priority-queues"
+      },
+      {
+        "name": "Exam Practice and Review",
+        "description": "Uses sample quiz problems to test understanding across hashing, heaps, and dynamic programming under exam conditions.",
+        "keywords": [
+          "quiz",
+          "practice exam",
+          "sample problems",
+          "review",
+          "exam strategy",
+          "problem solving"
+        ],
+        "index": 9,
+        "key": "t09-exam-practice-and-review"
+      }
+    ]
+  }
+}

@@ -1,0 +1,375 @@
+{
+  "label": "smoke",
+  "date": "2026-10-20",
+  "code": {
+    "commit": "21bb4495e10db4a949d7678ec0e9b523dfa88c5f",
+    "branch": "feat/gen-eval",
+    "app_dirty": false
+  },
+  "config": {
+    "corpora": [
+      "mit-6.006"
+    ],
+    "types": [
+      "notes",
+      "quiz"
+    ],
+    "params": {
+      "examples": 3,
+      "questions": 10,
+      "difficulty": "medium",
+      "detail_level": "comprehensive"
+    },
+    "models": [
+      {
+        "slug": "haiku-medium",
+        "label": "haiku:medium",
+        "model_id": "claude-haiku-5-5",
+        "effort": "medium"
+      }
+    ],
+    "judge": null,
+    "mock": false,
+    "seed": 0,
+    "topics_source": "the app's extract_topics_from_materials"
+  },
+  "topics": {
+    "mit-6.006": {
+      "all": [
+        {
+          "name": "Comparison Model and Lower Bounds",
+          "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+          "keywords": [
+            "comparison model",
+            "decision tree",
+            "lower bound",
+            "root-to-leaf path",
+            "tree height",
+            "comparison search"
+          ]
+        },
+        {
+          "name": "Direct Access Arrays",
+          "description": "Covers using integer keys as array indices for constant-time operations, and why this becomes impractical when the key universe is large.",
+          "keywords": [
+            "direct access array",
+            "key universe",
+            "word-RAM",
+            "O(1) indexing",
+            "unique integer keys"
+          ]
+        },
+        {
+          "name": "Hashing and Hash Functions",
+          "description": "Explains mapping large key spaces into smaller hash tables using hash functions, including division hashing and universal hashing families.",
+          "keywords": [
+            "hashing",
+            "hash function",
+            "hash table",
+            "division method",
+            "universal hashing",
+            "collisions",
+            "modular arithmetic"
+          ]
+        },
+        {
+          "name": "Collision Resolution and Chaining",
+          "description": "Describes handling hash collisions by storing colliding items in chains, and how load factor determines expected operation time.",
+          "keywords": [
+            "chaining",
+            "collisions",
+            "load factor",
+            "chain length",
+            "hash map",
+            "expected time"
+          ]
+        },
+        {
+          "name": "Priority Queues and Binary Heaps",
+          "description": "Introduces the priority queue interface and implements it with binary heaps stored as implicit complete trees, supporting insert and delete-max.",
+          "keywords": [
+            "priority queue",
+            "binary heap",
+            "heap insert",
+            "delete max",
+            "complete binary tree",
+            "implicit tree"
+          ]
+        },
+        {
+          "name": "Heap Sort and Heap Construction",
+          "description": "Covers using priority queues to sort, in-place heap sort, and linear-time heap building.",
+          "keywords": [
+            "heap sort",
+            "in-place sort",
+            "linear build heap",
+            "priority queue sort",
+            "sorting",
+            "heapify"
+          ]
+        },
+        {
+          "name": "Balanced Trees for Priority Queues and Sets",
+          "description": "Compares AVL-tree implementations of sets, multisets, and sequences against array-based priority queue approaches.",
+          "keywords": [
+            "AVL tree",
+            "set",
+            "multiset",
+            "sorted array",
+            "balanced BST",
+            "priority queue implementation"
+          ]
+        },
+        {
+          "name": "Dynamic Programming Foundations",
+          "description": "Introduces dynamic programming via subproblem definition, the SRT BOT steps, and subproblem constraints and expansion.",
+          "keywords": [
+            "dynamic programming",
+            "subproblems",
+            "SRT BOT",
+            "memoization",
+            "recurrence",
+            "subproblem constraints"
+          ]
+        },
+        {
+          "name": "Classic Dynamic Programming Problems",
+          "description": "Applies dynamic programming to longest common subsequence, longest increasing subsequence, and the alternating coin game.",
+          "keywords": [
+            "longest common subsequence",
+            "longest increasing subsequence",
+            "coin game",
+            "DP table",
+            "optimal substructure"
+          ]
+        },
+        {
+          "name": "Sample Exam Practice",
+          "description": "Practice problems from Quiz 1 to test understanding across hashing, heaps, and dynamic programming topics.",
+          "keywords": [
+            "quiz 1",
+            "practice exam",
+            "sample problems",
+            "review",
+            "exam preparation"
+          ]
+        }
+      ],
+      "selected": [
+        {
+          "name": "Comparison Model and Lower Bounds",
+          "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+          "keywords": [
+            "comparison model",
+            "decision tree",
+            "lower bound",
+            "root-to-leaf path",
+            "tree height",
+            "comparison search"
+          ],
+          "index": 0,
+          "key": "t00-comparison-model-and-lower-bounds"
+        }
+      ]
+    }
+  },
+  "spend": {
+    "generation": 0.0077,
+    "topics": 0.0009,
+    "judge": 0.0,
+    "max_usd": 0.3,
+    "max_judge_usd": 3.0
+  },
+  "stopped": null,
+  "models": {
+    "haiku-medium": {
+      "label": "haiku:medium",
+      "model_id": "claude-haiku-5-5",
+      "cost": {
+        "per_type": {
+          "notes": {
+            "generated": 1,
+            "failed": 0,
+            "mean_cost_usd": 0.003235,
+            "mean_seconds": 16.8
+          },
+          "quiz": {
+            "generated": 1,
+            "failed": 0,
+            "mean_cost_usd": 0.00451,
+            "mean_seconds": 26.19
+          }
+        },
+        "mean_cost_per_topic_usd": 0.007745,
+        "projected_cost_12_topics_usd": 0.09294,
+        "mean_seconds_per_topic": 42.99,
+        "total_cost_usd": 0.007745,
+        "calls": 2,
+        "input_tokens": 564,
+        "output_tokens": 9683,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 22775
+      },
+      "checks": {
+        "topics": 1,
+        "plain_text_latex_fields": 0,
+        "unbalanced_dollar_fields": 0,
+        "bare_currency_fields": 0,
+        "mc_questions": 4,
+        "mc_letter_refs": 0,
+        "mc_letter_refs_strict": 0,
+        "quiz_numeric_questions": 1,
+        "quiz_recall_copied": 0,
+        "quiz_recall_copy_rate": 0.0,
+        "notes_words_mean": 1182.0,
+        "notes_in_word_band": 1,
+        "notes_sections_ok": 1,
+        "notes_count": 1,
+        "notes_recap_bullets_ok": 1,
+        "quiz_count_ok": 0,
+        "quiz_count": 1,
+        "solved_count_ok": 0,
+        "solved_count": 0,
+        "interactive_count_ok": 0,
+        "interactive_count": 0,
+        "grounding_share_mean": 0.8987341772151899,
+        "duplicate_example_pairs": 0,
+        "duplicate_example_details": []
+      },
+      "failures": []
+    }
+  },
+  "per_topic_checks": {
+    "haiku-medium": {
+      "mit-6.006/t00-comparison-model-and-lower-bounds": {
+        "types": [
+          "notes",
+          "quiz"
+        ],
+        "latex": {
+          "plain_text_latex": 0,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {},
+        "notes": {
+          "words": 1182,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 7,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 79,
+          "grounded": 71,
+          "share": 0.8987341772151899
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 9,
+          "count_ok": false,
+          "types": {
+            "multiple_choice": 4,
+            "short_answer": 2,
+            "true_false": 3
+          },
+          "types_missing": [
+            "numerical"
+          ],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 9,
+          "with_numbers": 1,
+          "copied": 0,
+          "rate": 0.0,
+          "details": []
+        }
+      }
+    }
+  },
+  "judge": null,
+  "judge_info": {},
+  "samples": {
+    "corpus": "mit-6.006",
+    "topic": "t00-comparison-model-and-lower-bounds",
+    "models": {
+      "haiku-medium": {
+        "notes_section": {
+          "title": "Key Concepts",
+          "text": "**Comparable items.** The lecture models items as *comparable items*: black boxes that support only comparisons between pairs. The allowed comparisons are $<$, $\\le$, $>$, $\\ge$, $=$, and $\\neq$. Each comparison returns a binary result, True or False. The algorithm cannot look inside an item, hash it, or use its bits.\n\n**Goal of the model.** Store a set of $n$ comparable items and support a `find(k)` operation. Since the algorithm can only compare, its running time is bounded below by the number of comparisons it performs. So the useful thing to count is comparisons.\n\n**Decision tree.** Any algorithm can be drawn as a decision tree of the operations it performs. For a comparison algorithm:\n- An **internal node** is a binary comparison, with one branch for True and one for False.\n- A **leaf** is termination, and it gives the algorithm's **output**.\n- A **root-to-leaf path** is one execution of the algorithm on some input.\n\n**Leaves and outputs.** Every possible output needs at least one leaf. A search over $n$ items can return any of $n$ found positions or report that the key is absent, so it needs at least $n+1$ distinct outputs. That means at least $n+1$ leaves.\n\n**The chain of inequalities.** The lecture states:\n\n$$\\text{running time} \\;\\ge\\; \\#\\text{comparisons} \\;\\ge\\; \\text{max length of any root-to-leaf path} \\;\\ge\\; \\text{height of tree}$$\n\nThe first inequality holds ..."
+        },
+        "quiz_questions": [
+          {
+            "question_type": "multiple_choice",
+            "question_text": "In the comparison model, a search over a set of $n$ comparable items must produce a decision tree with at least how many leaves?",
+            "explanation": "## Why $n+1$ leaves\n\n- Each algorithm output needs at least one leaf.\n- A search has $n$ possible positions for the key plus the case where it is absent, so it needs at least $n+1$ leaves.\n- Counting leaves is the first step in the lower-bound argument.",
+            "points": 2,
+            "concepts_tested": [
+              "decision tree leaves",
+              "algorithm outputs",
+              "comparison search lower bound"
+            ],
+            "difficulty": "medium",
+            "options": [
+              {
+                "id": "A",
+                "text": "$2n$"
+              },
+              {
+                "id": "B",
+                "text": "$\\log n$"
+              },
+              {
+                "id": "C",
+                "text": "$n-1$"
+              },
+              {
+                "id": "D",
+                "text": "$n+1$"
+              }
+            ],
+            "correct_answer": "D"
+          },
+          {
+            "question_type": "short_answer",
+            "question_text": "Explain briefly why the decision tree argument shows that any worst-case comparison search needs $\\Omega(\\log n)$ comparisons.",
+            "explanation": "## Answer outline\n\nThe argument chains three facts: leaves, path length, and the leaf bound for a binary tree. Together they give the worst-case lower bound on comparisons.",
+            "points": 3,
+            "concepts_tested": [
+              "decision tree argument",
+              "running time at least number of comparisons",
+              "height lower bound"
+            ],
+            "difficulty": "medium",
+            "sample_answer": "A comparison search must have at least $n+1$ leaves, and each root-to-leaf path is one execution whose length is at most the number of comparisons. A binary tree of height $h$ has at most $2^h$ leaves, so $2^h \\geq n+1$ gives $h \\geq \\lceil \\lg(n+1) \\rceil - 1 = \\Omega(\\log n)$.",
+            "key_points": [
+              "The tree needs at least $n+1$ leaves, one per output.",
+              "Path length equals the number of comparisons on that execution.",
+              "A binary tree of height $h$ has at most $2^h$ leaves, so $h = \\Omega(\\log n)$."
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

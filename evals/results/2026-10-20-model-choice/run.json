@@ -1,0 +1,64 @@
+{
+  "label": "model-choice",
+  "date": "2026-10-20",
+  "code": {
+    "commit": "09fa368b1b8fa014e23b698e75fd2f329591a8b3",
+    "branch": "feat/gen-eval",
+    "app_dirty": false
+  },
+  "corpora": [
+    "mit-18.05",
+    "mit-6.006"
+  ],
+  "types": [
+    "notes",
+    "solved",
+    "interactive",
+    "quiz"
+  ],
+  "models": [
+    {
+      "slug": "opus-medium",
+      "label": "opus:medium",
+      "model_id": "claude-opus-5-5",
+      "effort": "medium"
+    },
+    {
+      "slug": "sonnet-medium",
+      "label": "sonnet:medium",
+      "model_id": "claude-sonnet-5-5",
+      "effort": "medium"
+    },
+    {
+      "slug": "haiku-medium",
+      "label": "haiku:medium",
+      "model_id": "claude-haiku-5-5",
+      "effort": "medium"
+    }
+  ],
+  "params": {
+    "examples": 3,
+    "questions": 10,
+    "difficulty": "medium",
+    "detail_level": "comprehensive"
+  },
+  "judge": "opus:medium",
+  "mock": false,
+  "seed": 0,
+  "max_usd": 25.0,
+  "max_judge_usd": 10.0,
+  "notes_sections": [
+    "Overview",
+    "Key Concepts",
+    "How It Works",
+    "Common Pitfalls",
+    "Exam-Ready Recap"
+  ],
+  "topics_source": "the app's extract_topics_from_materials",
+  "stopped": null,
+  "spend": {
+    "generation": 6.9959,
+    "topics": 0.0016,
+    "judge": 3.9703
+  }
+}

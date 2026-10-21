@@ -1,0 +1,140 @@
+{
+  "mit-6.006": {
+    "all": [
+      {
+        "name": "Comparison Model and Lower Bounds",
+        "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+        "keywords": [
+          "comparison model",
+          "decision tree",
+          "lower bound",
+          "root-to-leaf path",
+          "tree height",
+          "comparison search"
+        ]
+      },
+      {
+        "name": "Direct Access Arrays",
+        "description": "Covers using integer keys as array indices for constant-time operations, and why this becomes impractical when the key universe is large.",
+        "keywords": [
+          "direct access array",
+          "key universe",
+          "word-RAM",
+          "O(1) indexing",
+          "unique integer keys"
+        ]
+      },
+      {
+        "name": "Hashing and Hash Functions",
+        "description": "Explains mapping large key spaces into smaller hash tables using hash functions, including division hashing and universal hashing families.",
+        "keywords": [
+          "hashing",
+          "hash function",
+          "hash table",
+          "division method",
+          "universal hashing",
+          "collisions",
+          "modular arithmetic"
+        ]
+      },
+      {
+        "name": "Collision Resolution and Chaining",
+        "description": "Describes handling hash collisions by storing colliding items in chains, and how load factor determines expected operation time.",
+        "keywords": [
+          "chaining",
+          "collisions",
+          "load factor",
+          "chain length",
+          "hash map",
+          "expected time"
+        ]
+      },
+      {
+        "name": "Priority Queues and Binary Heaps",
+        "description": "Introduces the priority queue interface and implements it with binary heaps stored as implicit complete trees, supporting insert and delete-max.",
+        "keywords": [
+          "priority queue",
+          "binary heap",
+          "heap insert",
+          "delete max",
+          "complete binary tree",
+          "implicit tree"
+        ]
+      },
+      {
+        "name": "Heap Sort and Heap Construction",
+        "description": "Covers using priority queues to sort, in-place heap sort, and linear-time heap building.",
+        "keywords": [
+          "heap sort",
+          "in-place sort",
+          "linear build heap",
+          "priority queue sort",
+          "sorting",
+          "heapify"
+        ]
+      },
+      {
+        "name": "Balanced Trees for Priority Queues and Sets",
+        "description": "Compares AVL-tree implementations of sets, multisets, and sequences against array-based priority queue approaches.",
+        "keywords": [
+          "AVL tree",
+          "set",
+          "multiset",
+          "sorted array",
+          "balanced BST",
+          "priority queue implementation"
+        ]
+      },
+      {
+        "name": "Dynamic Programming Foundations",
+        "description": "Introduces dynamic programming via subproblem definition, the SRT BOT steps, and subproblem constraints and expansion.",
+        "keywords": [
+          "dynamic programming",
+          "subproblems",
+          "SRT BOT",
+          "memoization",
+          "recurrence",
+          "subproblem constraints"
+        ]
+      },
+      {
+        "name": "Classic Dynamic Programming Problems",
+        "description": "Applies dynamic programming to longest common subsequence, longest increasing subsequence, and the alternating coin game.",
+        "keywords": [
+          "longest common subsequence",
+          "longest increasing subsequence",
+          "coin game",
+          "DP table",
+          "optimal substructure"
+        ]
+      },
+      {
+        "name": "Sample Exam Practice",
+        "description": "Practice problems from Quiz 1 to test understanding across hashing, heaps, and dynamic programming topics.",
+        "keywords": [
+          "quiz 1",
+          "practice exam",
+          "sample problems",
+          "review",
+          "exam preparation"
+        ]
+      }
+    ],
+    "selected": [
+      {
+        "name": "Comparison Model and Lower Bounds",
+        "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+        "keywords": [
+          "comparison model",
+          "decision tree",
+          "lower bound",
+          "root-to-leaf path",
+          "tree height",
+          "comparison search"
+        ],
+        "index": 0,
+        "key": "t00-comparison-model-and-lower-bounds"
+      }
+    ]
+  }
+}

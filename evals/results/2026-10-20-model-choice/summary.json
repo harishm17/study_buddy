@@ -1,0 +1,4536 @@
+{
+  "label": "model-choice",
+  "date": "2026-10-20",
+  "code": {
+    "commit": "09fa368b1b8fa014e23b698e75fd2f329591a8b3",
+    "branch": "feat/gen-eval",
+    "app_dirty": false
+  },
+  "config": {
+    "corpora": [
+      "mit-18.05",
+      "mit-6.006"
+    ],
+    "types": [
+      "notes",
+      "solved",
+      "interactive",
+      "quiz"
+    ],
+    "params": {
+      "examples": 3,
+      "questions": 10,
+      "difficulty": "medium",
+      "detail_level": "comprehensive"
+    },
+    "models": [
+      {
+        "slug": "opus-medium",
+        "label": "opus:medium",
+        "model_id": "claude-opus-5-5",
+        "effort": "medium"
+      },
+      {
+        "slug": "sonnet-medium",
+        "label": "sonnet:medium",
+        "model_id": "claude-sonnet-5-5",
+        "effort": "medium"
+      },
+      {
+        "slug": "haiku-medium",
+        "label": "haiku:medium",
+        "model_id": "claude-haiku-5-5",
+        "effort": "medium"
+      }
+    ],
+    "judge": "opus:medium",
+    "mock": false,
+    "seed": 0,
+    "topics_source": "the app's extract_topics_from_materials"
+  },
+  "topics": {
+    "mit-18.05": {
+      "all": [
+        {
+          "name": "Counting and Sets",
+          "description": "Set notation and operations such as union, intersection, complement, and difference, along with counting techniques including permutations and combinations. These tools are used to count outcomes when computing probabilities.",
+          "keywords": [
+            "sets",
+            "union",
+            "intersection",
+            "complement",
+            "permutations",
+            "combinations",
+            "counting",
+            "Venn diagrams"
+          ]
+        },
+        {
+          "name": "Conditional Probability and Independence",
+          "description": "Defines conditional probability, the multiplication rule, and the law of total probability, and explains when events are independent. Tree diagrams are used to organize these computations.",
+          "keywords": [
+            "conditional probability",
+            "multiplication rule",
+            "law of total probability",
+            "independence",
+            "tree diagrams",
+            "probability urns"
+          ]
+        },
+        {
+          "name": "Bayes' Theorem",
+          "description": "Covers Bayes' theorem for reversing conditional probabilities, including the base rate fallacy and its application in 18.05. It shows how probabilities are updated in light of new evidence.",
+          "keywords": [
+            "Bayes theorem",
+            "base rate fallacy",
+            "posterior probability",
+            "prior probability",
+            "updating",
+            "conditional probability"
+          ]
+        },
+        {
+          "name": "Random Variables and Distributions",
+          "description": "Introduces discrete random variables, probability mass functions, and cumulative distribution functions, along with arithmetic on random variables. It also covers specific distributions such as Bernoulli, binomial, geometric, and uniform.",
+          "keywords": [
+            "random variable",
+            "probability mass function",
+            "cumulative distribution function",
+            "Bernoulli",
+            "binomial",
+            "geometric",
+            "uniform distribution",
+            "expectation"
+          ]
+        },
+        {
+          "name": "Bayesian Updating with Discrete Priors",
+          "description": "Applies Bayes' theorem in tabular form to update prior distributions into posterior distributions over discrete hypotheses, updating repeatedly as new data arrive.",
+          "keywords": [
+            "Bayesian updating",
+            "discrete priors",
+            "posterior distribution",
+            "likelihood",
+            "tabular Bayes",
+            "predictive probability",
+            "hypotheses"
+          ]
+        }
+      ],
+      "selected": [
+        {
+          "name": "Counting and Sets",
+          "description": "Set notation and operations such as union, intersection, complement, and difference, along with counting techniques including permutations and combinations. These tools are used to count outcomes when computing probabilities.",
+          "keywords": [
+            "sets",
+            "union",
+            "intersection",
+            "complement",
+            "permutations",
+            "combinations",
+            "counting",
+            "Venn diagrams"
+          ],
+          "index": 0,
+          "key": "t00-counting-and-sets"
+        },
+        {
+          "name": "Conditional Probability and Independence",
+          "description": "Defines conditional probability, the multiplication rule, and the law of total probability, and explains when events are independent. Tree diagrams are used to organize these computations.",
+          "keywords": [
+            "conditional probability",
+            "multiplication rule",
+            "law of total probability",
+            "independence",
+            "tree diagrams",
+            "probability urns"
+          ],
+          "index": 1,
+          "key": "t01-conditional-probability-and-independence"
+        },
+        {
+          "name": "Random Variables and Distributions",
+          "description": "Introduces discrete random variables, probability mass functions, and cumulative distribution functions, along with arithmetic on random variables. It also covers specific distributions such as Bernoulli, binomial, geometric, and uniform.",
+          "keywords": [
+            "random variable",
+            "probability mass function",
+            "cumulative distribution function",
+            "Bernoulli",
+            "binomial",
+            "geometric",
+            "uniform distribution",
+            "expectation"
+          ],
+          "index": 3,
+          "key": "t03-random-variables-and-distributions"
+        },
+        {
+          "name": "Bayesian Updating with Discrete Priors",
+          "description": "Applies Bayes' theorem in tabular form to update prior distributions into posterior distributions over discrete hypotheses, updating repeatedly as new data arrive.",
+          "keywords": [
+            "Bayesian updating",
+            "discrete priors",
+            "posterior distribution",
+            "likelihood",
+            "tabular Bayes",
+            "predictive probability",
+            "hypotheses"
+          ],
+          "index": 4,
+          "key": "t04-bayesian-updating-with-discrete-priors"
+        }
+      ]
+    },
+    "mit-6.006": {
+      "all": [
+        {
+          "name": "Comparison Model and Lower Bounds",
+          "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+          "keywords": [
+            "comparison model",
+            "decision tree",
+            "lower bound",
+            "root-to-leaf path",
+            "tree height",
+            "comparison search"
+          ]
+        },
+        {
+          "name": "Direct Access Arrays",
+          "description": "Covers using integer keys as array indices for O(1) operations, which is efficient when the key universe is small relative to available memory.",
+          "keywords": [
+            "direct access array",
+            "word-RAM",
+            "random access",
+            "key universe",
+            "indexing",
+            "O(1) operations"
+          ]
+        },
+        {
+          "name": "Hashing and Hash Functions",
+          "description": "Explains mapping large key universes into smaller tables via hash functions, including division and universal hashing methods and their collision properties.",
+          "keywords": [
+            "hashing",
+            "hash function",
+            "division method",
+            "universal hashing",
+            "hash table",
+            "collisions",
+            "modulo prime"
+          ]
+        },
+        {
+          "name": "Collision Resolution with Chaining",
+          "description": "Describes handling hash collisions by storing colliding items in chains, and analyzes how chain length affects operation running time.",
+          "keywords": [
+            "chaining",
+            "collision",
+            "hash table",
+            "chain length",
+            "load factor",
+            "expected time"
+          ]
+        },
+        {
+          "name": "Binary Heaps and Priority Queues",
+          "description": "Introduces the priority queue interface and binary heaps stored as implicit complete trees, with insert, delete-max, and linear-time build operations.",
+          "keywords": [
+            "priority queue",
+            "binary heap",
+            "heap insert",
+            "delete max",
+            "implicit complete tree",
+            "build heap"
+          ]
+        },
+        {
+          "name": "Heap Sort and In-place Sorting",
+          "description": "Shows how priority queues yield sorting algorithms, including heap sort and in-place variants, and compares them with other sorting approaches.",
+          "keywords": [
+            "heap sort",
+            "in-place sort",
+            "priority queue sort",
+            "sorting",
+            "O(n log n)",
+            "array"
+          ]
+        },
+        {
+          "name": "Balanced BST Priority Queues",
+          "description": "Compares priority queue implementations using AVL trees, sorted arrays, and sets versus multisets, weighing their operation costs against binary heaps.",
+          "keywords": [
+            "AVL tree",
+            "sorted array",
+            "set",
+            "multiset",
+            "balanced BST",
+            "priority queue implementation"
+          ]
+        },
+        {
+          "name": "Dynamic Programming Fundamentals",
+          "description": "Introduces dynamic programming through subproblem definition, the SRT BOT steps, and subproblem constraints and expansion.",
+          "keywords": [
+            "dynamic programming",
+            "subproblems",
+            "SRT BOT",
+            "memoization",
+            "recurrence",
+            "subproblem constraints"
+          ]
+        },
+        {
+          "name": "Classic Dynamic Programming Problems",
+          "description": "Applies dynamic programming to sequence and game problems such as longest common subsequence, longest increasing subsequence, and the alternating coin game.",
+          "keywords": [
+            "longest common subsequence",
+            "longest increasing subsequence",
+            "coin game",
+            "DP table",
+            "sequence alignment",
+            "optimal strategy"
+          ]
+        },
+        {
+          "name": "Exam Practice and Review",
+          "description": "Uses sample quiz problems to test understanding across hashing, heaps, and dynamic programming under exam conditions.",
+          "keywords": [
+            "quiz",
+            "practice exam",
+            "sample problems",
+            "review",
+            "exam strategy",
+            "problem solving"
+          ]
+        }
+      ],
+      "selected": [
+        {
+          "name": "Comparison Model and Lower Bounds",
+          "description": "Studies the comparison model where items are only compared pairwise, using decision trees to derive the worst-case lower bound for comparison-based search.",
+          "keywords": [
+            "comparison model",
+            "decision tree",
+            "lower bound",
+            "root-to-leaf path",
+            "tree height",
+            "comparison search"
+          ],
+          "index": 0,
+          "key": "t00-comparison-model-and-lower-bounds"
+        },
+        {
+          "name": "Collision Resolution with Chaining",
+          "description": "Describes handling hash collisions by storing colliding items in chains, and analyzes how chain length affects operation running time.",
+          "keywords": [
+            "chaining",
+            "collision",
+            "hash table",
+            "chain length",
+            "load factor",
+            "expected time"
+          ],
+          "index": 3,
+          "key": "t03-collision-resolution-with-chaining"
+        },
+        {
+          "name": "Balanced BST Priority Queues",
+          "description": "Compares priority queue implementations using AVL trees, sorted arrays, and sets versus multisets, weighing their operation costs against binary heaps.",
+          "keywords": [
+            "AVL tree",
+            "sorted array",
+            "set",
+            "multiset",
+            "balanced BST",
+            "priority queue implementation"
+          ],
+          "index": 6,
+          "key": "t06-balanced-bst-priority-queues"
+        },
+        {
+          "name": "Exam Practice and Review",
+          "description": "Uses sample quiz problems to test understanding across hashing, heaps, and dynamic programming under exam conditions.",
+          "keywords": [
+            "quiz",
+            "practice exam",
+            "sample problems",
+            "review",
+            "exam strategy",
+            "problem solving"
+          ],
+          "index": 9,
+          "key": "t09-exam-practice-and-review"
+        }
+      ]
+    }
+  },
+  "spend": {
+    "generation": 6.9959,
+    "topics": 0.0016,
+    "judge": 3.9703,
+    "max_usd": 25.0,
+    "max_judge_usd": 10.0
+  },
+  "stopped": null,
+  "models": {
+    "opus-medium": {
+      "label": "opus:medium",
+      "model_id": "claude-opus-5-5",
+      "cost": {
+        "per_type": {
+          "notes": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.137365375,
+            "mean_seconds": 35.30875
+          },
+          "solved": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.161973625,
+            "mean_seconds": 45.74625
+          },
+          "interactive": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.17815125,
+            "mean_seconds": 51.25375
+          },
+          "quiz": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.142596875,
+            "mean_seconds": 37.1875
+          }
+        },
+        "mean_cost_per_topic_usd": 0.6200871250000001,
+        "projected_cost_12_topics_usd": 7.441045500000001,
+        "mean_seconds_per_topic": 169.49625,
+        "total_cost_usd": 4.960697,
+        "calls": 32,
+        "input_tokens": 7519,
+        "output_tokens": 159220,
+        "cache_read_input_tokens": 30009,
+        "cache_creation_input_tokens": 348043
+      },
+      "checks": {
+        "topics": 8,
+        "plain_text_latex_fields": 41,
+        "unbalanced_dollar_fields": 0,
+        "bare_currency_fields": 0,
+        "mc_questions": 26,
+        "mc_letter_refs": 5,
+        "mc_letter_refs_strict": 2,
+        "quiz_numeric_questions": 19,
+        "quiz_recall_copied": 16,
+        "quiz_recall_copy_rate": 0.8421052631578947,
+        "notes_words_mean": 1462.5,
+        "notes_in_word_band": 3,
+        "notes_sections_ok": 8,
+        "notes_count": 8,
+        "notes_recap_bullets_ok": 4,
+        "quiz_count_ok": 8,
+        "quiz_count": 8,
+        "solved_count_ok": 8,
+        "solved_count": 8,
+        "interactive_count_ok": 8,
+        "interactive_count": 8,
+        "grounding_share_mean": 0.7554690916759126,
+        "duplicate_example_pairs": 0,
+        "duplicate_example_details": []
+      },
+      "failures": []
+    },
+    "sonnet-medium": {
+      "label": "sonnet:medium",
+      "model_id": "claude-sonnet-5-5",
+      "cost": {
+        "per_type": {
+          "notes": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.062080250000000003,
+            "mean_seconds": 22.64
+          },
+          "solved": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.05961825,
+            "mean_seconds": 20.66
+          },
+          "interactive": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.06149575,
+            "mean_seconds": 21.76875
+          },
+          "quiz": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.05525375,
+            "mean_seconds": 17.23875
+          }
+        },
+        "mean_cost_per_topic_usd": 0.238448,
+        "projected_cost_12_topics_usd": 2.861376,
+        "mean_seconds_per_topic": 82.3075,
+        "total_cost_usd": 1.907584,
+        "calls": 32,
+        "input_tokens": 7519,
+        "output_tokens": 101644,
+        "cache_read_input_tokens": 30009,
+        "cache_creation_input_tokens": 348043
+      },
+      "checks": {
+        "topics": 8,
+        "plain_text_latex_fields": 20,
+        "unbalanced_dollar_fields": 0,
+        "bare_currency_fields": 0,
+        "mc_questions": 29,
+        "mc_letter_refs": 2,
+        "mc_letter_refs_strict": 1,
+        "quiz_numeric_questions": 15,
+        "quiz_recall_copied": 13,
+        "quiz_recall_copy_rate": 0.8666666666666667,
+        "notes_words_mean": 1283.125,
+        "notes_in_word_band": 8,
+        "notes_sections_ok": 8,
+        "notes_count": 8,
+        "notes_recap_bullets_ok": 7,
+        "quiz_count_ok": 8,
+        "quiz_count": 8,
+        "solved_count_ok": 8,
+        "solved_count": 8,
+        "interactive_count_ok": 8,
+        "interactive_count": 8,
+        "grounding_share_mean": 0.7957771002039435,
+        "duplicate_example_pairs": 0,
+        "duplicate_example_details": []
+      },
+      "failures": []
+    },
+    "haiku-medium": {
+      "label": "haiku:medium",
+      "model_id": "claude-haiku-5-5",
+      "cost": {
+        "per_type": {
+          "notes": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.0031918750000000003,
+            "mean_seconds": 15.63
+          },
+          "solved": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.00408775,
+            "mean_seconds": 22.9175
+          },
+          "interactive": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.00464,
+            "mean_seconds": 26.79625
+          },
+          "quiz": {
+            "generated": 8,
+            "failed": 0,
+            "mean_cost_usd": 0.004035375,
+            "mean_seconds": 22.69125
+          }
+        },
+        "mean_cost_per_topic_usd": 0.015955,
+        "projected_cost_12_topics_usd": 0.19146000000000002,
+        "mean_seconds_per_topic": 88.035,
+        "total_cost_usd": 0.12764,
+        "calls": 32,
+        "input_tokens": 7519,
+        "output_tokens": 166555,
+        "cache_read_input_tokens": 31714,
+        "cache_creation_input_tokens": 346338
+      },
+      "checks": {
+        "topics": 8,
+        "plain_text_latex_fields": 47,
+        "unbalanced_dollar_fields": 0,
+        "bare_currency_fields": 0,
+        "mc_questions": 27,
+        "mc_letter_refs": 14,
+        "mc_letter_refs_strict": 14,
+        "quiz_numeric_questions": 15,
+        "quiz_recall_copied": 9,
+        "quiz_recall_copy_rate": 0.6,
+        "notes_words_mean": 1115.125,
+        "notes_in_word_band": 8,
+        "notes_sections_ok": 8,
+        "notes_count": 8,
+        "notes_recap_bullets_ok": 8,
+        "quiz_count_ok": 3,
+        "quiz_count": 8,
+        "solved_count_ok": 8,
+        "solved_count": 8,
+        "interactive_count_ok": 8,
+        "interactive_count": 8,
+        "grounding_share_mean": 0.7905722509350113,
+        "duplicate_example_pairs": 0,
+        "duplicate_example_details": []
+      },
+      "failures": []
+    }
+  },
+  "per_topic_checks": {
+    "opus-medium": {
+      "mit-18.05/t00-counting-and-sets": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 0,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {},
+        "notes": {
+          "words": 1434,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": false,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 106,
+          "grounded": 74,
+          "share": 0.6981132075471698
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            6,
+            6
+          ],
+          "mean_steps": 5.333333333333333,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "numerical": 3,
+            "true_false": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 5,
+          "copied": 4,
+          "rate": 0.8,
+          "details": [
+            {
+              "index": 6,
+              "numbers": [
+                "3",
+                "4",
+                "5"
+              ]
+            },
+            {
+              "index": 7,
+              "numbers": [
+                "50",
+                "100",
+                "101"
+              ]
+            },
+            {
+              "index": 8,
+              "numbers": [
+                "3",
+                "10"
+              ]
+            },
+            {
+              "index": 9,
+              "numbers": [
+                "3",
+                "4"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t01-conditional-probability-and-independence": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 10,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[2].key_concepts[2]"
+            ]
+          },
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[4].description",
+              "[1].steps[1].description",
+              "[1].steps[2].description",
+              "[1].steps[3].description",
+              "[1].steps[4].description",
+              "[1].steps[5].description",
+              "[2].steps[2].description",
+              "[2].steps[3].description",
+              "[2].steps[4].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1428,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": false,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 113,
+          "grounded": 79,
+          "share": 0.6991150442477876
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            6,
+            6,
+            6
+          ],
+          "mean_steps": 6.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            5,
+            5
+          ],
+          "mean_steps": 4.666666666666667,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "numerical": 3,
+            "true_false": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 2,
+          "copied": 2,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 1,
+              "numbers": [
+                "4",
+                "52"
+              ]
+            },
+            {
+              "index": 9,
+              "numbers": [
+                "4",
+                "5"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t03-random-variables-and-distributions": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 11,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[0].key_concepts[1]",
+              "[0].key_concepts[2]",
+              "[0].key_concepts[3]",
+              "[1].key_concepts[3]",
+              "[2].key_concepts[1]",
+              "[2].key_concepts[3]"
+            ]
+          },
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[0].description",
+              "[0].steps[3].description",
+              "[1].steps[0].description",
+              "[1].steps[1].description",
+              "[1].steps[2].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1348,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 12,
+          "recap_bullets_ok": false
+        },
+        "grounding": {
+          "sentences": 109,
+          "grounded": 79,
+          "share": 0.7247706422018348
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            5,
+            5
+          ],
+          "mean_steps": 4.666666666666667,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "numerical": 3,
+            "true_false": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 3,
+          "copied": 3,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 0,
+              "numbers": [
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "9",
+                "11",
+                "16",
+                "25",
+                "36"
+              ]
+            },
+            {
+              "index": 2,
+              "numbers": [
+                "4",
+                "6"
+              ]
+            },
+            {
+              "index": 7,
+              "numbers": [
+                "3",
+                "4",
+                "5",
+                "6",
+                "9",
+                "16",
+                "25",
+                "36"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t04-bayesian-updating-with-discrete-priors": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 6,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[0].key_concepts[2]"
+            ]
+          },
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[1].description",
+              "[0].steps[2].description",
+              "[1].steps[1].description",
+              "[1].steps[2].description",
+              "[1].steps[4].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1308,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 98,
+          "grounded": 76,
+          "share": 0.7755102040816326
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            5,
+            4
+          ],
+          "mean_steps": 4.333333333333333,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "numerical": 3,
+            "true_false": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 4,
+          "copied": 4,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 1,
+              "numbers": [
+                "0.5",
+                "0.6",
+                "0.9",
+                "4",
+                "5"
+              ]
+            },
+            {
+              "index": 2,
+              "numbers": [
+                "0.2",
+                "0.4",
+                "0.5",
+                "0.6",
+                "0.9",
+                "4"
+              ]
+            },
+            {
+              "index": 5,
+              "numbers": [
+                "0.2",
+                "0.4",
+                "0.5",
+                "0.6",
+                "0.9"
+              ]
+            },
+            {
+              "index": 7,
+              "numbers": [
+                "0.005",
+                "0.02",
+                "0.99"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-6.006/t00-comparison-model-and-lower-bounds": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 6,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[0].key_concepts[4]",
+              "[1].key_concepts[1]",
+              "[2].key_concepts[3]"
+            ]
+          },
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[4].description",
+              "[1].steps[2].description",
+              "[1].steps[4].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1399,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 11,
+          "recap_bullets_ok": false
+        },
+        "grounding": {
+          "sentences": 101,
+          "grounded": 88,
+          "share": 0.8712871287128713
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            6,
+            6,
+            5
+          ],
+          "mean_steps": 5.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "true_false": 2,
+            "numerical": 3,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 3,
+          "flagged_strict": 1,
+          "details": [
+            {
+              "index": 0,
+              "strict": [
+                "(A)",
+                "(C)",
+                "(D)"
+              ],
+              "loose": []
+            },
+            {
+              "index": 4,
+              "strict": [],
+              "loose": [
+                "A is",
+                "B confuses",
+                "C describes"
+              ]
+            },
+            {
+              "index": 8,
+              "strict": [],
+              "loose": [
+                "B is",
+                "D is"
+              ]
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 1,
+          "copied": 1,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 7,
+              "numbers": [
+                "4",
+                "4096"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-6.006/t03-collision-resolution-with-chaining": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 4,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[0].description",
+              "[0].steps[3].description",
+              "[1].steps[0].description",
+              "[1].steps[1].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1558,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": false,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 121,
+          "grounded": 91,
+          "share": 0.7520661157024794
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            6,
+            6
+          ],
+          "mean_steps": 5.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "short_answer": 3,
+            "numerical": 2,
+            "true_false": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 2,
+          "copied": 1,
+          "rate": 0.5,
+          "details": [
+            {
+              "index": 5,
+              "numbers": [
+                "50",
+                "101"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-6.006/t06-balanced-bst-priority-queues": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 1,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[2].steps[1].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1567,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": false,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 12,
+          "recap_bullets_ok": false
+        },
+        "grounding": {
+          "sentences": 127,
+          "grounded": 99,
+          "share": 0.7795275590551181
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            6,
+            5
+          ],
+          "mean_steps": 5.333333333333333,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "true_false": 2,
+            "short_answer": 2,
+            "numerical": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 1,
+          "flagged_strict": 0,
+          "details": [
+            {
+              "index": 5,
+              "strict": [],
+              "loose": [
+                "A is"
+              ]
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 0,
+          "copied": 0,
+          "rate": null,
+          "details": []
+        }
+      },
+      "mit-6.006/t09-exam-practice-and-review": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 3,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[1].description",
+              "[1].key_concepts[1]",
+              "[2].steps[1].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1658,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": false,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 17,
+          "recap_bullets_ok": false
+        },
+        "grounding": {
+          "sentences": 113,
+          "grounded": 84,
+          "share": 0.7433628318584071
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            4,
+            5
+          ],
+          "mean_steps": 4.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            4,
+            4
+          ],
+          "mean_steps": 4.333333333333333,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "short_answer": 2,
+            "numerical": 2,
+            "true_false": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 1,
+          "flagged_strict": 1,
+          "details": [
+            {
+              "index": 6,
+              "strict": [
+                "option A)"
+              ],
+              "loose": []
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 2,
+          "copied": 1,
+          "rate": 0.5,
+          "details": [
+            {
+              "index": 2,
+              "numbers": [
+                "9",
+                "10"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "sonnet-medium": {
+      "mit-18.05/t00-counting-and-sets": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 6,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[1].key_concepts[1]",
+              "[1].key_concepts[2]"
+            ]
+          },
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[1].description",
+              "[0].steps[2].description",
+              "[0].steps[3].description",
+              "[0].steps[4].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1291,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 93,
+          "grounded": 69,
+          "share": 0.7419354838709677
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            4,
+            5
+          ],
+          "mean_steps": 4.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            3,
+            3
+          ],
+          "mean_steps": 3.3333333333333335,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "numerical": 4,
+            "true_false": 1,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 6,
+          "copied": 6,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 0,
+              "numbers": [
+                "3",
+                "4",
+                "5"
+              ]
+            },
+            {
+              "index": 3,
+              "numbers": [
+                "5",
+                "100"
+              ]
+            },
+            {
+              "index": 4,
+              "numbers": [
+                "3",
+                "10"
+              ]
+            },
+            {
+              "index": 5,
+              "numbers": [
+                "3",
+                "4"
+              ]
+            },
+            {
+              "index": 7,
+              "numbers": [
+                "3",
+                "10"
+              ]
+            },
+            {
+              "index": 9,
+              "numbers": [
+                "50",
+                "100",
+                "101"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t01-conditional-probability-and-independence": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 6,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[3].description",
+              "[1].steps[4].description",
+              "[1].key_concepts[2]",
+              "[2].steps[2].description",
+              "[2].steps[3].description",
+              "[2].steps[5].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1240,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 12,
+          "recap_bullets_ok": false
+        },
+        "grounding": {
+          "sentences": 88,
+          "grounded": 58,
+          "share": 0.6590909090909091
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            6,
+            6,
+            6
+          ],
+          "mean_steps": 6.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "numerical": 3,
+            "true_false": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 1,
+          "copied": 1,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 3,
+              "numbers": [
+                "3",
+                "5"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t03-random-variables-and-distributions": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 1,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].key_concepts[3]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1222,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 93,
+          "grounded": 72,
+          "share": 0.7741935483870968
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "true_false": 2,
+            "numerical": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 1,
+          "copied": 1,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 0,
+              "numbers": [
+                "2.5",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "9",
+                "11",
+                "36"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t04-bayesian-updating-with-discrete-priors": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 3,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[3].description",
+              "[1].steps[0].description",
+              "[2].steps[3].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1282,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 98,
+          "grounded": 73,
+          "share": 0.7448979591836735
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            6,
+            5,
+            6
+          ],
+          "mean_steps": 5.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "numerical": 3,
+            "true_false": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 4,
+          "copied": 4,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 1,
+              "numbers": [
+                "0.5",
+                "0.6",
+                "0.9"
+              ]
+            },
+            {
+              "index": 2,
+              "numbers": [
+                "0.2",
+                "0.4",
+                "0.5",
+                "0.6",
+                "0.9",
+                "4"
+              ]
+            },
+            {
+              "index": 7,
+              "numbers": [
+                "0.2",
+                "0.4",
+                "0.5",
+                "0.6",
+                "0.9",
+                "4"
+              ]
+            },
+            {
+              "index": 9,
+              "numbers": [
+                "0.5",
+                "20",
+                "99"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-6.006/t00-comparison-model-and-lower-bounds": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 3,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].key_concepts[3]",
+              "[1].key_concepts[1]",
+              "[2].key_concepts[2]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1167,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 75,
+          "grounded": 69,
+          "share": 0.92
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "true_false": 2,
+            "numerical": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 0,
+          "copied": 0,
+          "rate": null,
+          "details": []
+        }
+      },
+      "mit-6.006/t03-collision-resolution-with-chaining": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 1,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[1].steps[2].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1360,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 7,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 90,
+          "grounded": 72,
+          "share": 0.8
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            6,
+            7,
+            6
+          ],
+          "mean_steps": 6.333333333333333,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            3
+          ],
+          "mean_steps": 3.6666666666666665,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "true_false": 2,
+            "numerical": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 2,
+          "copied": 0,
+          "rate": 0.0,
+          "details": []
+        }
+      },
+      "mit-6.006/t06-balanced-bst-priority-queues": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 0,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {},
+        "notes": {
+          "words": 1394,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 7,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 91,
+          "grounded": 82,
+          "share": 0.9010989010989011
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            3,
+            4,
+            4
+          ],
+          "mean_steps": 3.6666666666666665,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "numerical": 1,
+            "short_answer": 3,
+            "true_false": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 1,
+          "flagged_strict": 1,
+          "details": [
+            {
+              "index": 0,
+              "strict": [
+                "Option C",
+                "option D"
+              ],
+              "loose": [
+                "C describes"
+              ]
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 0,
+          "copied": 0,
+          "rate": null,
+          "details": []
+        }
+      },
+      "mit-6.006/t09-exam-practice-and-review": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 0,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {},
+        "notes": {
+          "words": 1309,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 80,
+          "grounded": 66,
+          "share": 0.825
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            7,
+            4,
+            6
+          ],
+          "mean_steps": 5.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "true_false": 2,
+            "short_answer": 3,
+            "numerical": 1
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 1,
+          "flagged_strict": 0,
+          "details": [
+            {
+              "index": 4,
+              "strict": [],
+              "loose": [
+                "A is",
+                "C are"
+              ]
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 1,
+          "copied": 1,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 5,
+              "numbers": [
+                "9",
+                "10"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "haiku-medium": {
+      "mit-18.05/t00-counting-and-sets": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 7,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[2].key_concepts[3]"
+            ]
+          },
+          "solved": {
+            "plain_text_latex": [
+              "[0].key_concepts[3]",
+              "[1].key_concepts[0]",
+              "[1].key_concepts[1]",
+              "[2].steps[1].description",
+              "[2].key_concepts[0]",
+              "[2].key_concepts[2]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1182,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 83,
+          "grounded": 64,
+          "share": 0.7710843373493976
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            5,
+            5
+          ],
+          "mean_steps": 4.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            3,
+            3,
+            4
+          ],
+          "mean_steps": 3.3333333333333335,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 9,
+          "count_ok": false,
+          "types": {
+            "multiple_choice": 5,
+            "short_answer": 2,
+            "true_false": 2
+          },
+          "types_missing": [
+            "numerical"
+          ],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 5,
+          "flagged": 5,
+          "flagged_strict": 5,
+          "details": [
+            {
+              "index": 0,
+              "strict": [
+                "Option A"
+              ],
+              "loose": [
+                "A is"
+              ]
+            },
+            {
+              "index": 1,
+              "strict": [
+                "Option A"
+              ],
+              "loose": []
+            },
+            {
+              "index": 4,
+              "strict": [
+                "Option D"
+              ],
+              "loose": []
+            },
+            {
+              "index": 5,
+              "strict": [
+                "option B"
+              ],
+              "loose": [
+                "B is"
+              ]
+            },
+            {
+              "index": 8,
+              "strict": [
+                "Option B"
+              ],
+              "loose": []
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 9,
+          "with_numbers": 4,
+          "copied": 4,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 1,
+              "numbers": [
+                "3",
+                "5",
+                "12"
+              ]
+            },
+            {
+              "index": 2,
+              "numbers": [
+                "3",
+                "4",
+                "6",
+                "12"
+              ]
+            },
+            {
+              "index": 6,
+              "numbers": [
+                "50",
+                "100",
+                "101"
+              ]
+            },
+            {
+              "index": 8,
+              "numbers": [
+                "3",
+                "10"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t01-conditional-probability-and-independence": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 5,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[0].key_concepts[3]",
+              "[1].key_concepts[2]",
+              "[1].key_concepts[3]",
+              "[2].key_concepts[3]"
+            ]
+          },
+          "solved": {
+            "plain_text_latex": [
+              "[1].steps[1].description"
+            ]
+          }
+        },
+        "notes": {
+          "words": 991,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 70,
+          "grounded": 44,
+          "share": 0.6285714285714286
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            3,
+            4
+          ],
+          "mean_steps": 3.6666666666666665,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 8,
+          "count_ok": false,
+          "types": {
+            "multiple_choice": 3,
+            "true_false": 3,
+            "short_answer": 2
+          },
+          "types_missing": [
+            "numerical"
+          ],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 2,
+          "flagged_strict": 2,
+          "details": [
+            {
+              "index": 1,
+              "strict": [
+                "Option A"
+              ],
+              "loose": [
+                "A is"
+              ]
+            },
+            {
+              "index": 2,
+              "strict": [
+                "Option A"
+              ],
+              "loose": []
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 8,
+          "with_numbers": 1,
+          "copied": 0,
+          "rate": 0.0,
+          "details": []
+        }
+      },
+      "mit-18.05/t03-random-variables-and-distributions": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 16,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[0].description",
+              "[0].steps[1].description",
+              "[0].steps[2].description",
+              "[0].steps[3].description",
+              "[0].key_concepts[1]",
+              "[0].key_concepts[2]",
+              "[0].key_concepts[4]",
+              "[1].steps[2].description",
+              "[1].steps[3].description",
+              "[1].steps[4].description",
+              "[1].key_concepts[0]",
+              "[2].steps[1].description",
+              "[2].steps[2].description",
+              "[2].steps[3].description",
+              "[2].key_concepts[0]",
+              "[2].key_concepts[1]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1026,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 7,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 81,
+          "grounded": 59,
+          "share": 0.7283950617283951
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            4
+          ],
+          "mean_steps": 4.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "numerical": 3,
+            "true_false": 2,
+            "short_answer": 1
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 3,
+          "flagged_strict": 3,
+          "details": [
+            {
+              "index": 0,
+              "strict": [
+                "Option A",
+                "Option C",
+                "Option D"
+              ],
+              "loose": [
+                "A is",
+                "C is",
+                "D is"
+              ]
+            },
+            {
+              "index": 3,
+              "strict": [
+                "Option A",
+                "Option D"
+              ],
+              "loose": [
+                "A describes",
+                "D describes"
+              ]
+            },
+            {
+              "index": 8,
+              "strict": [
+                "Option B",
+                "Option C"
+              ],
+              "loose": []
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 2,
+          "copied": 1,
+          "rate": 0.5,
+          "details": [
+            {
+              "index": 7,
+              "numbers": [
+                "3",
+                "6"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-18.05/t04-bayesian-updating-with-discrete-priors": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 3,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[2].description",
+              "[0].steps[4].description",
+              "[0].key_concepts[5]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 919,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 8,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 62,
+          "grounded": 48,
+          "share": 0.7741935483870968
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            6,
+            5,
+            5
+          ],
+          "mean_steps": 5.333333333333333,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 7,
+          "count_ok": false,
+          "types": {
+            "multiple_choice": 3,
+            "short_answer": 2,
+            "true_false": 2
+          },
+          "types_missing": [
+            "numerical"
+          ],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 1,
+          "flagged_strict": 1,
+          "details": [
+            {
+              "index": 0,
+              "strict": [
+                "(B)"
+              ],
+              "loose": []
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 7,
+          "with_numbers": 4,
+          "copied": 3,
+          "rate": 0.75,
+          "details": [
+            {
+              "index": 3,
+              "numbers": [
+                "0.1",
+                "0.2",
+                "0.4",
+                "0.5"
+              ]
+            },
+            {
+              "index": 4,
+              "numbers": [
+                "0.2903",
+                "0.3226",
+                "0.3871"
+              ]
+            },
+            {
+              "index": 6,
+              "numbers": [
+                "0.2",
+                "0.9"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-6.006/t00-comparison-model-and-lower-bounds": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 4,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[1].steps[2].description",
+              "[2].steps[1].description",
+              "[2].steps[2].description",
+              "[2].key_concepts[1]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1166,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 6,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 64,
+          "grounded": 59,
+          "share": 0.921875
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            3,
+            4,
+            4
+          ],
+          "mean_steps": 3.6666666666666665,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            3,
+            4,
+            4
+          ],
+          "mean_steps": 3.6666666666666665,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 3,
+            "short_answer": 2,
+            "numerical": 3,
+            "true_false": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 1,
+          "copied": 0,
+          "rate": 0.0,
+          "details": []
+        }
+      },
+      "mit-6.006/t03-collision-resolution-with-chaining": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 3,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "solved": {
+            "plain_text_latex": [
+              "[0].steps[0].description",
+              "[0].steps[2].description",
+              "[2].key_concepts[0]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1002,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 7,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 69,
+          "grounded": 52,
+          "share": 0.7536231884057971
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            4
+          ],
+          "mean_steps": 4.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 8,
+          "count_ok": false,
+          "types": {
+            "multiple_choice": 3,
+            "true_false": 2,
+            "short_answer": 3
+          },
+          "types_missing": [
+            "numerical"
+          ],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 3,
+          "flagged": 3,
+          "flagged_strict": 3,
+          "details": [
+            {
+              "index": 0,
+              "strict": [
+                "Option D"
+              ],
+              "loose": [
+                "D is"
+              ]
+            },
+            {
+              "index": 2,
+              "strict": [
+                "Options A"
+              ],
+              "loose": []
+            },
+            {
+              "index": 5,
+              "strict": [
+                "Option C"
+              ],
+              "loose": [
+                "C is"
+              ]
+            }
+          ]
+        },
+        "recall_copy": {
+          "questions": 8,
+          "with_numbers": 1,
+          "copied": 1,
+          "rate": 1.0,
+          "details": [
+            {
+              "index": 6,
+              "numbers": [
+                "3",
+                "8",
+                "11",
+                "19"
+              ]
+            }
+          ]
+        }
+      },
+      "mit-6.006/t06-balanced-bst-priority-queues": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 6,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "interactive": {
+            "plain_text_latex": [
+              "[0].steps[0].correct_answer",
+              "[0].steps[1].correct_answer",
+              "[0].steps[3].correct_answer",
+              "[1].steps[0].correct_answer",
+              "[1].steps[1].correct_answer",
+              "[2].steps[3].correct_answer"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1399,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 7,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 79,
+          "grounded": 74,
+          "share": 0.9367088607594937
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            5,
+            5
+          ],
+          "mean_steps": 5.0,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            4,
+            4,
+            4
+          ],
+          "mean_steps": 4.0,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 5,
+          "count_ok": false,
+          "types": {
+            "multiple_choice": 2,
+            "short_answer": 3
+          },
+          "types_missing": [
+            "numerical",
+            "true_false"
+          ],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 2,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 5,
+          "with_numbers": 0,
+          "copied": 0,
+          "rate": null,
+          "details": []
+        }
+      },
+      "mit-6.006/t09-exam-practice-and-review": {
+        "types": [
+          "interactive",
+          "notes",
+          "quiz",
+          "solved"
+        ],
+        "latex": {
+          "plain_text_latex": 3,
+          "unbalanced_dollar": 0,
+          "bare_currency": 0
+        },
+        "latex_details": {
+          "quiz": {
+            "plain_text_latex": [
+              "[1].concepts_tested[2]",
+              "[2].concepts_tested[0]",
+              "[2].concepts_tested[1]"
+            ]
+          }
+        },
+        "notes": {
+          "words": 1236,
+          "word_band": [
+            900,
+            1400
+          ],
+          "in_word_band": true,
+          "has_title": true,
+          "sections_expected": [
+            "Overview",
+            "Key Concepts",
+            "How It Works",
+            "Common Pitfalls",
+            "Exam-Ready Recap"
+          ],
+          "sections_missing": [],
+          "sections_ok": true,
+          "recap_bullets": 7,
+          "recap_bullets_ok": true
+        },
+        "grounding": {
+          "sentences": 79,
+          "grounded": 64,
+          "share": 0.810126582278481
+        },
+        "solved": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            6,
+            4,
+            4
+          ],
+          "mean_steps": 4.666666666666667,
+          "missing_final_answer": 0
+        },
+        "interactive": {
+          "requested": 3,
+          "count": 3,
+          "count_ok": true,
+          "steps": [
+            5,
+            4,
+            4
+          ],
+          "mean_steps": 4.333333333333333,
+          "step_band": [
+            3,
+            5
+          ],
+          "problems_in_step_band": 3
+        },
+        "quiz": {
+          "requested": 10,
+          "count": 10,
+          "count_ok": true,
+          "types": {
+            "multiple_choice": 4,
+            "true_false": 2,
+            "numerical": 2,
+            "short_answer": 2
+          },
+          "types_missing": [],
+          "mc_not_four_options": 0
+        },
+        "mc_letter_refs": {
+          "multiple_choice": 4,
+          "flagged": 0,
+          "flagged_strict": 0,
+          "details": []
+        },
+        "recall_copy": {
+          "questions": 10,
+          "with_numbers": 2,
+          "copied": 0,
+          "rate": 0.0,
+          "details": []
+        }
+      }
+    }
+  },
+  "judge": {
+    "pairs_judged": 32,
+    "models": {
+      "opus-medium": {
+        "means": {
+          "all": {
+            "correctness": 4.81,
+            "grounding": 4.88,
+            "teaching": 4.84,
+            "question_quality": 4.38,
+            "n": 32
+          },
+          "interactive": {
+            "correctness": 4.88,
+            "grounding": 5,
+            "teaching": 5,
+            "question_quality": null,
+            "n": 8
+          },
+          "notes": {
+            "correctness": 5,
+            "grounding": 4.75,
+            "teaching": 4.88,
+            "question_quality": null,
+            "n": 8
+          },
+          "quiz": {
+            "correctness": 4.38,
+            "grounding": 5,
+            "teaching": 4.62,
+            "question_quality": 4.38,
+            "n": 8
+          },
+          "solved": {
+            "correctness": 5,
+            "grounding": 4.75,
+            "teaching": 4.88,
+            "question_quality": null,
+            "n": 8
+          }
+        },
+        "errors": [
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Practice problem 2, Step 2",
+            "description": "The prompt asks a 'why' question but then wants only the number C(5,2). The conceptual part cannot be graded. This is minor; the explanation does supply the reasoning."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 1 explanation",
+            "description": "The distractor labels are wrong. It says 'Indexing (A)' and 'Hashing (C)', but option A is hashing, B is indexing, and C is the correct answer. A student would see the correct option C described as outside the model."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 5 explanation",
+            "description": "It says 'A is false: a comparison is an internal node', but A is the answer key. That rebuttal applies to option D ('Each comparison creates exactly one new leaf'). The explanation contradicts its own key."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 9 explanation",
+            "description": "The distractors are mislabeled. It says 'B is binary search' and 'D is a heap operation', but B (swapping toward the root) is the heap operation, C (recursive halving) is binary search, and D is the correct answer."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "notes",
+            "kind": "unsupported_by_excerpts",
+            "where": "Example: Quiz 1, 'Frequentest'",
+            "description": "The excerpts give only the problem statement, not the answers. The expected O(n) answer for the dict version and the worst-case reasoning are standard and correct, but they are not supported by the course materials. The code also silently replaces the OCR'd '-' with '>', which is a reasonable reading but an interpretation."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 1, Step 3 (multiple_choice)",
+            "description": "This is labelled multiple choice, but no options are given. The key is a compound free-text answer, and the accepted forms include 'insertion sort' alone, which drops the O(n^2) part that the question asks for."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 1, Step 4",
+            "description": "The accepted answers include bare 'n log n', which omits the in-place half of the question that the prompt explicitly requires."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 6 explanation",
+            "description": "The explanation is headed 'Why A is correct:' but the answer key is B (build in O(n)), and the reasoning that follows is about B. The heading should read 'Why B is correct'. A student could be briefly confused."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t09-exam-practice-and-review",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 7 explanation",
+            "description": "It says 'Independent, non-repeating subproblems (option A) describe plain divide and conquer.' The independent/non-repeating distractor is option C. Option A is 'The input must be sorted before recursing.' The key (B) is still correct."
+          }
+        ],
+        "mathematical_errors": 0,
+        "mathematical_errors_by_type": {
+          "interactive": 0,
+          "notes": 0,
+          "quiz": 0
+        }
+      },
+      "sonnet-medium": {
+        "means": {
+          "all": {
+            "correctness": 4.53,
+            "grounding": 4.91,
+            "teaching": 3.84,
+            "question_quality": 3.25,
+            "n": 32
+          },
+          "interactive": {
+            "correctness": 4.25,
+            "grounding": 5,
+            "teaching": 3.25,
+            "question_quality": null,
+            "n": 8
+          },
+          "notes": {
+            "correctness": 4.5,
+            "grounding": 4.88,
+            "teaching": 4.62,
+            "question_quality": null,
+            "n": 8
+          },
+          "quiz": {
+            "correctness": 4.62,
+            "grounding": 4.88,
+            "teaching": 3.62,
+            "question_quality": 3.25,
+            "n": 8
+          },
+          "solved": {
+            "correctness": 4.75,
+            "grounding": 4.88,
+            "teaching": 3.88,
+            "question_quality": null,
+            "n": 8
+          }
+        },
+        "errors": [
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Practice problem 1, Step 4",
+            "description": "The step asks the student to give the set A^c \u2229 B^c. The accepted forms include 'yes', which does not answer that request, so a student could pass without computing the set. The list also repeats '{6}'. Only '{6}' or equivalent forms should be accepted."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Practice problem 2, Step 3",
+            "description": "The step is labelled multiple choice, but no answer options are shown to the student. The explanation mentions 'other options' that never appear."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Practice problem 1, Step 1",
+            "description": "The question is numeric and asks for the number of elements, yet '{3,4}' is accepted as an answer. This is a minor inconsistency in the key."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t01-conditional-probability-and-independence",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 2, Step 1",
+            "description": "The question asks for P(S1\u2229S2) 'as a fraction in lowest terms', but the listed correct answer is 3/51, which is not reduced. The lowest-terms answer is 1/17. It is accepted as an alternate, but the primary key contradicts the prompt."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Practice problem 3, Step 4",
+            "description": "This step is labeled multiple_choice, but the options (Y = X, Y = X + 1, Y = 2X) appear only in the guidance shown after a wrong answer. The student never sees the choices when answering."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Practice problem 3, Step 1",
+            "description": "The answer is a free-text formula, (1-p)^k p. Many equivalent ways of writing it, such as p*(1-p)^k or (1\u2212p)^k\u00b7p, could be marked wrong by string matching."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Problem 1 Steps 2\u20134; Problem 2 Step 3",
+            "description": "Fraction answers are typed as 'text' instead of numeric. This makes grading of equivalent forms fragile; for example, 0.1111 is not accepted for F(2.5)."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t04-bayesian-updating-with-discrete-priors",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 1, Step 1 accepted answers",
+            "description": "The accepted-answer list is itself comma-separated. The entry '2/5, 2/5, 1/5' therefore cannot be told apart from three separate accepted answers, which could cause wrong grading of a three-value answer."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t04-bayesian-updating-with-discrete-priors",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 3, Step 4 (text)",
+            "description": "This is a free-text 'why' question with a long model answer and loose accepted forms such as 'the prior'. Automatic grading of student explanations is unreliable here."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t04-bayesian-updating-with-discrete-priors",
+            "type": "quiz",
+            "kind": "mathematical",
+            "where": "Question 8",
+            "description": "The answer key is 0.4122, but the correct posterior is 0.162/0.406 \u2248 0.3990, which the explanation itself computes. A student who answers correctly would be marked wrong under the 0.002 tolerance, and the explanation contradicts the key."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t04-bayesian-updating-with-discrete-priors",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 4 explanation",
+            "description": "It says 'Only the posterior column sums to 1'. The prior column also sums to 1, as the source notes that prior and posterior both define pmfs. This is a minor misstatement."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 1 Step 4; Problem 2 Steps 3 and 4; Problem 3 Step 4 (multiple_choice)",
+            "description": "These multiple-choice steps list no options. The keys are long sentences, so the student has to guess the wording, which makes them effectively free-text."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Problem 1, Step 3",
+            "description": "The step reuses n: it is first 15 items, then becomes 16 'nodes'. It also bounds a 16-leaf tree using only 16 nodes, when such a tree actually has at least 31 nodes. The answer of 4 is still a valid bound and equals the true minimum (lg 16 = 4), but the reasoning is confusing."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 2, Step 1",
+            "description": "The question asks for an exact formula, ceil(lg(n+1)) - 1, but the key also accepts 'Omega(log n)', which is only an asymptotic bound and not the requested formula."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "solved",
+            "kind": "mathematical",
+            "where": "Example 1, Step 4",
+            "description": "The step plugs the leaf count n+1 = 1024 into the notes' node-count formula \u2308lg N\u2309\u22121 and gets a bound of 9. That formula applies to the number of tree nodes, not leaves. A tree with \u22651024 leaves has \u22652047 nodes, so the node formula also gives 10. The muddled '9 for node count' line is confusing, although the step does settle on the correct value of 10."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "solved",
+            "kind": "other",
+            "where": "Example 2, Step 1",
+            "description": "The step states that binary search uses about \u2308lg(n+1)\u2309 comparisons. That count assumes three-way compares. With strictly binary True/False comparisons, the worst case can be slightly higher. This is a minor imprecision with no effect on the O(log n) conclusion."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Problem 1 Step 3 and Problem 3 Step 3",
+            "description": "These steps are labeled multiple_choice but list no options, so the student must guess the expected form. The keys themselves (O(1), expected amortized O(1)) are correct."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "notes",
+            "kind": "mathematical",
+            "where": "How It Works > Why universality gives short chains (intuition paragraph)",
+            "description": "Says a given key 'expects fewer than (n-1)/m other keys' in its slot. Universality only gives an upper bound, so the correct statement is 'at most (n-1)/m'. This is a minor slip."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 1, Step 3 and Problem 2, Step 3 (multiple_choice)",
+            "description": "These are labelled multiple choice, but no options are presented to the student."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 2, Steps 1-2; Problem 3, Steps 1, 3 and 4",
+            "description": "These steps have compound free-text answers that combine two costs or a long explanation, and only a few accepted forms are listed. Correct student answers are likely to be marked wrong."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 1 explanation",
+            "description": "The explanation says 'Option C describes the unordered array', but C is the correct answer (all operations O(log n)). It is option B (insert O(1) amortized, delete max O(n)) that describes the unordered array. This mislabelling could confuse students."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "solved",
+            "kind": "mathematical",
+            "where": "Example 2, Step 1",
+            "description": "The step says node.max is the best of three candidates using '3 comparisons'. Finding the maximum of three items takes 2 comparisons. The conclusion that this is O(1) work is still correct."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "solved",
+            "kind": "other",
+            "where": "Example 1, title vs. problem",
+            "description": "The title promises four data structures, but the problem asks about only three (unordered array, sorted array, Set AVL). The heap appears only briefly in Step 5 and is left out of the final answer."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "solved",
+            "kind": "mathematical",
+            "where": "Example 1, Step 3 / Final answer",
+            "description": "The sorted dynamic array sort is stated as \u0398(n^2). That is only the worst case: if the input arrives already sorted, each insert needs no swaps, so the sort is O(n). The lecture states the bound as O(n^2) / n^2 in the table, which is an upper bound."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t09-exam-practice-and-review",
+            "type": "notes",
+            "kind": "mathematical",
+            "where": "How It Works, Problem 5(c)",
+            "description": "It claims that extracting with the O(1) 'bravest of a set' oracle gives O(n log n) with a heap or O(n^2) naively. Because the oracle returns the maximum of any set in O(1), selection sort with it runs in O(n)."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t09-exam-practice-and-review",
+            "type": "notes",
+            "kind": "factual",
+            "where": "How It Works, Problem 5(d)",
+            "description": "It says lineage values are bounded by 3\u2308log n\u2309+4. That expression is the number of generations, not the count. Ancestors number up to about 2^(3\u2308log n\u2309+5) = O(n^3), so counting sort alone is not O(n); radix sort is needed to get O(n)."
+          }
+        ],
+        "mathematical_errors": 6,
+        "mathematical_errors_by_type": {
+          "interactive": 0,
+          "notes": 2,
+          "quiz": 1,
+          "solved": 3
+        }
+      },
+      "haiku-medium": {
+        "means": {
+          "all": {
+            "correctness": 4.19,
+            "grounding": 4.66,
+            "teaching": 3.75,
+            "question_quality": 2.62,
+            "n": 32
+          },
+          "interactive": {
+            "correctness": 4.25,
+            "grounding": 4.75,
+            "teaching": 3.62,
+            "question_quality": null,
+            "n": 8
+          },
+          "notes": {
+            "correctness": 4.12,
+            "grounding": 4.5,
+            "teaching": 3.88,
+            "question_quality": null,
+            "n": 8
+          },
+          "quiz": {
+            "correctness": 3.75,
+            "grounding": 4.88,
+            "teaching": 3.38,
+            "question_quality": 2.62,
+            "n": 8
+          },
+          "solved": {
+            "correctness": 4.62,
+            "grounding": 4.5,
+            "teaching": 4.12,
+            "question_quality": null,
+            "n": 8
+          }
+        },
+        "errors": [
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "notes",
+            "kind": "mathematical",
+            "where": "How It Works, section 1 (set operations), M \u222a W bullet",
+            "description": "The bullet first says M \u222a W is 'all animals except Cat and Dog', then 'every animal in S except none', then tells the student to check. The first claim is wrong because Cat and Dog are mammals and so belong to M \u222a W. The correct statement is M \u222a W = S, all 10 animals, as the source shows. The self-correcting wording is confusing and could mislead."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "quiz",
+            "kind": "mathematical",
+            "where": "Question 2 explanation",
+            "description": "Says 'Option A forgets the subtraction', but option A is 9. Forgetting the subtraction gives 12+5=17, which is option D."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "quiz",
+            "kind": "ambiguous_key",
+            "where": "Question 4",
+            "description": "The statement contradicts itself: 'the number of ways to do action 2 depends on \u2026 action 1, as long as the number of ways for action 2 stays the same.' The course says the specific ways may depend on action 1, while the number must not. As written, the True key is ill-posed."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "quiz",
+            "kind": "mathematical",
+            "where": "Question 5 explanation",
+            "description": "Says 'Option D, 56', but option D is 24. The value 56 (=8C3) is option A."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t00-counting-and-sets",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 6 explanation",
+            "description": "Calls option B the second-law distractor, but option B is A \u222a B^c. The second-law expression A^c \u222a B^c is option D."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t01-conditional-probability-and-independence",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Problem 1, Step 5 explanation",
+            "description": "The explanation says 'Step 6 then checks independence', but there is no Step 6. The independence question posed in the problem statement is never asked as a step; its conclusion is only tucked into the Step 5 explanation."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t01-conditional-probability-and-independence",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Problem 2, Step 4 prompt; Problem 1, Step 4 hint",
+            "description": "The prompts and hints give the answer away. Problem 2 Step 4 embeds 'Hint: the event consists of HHT and HTH' in the question itself, duplicating the hint field. Problem 1 Step 4's hint states that the urn has 5 red and 1 green, so the student does nothing."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t01-conditional-probability-and-independence",
+            "type": "quiz",
+            "kind": "mathematical",
+            "where": "Question 3 explanation",
+            "description": "The explanation correctly computes P(A)=0.23 and keys option A. It then says 'Option A comes from averaging the three conditional probabilities without weighting them by P(B_i).' That labels the correct answer as the error. An unweighted average gives (0.5+0.2+0.1)/3\u22480.267, which is not among the options. The distractor diagnosis is wrong and contradicts the key, which could confuse a student."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t01-conditional-probability-and-independence",
+            "type": "solved",
+            "kind": "other",
+            "where": "Examples 1\u20133, Work fields",
+            "description": "Literal '\\n' sequences appear in place of line breaks (e.g., '$\\Omega=...$\\n$H_1=...$'). This garbles the display for the student. Content is unaffected."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Practice problem 2, Step 4",
+            "description": "The problem statement already says X ~ Binomial(5, p) with p = 1/2, so asking which distribution X follows only checks copying, not understanding."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Practice problem 3, Step 4",
+            "description": "The stem already gives the geometric pmf (1-p)^k p and p = 1/3, so naming the distribution geometric(1/3) is trivial and teaches nothing new."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "notes",
+            "kind": "other",
+            "where": "Key Concepts, Payoff functions",
+            "description": "Unescaped dollar signs in 'win $500 if $i+j=7$, otherwise lose $100' will break math rendering. This is a formatting issue, not a content error."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "quiz",
+            "kind": "mathematical",
+            "where": "Question 1 explanation",
+            "description": "The distractor analysis is mislabeled. It says Option A is the pmf at 4 (7/36), but A is 9/36 and C is 7/36. It calls Option C the pmf at 5 (9/36), but C is 7/36. It calls Option D F(5), but D (16/36) is the correct answer and B (25/36) is F(5)."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 4 explanation",
+            "description": "The distractors are mislabeled. The explanation says Option A describes a Bernoulli variable, but A is {1,...,n} and B ('only 0 and 1') is the Bernoulli case. It says Option D describes the geometric distribution, but D is the correct answer and C (all nonnegative integers) is geometric."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t03-random-variables-and-distributions",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 9 explanation",
+            "description": "The distractors are mislabeled. The explanation says Option B multiplies the trial counts, but B is Uniform(n+m) and C is Binomial(nm,1/2). It says Option C changes the success probability, but that is Option D, Binomial(n+m,1/4)."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t04-bayesian-updating-with-discrete-priors",
+            "type": "notes",
+            "kind": "other",
+            "where": "How It Works \u2013 Updating repeatedly",
+            "description": "The text says to multiply the first posterior by the new likelihood. The column headed 'Prior (after H1)' lists 0.2, 0.24, 0.18, but those are the unnormalized first Bayes numerators, not the posterior (0.3226, 0.3871, 0.2903). The final posteriors are still correct because only the ratios matter. The labeling is inconsistent and could confuse a student."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t04-bayesian-updating-with-discrete-priors",
+            "type": "notes",
+            "kind": "other",
+            "where": "How It Works \u2013 Step 2",
+            "description": "It writes the likelihood as P(H|A), using H for heads. This clashes with the hypothesis notation \u210b used elsewhere and in the course."
+          },
+          {
+            "corpus": "mit-18.05",
+            "topic": "t04-bayesian-updating-with-discrete-priors",
+            "type": "notes",
+            "kind": "unsupported_by_excerpts",
+            "where": "Overview",
+            "description": "It claims this topic is 'the first place the course applies' Bayes' theorem as inferential statistics. The excerpts do not establish this; Class 10 already introduces statistics and likelihood."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Practice problem 1, Step 3 (multiple_choice)",
+            "description": "The step is labelled multiple choice and accepts 'B' as an answer, but no options are listed. A student cannot know what 'B' refers to."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Practice problem 3, Step 3",
+            "description": "Options are given only inline ('Choose A) Yes or B) No'), which works. The format is inconsistent with Problem 1 Step 3, where no options appear at all. This is a minor issue."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "notes",
+            "kind": "mathematical",
+            "where": "Key Concepts, Minimum height",
+            "description": "The notes say the \u22121 comes from 'subtracting one for the number of edges in the lecture's convention.' That is wrong. A tree with L leaves already has edge-height \u2265 \u2308lg L\u2309. The lecture's \u2308lg(n+1)\u2309\u22121 is the minimum height of a binary tree on \u2265 n nodes, not on n+1 leaves. Subtracting 1 from the leaf bound is not a convention change; it gives a weaker but still valid bound."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "notes",
+            "kind": "mathematical",
+            "where": "How It Works, Worked illustration (n=7)",
+            "description": "The notes claim that a median-comparison search achieves exactly 3 comparisons for 7 items plus 'not found', so the bound is tight. This is false. Each 'found' output must be certified by an equality test, or by matching \u2264 and \u2265 tests. With only 3 binary comparisons, you cannot produce 7 distinct found-leaves plus not-found leaves. Real comparison search needs more than 3 comparisons here. The bound is tight only asymptotically."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t00-comparison-model-and-lower-bounds",
+            "type": "notes",
+            "kind": "other",
+            "where": "Key Concepts, Running time as a count of comparisons",
+            "description": "The notes say 'every operation the algorithm performs is a comparison.' The lecture claims only that running time \u2265 number of comparisons. The notes contradict themselves later in Pitfall 2."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 1 Step 4 and Problem 3 Step 4",
+            "description": "These multiple-choice steps give answer keys 'B' and 'C' and discuss options A\u2013D in the explanation, but the options never appear in the question. The student cannot answer meaningfully."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "interactive",
+            "kind": "factual",
+            "where": "Problem 1 Step 4 explanation",
+            "description": "It claims the \u0398(n) worst case applies to a bad hash function and 'not for a universal family'. Even with a universal family, an unlucky choice of h can produce a \u0398(n) chain; the O(1) guarantee is only in expectation."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Problem 3 Step 4 explanation, option B",
+            "description": "The justification 'the question only asks for a constant-size bound' is confusing. m \u226b n also gives O(1) expected time; the real objection is wasted space."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 1 explanation",
+            "description": "The explanation says 'Option D is wrong because n/m is the average chain length...'. That reasoning applies to option B (\u0398(n/m)), not option D (\u0398(log n))."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 3 explanation",
+            "description": "The explanation says 'Options A and B do not describe why collisions are unavoidable'. A is the correct answer, so the incorrect options are B, C and D."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 6 explanation",
+            "description": "The explanation says 'Option C is wrong because the guarantee for find is expected, not worst-case'. C is the answer key. That reasoning refutes option A."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "quiz",
+            "kind": "ambiguous_key",
+            "where": "Question 8",
+            "description": "The key is False, but the explanation itself states that insert takes O(1) at the front of the chain and find takes \u0398(n). That is exactly what the statement claims, so the explanation contradicts its own key. The explanation also says the excerpts claim 'all operations on a chain of size \u0398(n) are slow', which they do not say explicitly. Whether insert must first check for duplicates is left unresolved, so the key is wrong or at best ambiguous."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "quiz",
+            "kind": "other",
+            "where": "Question 1 stem",
+            "description": "The stem asks for the 'expected' running time under a deterministic constant hash function. The randomness this expectation refers to is unclear; the intended quantity is the cost determined by the chain length."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t03-collision-resolution-with-chaining",
+            "type": "solved",
+            "kind": "other",
+            "where": "Example 3, Step 2 (Why)",
+            "description": "It says rebuilding 'brings the load factor back to \u0398(1)'. Load factor 4 was already \u0398(1) asymptotically. The course's rule is about n/m being far from 1, not about leaving \u0398(1). The justification is imprecise, though the arithmetic is correct."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 1, Step 3 (multiple_choice)",
+            "description": "The key is 'B', but no answer options are shown. A student cannot know that B means 'No'."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "interactive",
+            "kind": "ambiguous_key",
+            "where": "Problem 3, Step 2 (multiple_choice)",
+            "description": "The key is 'B', but the options are never listed, so the letter answer has no referent for the student."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Problem 2, Step 4",
+            "description": "The prompt asks 'which ... and why' but then says to answer with the structure name only. The 'why' part is never assessed."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "notes",
+            "kind": "factual",
+            "where": "How It Works \u2013 'Why sorting cannot beat n log n with these structures'",
+            "description": "Misstates the Lecture 4 result. Excerpt 15 gives an \u03a9(log n) lower bound for comparison search, not '\u03a9(log n) work per operation in a balanced tree'. The paragraph also concludes the sort 'cannot do better than O(n log n)', where a lower bound needs \u03a9(n log n). The reasoning is garbled and would mislead a student."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "notes",
+            "kind": "other",
+            "where": "How It Works \u2013 Worked contrast, unordered array",
+            "description": "The text says delete max swaps the max to the end and removes it. Applied to [3,1,2], that leaves [2,1], not the [1,2] shown. The mismatch is minor and does not change the outputs."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "notes",
+            "kind": "unsupported_by_excerpts",
+            "where": "Comparison of costs \u2013 goal sentence",
+            "description": "States the goal as 'log n (or 1)' for insert and delete max. The excerpt's goal row lists log n (amortized), with no O(1) option."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t06-balanced-bst-priority-queues",
+            "type": "solved",
+            "kind": "factual",
+            "where": "Example 3, Step 2 (Why)",
+            "description": "The step says Sequence AVL linear build is 'the same trick used for heap construction: work done at higher nodes is bounded by the sizes of their subtrees.' The mechanisms differ. Sequence AVL build is a recursive middle-split, T(n)=2T(n/2)+O(1)=O(n). Heap build sums node heights, which is \u0398(lg(n^n/n!))=O(n). Bounding each node's work by its subtree size would only give O(n log n), so the stated justification does not yield linear time. The lecture only notes that both structures share a linear build time."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t09-exam-practice-and-review",
+            "type": "interactive",
+            "kind": "factual",
+            "where": "Practice problem 1, Step 3 explanation",
+            "description": "It claims 'The max(X) call is only used in the first function', but frequentest_b also begins with k = max(X). It costs O(n), so the O(n) answer is unchanged, but the description of the code is wrong."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t09-exam-practice-and-review",
+            "type": "interactive",
+            "kind": "other",
+            "where": "Practice problem 3, Step 1",
+            "description": "The step is labelled multiple_choice and says 'Choose one', but no options are listed."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t09-exam-practice-and-review",
+            "type": "notes",
+            "kind": "unsupported_by_excerpts",
+            "where": "Overview",
+            "description": "It says the quiz covers dynamic programming. No Quiz 1 problem in the excerpts involves DP; DP appears only in the Lecture 16 review excerpt."
+          },
+          {
+            "corpus": "mit-6.006",
+            "topic": "t09-exam-practice-and-review",
+            "type": "solved",
+            "kind": "other",
+            "where": "Example 3, Steps 1 and 4",
+            "description": "Hash table insertion is described as plain expected O(1), and the candidate says amortized bounds are not needed. The lecture table lists dynamic insert as expected amortized O(1) (1(a)(e)), so inserting n^2 sums one at a time is expected amortized per operation. The final expected O(n^2) total is still correct, but the stated qualifier is imprecise."
+          }
+        ],
+        "mathematical_errors": 7,
+        "mathematical_errors_by_type": {
+          "interactive": 0,
+          "notes": 3,
+          "quiz": 4,
+          "solved": 0
+        }
+      }
+    }
+  },
+  "judge_info": {
+    "skipped_for_spend": [],
+    "failed": []
+  },
+  "samples": {
+    "corpus": "mit-18.05",
+    "topic": "t00-counting-and-sets",
+    "models": {
+      "opus-medium": {
+        "notes_section": {
+          "title": "Key Concepts",
+          "text": "### Set definitions\n\nA **set** $S$ is a collection of elements.\n\n- **Element:** $x \\in S$ means $x$ is in $S$.\n- **Subset:** $A \\subset S$ if every element of $A$ is in $S$.\n- **Complement:** $A^c$ (or $S - A$) is the set of elements of $S$ that are *not* in $A$.\n- **Union:** $A \\cup B$ is the set of elements in $A$ **or** $B$ (or both).\n- **Intersection:** $A \\cap B$ is the set of elements in **both** $A$ and $B$.\n- **Empty set:** $\\emptyset$ is the set with no elements.\n- **Disjoint:** $A$ and $B$ are disjoint if $A \\cap B = \\emptyset$.\n- **Difference:** $A - B$ is the set of elements in $A$ that are not in $B$.\n\n### Worked example: animals\n\nTake\n$$S = \\{\\text{Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}.$$\n\nLet $M$ be the mammals, $\\{\\text{Antelope, Cat, Dog, Elephant, Hyena, Jaguar}\\}$, and $W$ the animals that live in the wild, $\\{\\text{Antelope, Bee, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}$.\n\n- $M \\cap W = \\{\\text{Antelope, Elephant, Hyena, Jaguar}\\}$, the wild mammals.\n- $M \\cup W = S$, since every animal is a mammal or wild.\n- $M^c = \\{\\text{Bee, Frog, Gnat, Iguana}\\}$.\n- $M - W = \\{\\text{Cat, Dog}\\}$.\n\nThe same set can often be written in several ways. For instance, $M^c = S - M$ and $M - W = M \\cap W^c$.\n\n### DeMorgan's laws\n\n$$(A \\cup B)^c = A^c \\cap B^c \\qquad (A \\cap B)^c = A^c \\cup B^c$$\n\nThe first law says that anything not in ..."
+        },
+        "quiz_questions": [
+          {
+            "question_type": "multiple_choice",
+            "question_text": "Which set is equal to $(A \\cup B)^c$ according to DeMorgan's laws?",
+            "explanation": "DeMorgan's first law states $(A \\cup B)^c = A^c \\cap B^c$.\n\nEverything **not** in ($A$ or $B$) is exactly what is (not in $A$) **and** (not in $B$).\n\n- $A^c \\cup B^c$ is equal to $(A \\cap B)^c$, which is the second law.\n- $A \\cap B$ is not a complement of anything here.",
+            "points": 2,
+            "concepts_tested": [
+              "DeMorgan's laws",
+              "complement",
+              "union",
+              "intersection"
+            ],
+            "difficulty": "medium",
+            "options": [
+              {
+                "id": "A",
+                "text": "$(A \\cap B)^c$"
+              },
+              {
+                "id": "B",
+                "text": "$A^c \\cup B^c$"
+              },
+              {
+                "id": "C",
+                "text": "$A \\cap B$"
+              },
+              {
+                "id": "D",
+                "text": "$A^c \\cap B^c$"
+              }
+            ],
+            "correct_answer": "D"
+          },
+          {
+            "question_type": "numerical",
+            "question_text": "In a group of students, 20 take a math class, 15 take a physics class, and 8 take both. How many students take **at least one** of the two classes?",
+            "explanation": "Use the inclusion-exclusion principle:\n\n$$|M \\cup P| = |M| + |P| - |M \\cap P| = 20 + 15 - 8 = 27.$$\n\nAdding $|M| + |P|$ counts the 8 students in both classes twice, so they are subtracted once.",
+            "points": 2,
+            "concepts_tested": [
+              "inclusion-exclusion principle",
+              "union"
+            ],
+            "difficulty": "medium",
+            "correct_answer": 27.0,
+            "unit": "students",
+            "tolerance": 0.0
+          }
+        ]
+      },
+      "sonnet-medium": {
+        "notes_section": {
+          "title": "Key Concepts",
+          "text": "### Set notation\n\nA **set** $S$ is a collection of elements.\n\n- **Element:** $x \\in S$ means $x$ is in $S$.\n- **Subset:** $A \\subset S$ means every element of $A$ is in $S$.\n- **Complement:** $A^c$ (or $S - A$) is everything in $S$ that is **not** in $A$.\n- **Union:** $A \\cup B$ is everything in $A$ **or** $B$ (or both).\n- **Intersection:** $A \\cap B$ is everything in both $A$ **and** $B$.\n- **Empty set:** $\\emptyset$ has no elements.\n- **Disjoint:** $A$ and $B$ are disjoint if $A \\cap B = \\emptyset$.\n- **Difference:** $A - B$ is the elements of $A$ not in $B$; equivalently $A \\cap B^c$.\n\n**Worked example (animals).** Let $S$ be 10 animals, $M$ the mammals, $W$ the wild animals. Then:\n\n- $M \\cap W$ = wild mammals = {Antelope, Elephant, Hyena, Jaguar}\n- $M^c$ = {Bee, Frog, Gnat, Iguana}\n- $M - W$ = {Cat, Dog}, which equals $M \\cap W^c$\n\nThe same set can often be written several ways, e.g. $M^c = S - M$.\n\n### DeMorgan's laws\n\n$$(A \\cup B)^c = A^c \\cap B^c \\qquad (A \\cap B)^c = A^c \\cup B^c$$\n\nIntuition: \"not (A or B)\" means \"not A **and** not B\". The second law is the mirror image: \"not (A and B)\" means \"not A **or** not B\". Complementing swaps union and intersection.\n\nCheck with $S=\\{1,2,3,4,5\\}$, $A=\\{1,2,3\\}$, $B=\\{3,4\\}$: $(A\\cup B)^c=\\{5\\}$ and $A^c\\cap B^c=\\{4,5\\}\\cap\\{1,2,5\\}=\\{5\\}$. Also $(A\\cap B)^c=\\{3\\}^c=\\{1,2,4,5\\}=A^c\\cup B^c$.\n\n### Product of sets\n\n$S \\times T = ..."
+        },
+        "quiz_questions": [
+          {
+            "question_type": "multiple_choice",
+            "question_text": "Let $S=\\{1,2,3,4,5\\}$, $A=\\{1,2,3\\}$ and $B=\\{3,4\\}$. What is $(A\\cup B)^c$?",
+            "explanation": "$A\\cup B=\\{1,2,3,4\\}$, so its complement in $S$ is $\\{5\\}$. This matches $A^c\\cap B^c=\\{4,5\\}\\cap\\{1,2,5\\}=\\{5\\}$ by DeMorgan's first law.",
+            "points": 2,
+            "concepts_tested": [
+              "union",
+              "complement",
+              "DeMorgan's laws"
+            ],
+            "difficulty": "medium",
+            "options": [
+              {
+                "id": "A",
+                "text": "$\\{4,5\\}$"
+              },
+              {
+                "id": "B",
+                "text": "$\\{1,2,4,5\\}$"
+              },
+              {
+                "id": "C",
+                "text": "$\\{5\\}$"
+              },
+              {
+                "id": "D",
+                "text": "$\\{3\\}$"
+              }
+            ],
+            "correct_answer": "C"
+          },
+          {
+            "question_type": "numerical",
+            "question_text": "In a band, seven people sing, four play guitar, and two do both. Using inclusion-exclusion, how many people are in the band?",
+            "explanation": "$|S\\cup G|=|S|+|G|-|S\\cap G|=7+4-2=9$. Adding 7 and 4 double-counts the two who do both.",
+            "points": 2,
+            "concepts_tested": [
+              "inclusion-exclusion principle"
+            ],
+            "difficulty": "medium",
+            "correct_answer": 9.0,
+            "unit": "people",
+            "tolerance": 0.0
+          }
+        ]
+      },
+      "haiku-medium": {
+        "notes_section": {
+          "title": "Key Concepts",
+          "text": "**Basic set notation**\n\n- **Element:** $x \\in S$ means $x$ is in the set $S$.\n- **Subset:** $A \\subset S$ means every element of $A$ is in $S$.\n- **Complement:** $A^c$ (or $S - A$) is the set of elements of $S$ that are *not* in $A$.\n- **Union:** $A \\cup B$ is the set of elements in $A$ **or** $B$ (or both).\n- **Intersection:** $A \\cap B$ is the set of elements in **both** $A$ and $B$.\n- **Difference:** $A - B$ is the set of elements in $A$ that are *not* in $B$.\n- **Disjoint:** $A$ and $B$ are disjoint if $A \\cap B = \\emptyset$.\n- **Empty set:** $\\emptyset$ is the set with no elements.\n\n**Counting notation**\n\nFor a finite set $S$, $|S|$ (or $\\#S$) is the number of elements of $S$.\n\n**Permutations and combinations**\n\n- A **permutation** is an ordered list. The number of ordered lists of $k$ distinct elements from a set of size $n$ is ${}_nP_k$.\n- A **combination** is an unordered subset. The number of subsets of size $k$ from a set of size $n$ is ${}_nC_k$, read \"$n$ choose $k$.\"\n\n**Products of sets**\n\n$S \\times T = \\{(s,t) \\mid s \\in S,\\ t \\in T\\}$ is the set of ordered pairs. For example, $\\{1,2,3\\} \\times \\{1,2,3,4\\}$ has $3 \\cdot 4 = 12$ elements."
+        },
+        "quiz_questions": [
+          {
+            "question_type": "multiple_choice",
+            "question_text": "Let the set of animals be S = {Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}, with M = mammals and W = animals that live in the wild. Which set is M \u2212 W (the difference)?",
+            "explanation": "M \u2212 W contains the elements of M that are not in W. The mammals are {Antelope, Cat, Dog, Elephant, Hyena, Jaguar}. Removing the wild animals {Antelope, Elephant, Hyena, Jaguar} leaves {Cat, Dog}. Option A is M \u2229 W, the wild mammals.",
+            "points": 2,
+            "concepts_tested": [
+              "set difference",
+              "intersection",
+              "mammal and wild example"
+            ],
+            "difficulty": "medium",
+            "options": [
+              {
+                "id": "A",
+                "text": "{Antelope, Elephant, Hyena, Jaguar}"
+              },
+              {
+                "id": "B",
+                "text": "{Cat, Dog}"
+              },
+              {
+                "id": "C",
+                "text": "{Bee, Frog, Gnat, Iguana}"
+              },
+              {
+                "id": "D",
+                "text": "{Cat, Dog, Bee, Frog, Gnat, Iguana}"
+              }
+            ],
+            "correct_answer": "B"
+          },
+          {
+            "question_type": "short_answer",
+            "question_text": "Explain in 1 to 3 sentences why the number of ordered lists of 2 items from 4 things (4P2 = 12) is twice the number of 2-element subsets (4C2 = 6).",
+            "explanation": "The key relation is that every subset of size k can be ordered in k! ways. Permutations therefore equal combinations multiplied by k!. This is the same reason 3-element combinations of {a,b,c,d} each correspond to 6 permutations.",
+            "points": 3,
+            "concepts_tested": [
+              "permutations vs combinations",
+              "relationship nPk = nCk \u00b7 k!"
+            ],
+            "difficulty": "medium",
+            "sample_answer": "Each 2-element subset can be listed in 2! = 2 orders, so each combination corresponds to two permutations. Hence 4P2 = 4C2 \u00d7 2! = 6 \u00d7 2 = 12. Permutations count ordered lists while combinations count subsets, where order does not matter.",
+            "key_points": [
+              "Permutations count ordered lists; combinations count unordered subsets",
+              "Each subset of size k can be arranged in k! orders",
+              "Therefore nPk = nCk \u00d7 k!, giving 12 = 6 \u00d7 2"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "label": "smoke",
+  "date": "2026-10-20",
+  "code": {
+    "commit": "21bb4495e10db4a949d7678ec0e9b523dfa88c5f",
+    "branch": "feat/gen-eval",
+    "app_dirty": false
+  },
+  "corpora": [
+    "mit-6.006"
+  ],
+  "types": [
+    "notes",
+    "quiz"
+  ],
+  "models": [
+    {
+      "slug": "haiku-medium",
+      "label": "haiku:medium",
+      "model_id": "claude-haiku-5-5",
+      "effort": "medium"
+    }
+  ],
+  "params": {
+    "examples": 3,
+    "questions": 10,
+    "difficulty": "medium",
+    "detail_level": "comprehensive"
+  },
+  "judge": null,
+  "mock": false,
+  "seed": 0,
+  "max_usd": 0.3,
+  "max_judge_usd": 3.0,
+  "notes_sections": [
+    "Overview",
+    "Key Concepts",
+    "How It Works",
+    "Common Pitfalls",
+    "Exam-Ready Recap"
+  ],
+  "topics_source": "the app's extract_topics_from_materials",
+  "stopped": null,
+  "spend": {
+    "generation": 0.0077,
+    "topics": 0.0009,
+    "judge": 0.0
+  }
+}
