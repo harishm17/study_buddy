@@ -289,6 +289,7 @@ def format_source_excerpts(
         parts += ["", course_map]
     parts += ["", "Source excerpts from the student's course materials:"]
     announced_supporting = False
+    announced_prerequisite = False
     for index, chunk in enumerate(chunks, 1):
         text = str(chunk.get("chunk_text") or "").strip()
         if not text:
@@ -300,10 +301,17 @@ def format_source_excerpts(
                 "do not build the lesson on them and do not copy their worked examples):"
             )
             announced_supporting = True
+        prerequisite = chunk.get("source_kind") == "prerequisite"
+        if prerequisite and not announced_prerequisite:
+            parts.append(
+                f"Excerpts from the prerequisite topic '{chunk.get('prerequisite_name') or 'n/a'}' "
+                "(only the review questions about that topic use these; the other questions never do):"
+            )
+            announced_prerequisite = True
         section = chunk.get("section_hierarchy") or "n/a"
         source = chunk.get("filename") or "unknown file"
         category = str(chunk.get("category") or "material").replace("_", " ")
-        use = ' use="supporting"' if supporting else ""
+        use = ' use="supporting"' if supporting else ' use="prerequisite"' if prerequisite else ""
         parts.append(
             f'<excerpt index="{index}" source="{source}" kind="{category}" '
             f'location="{_pages(chunk)}" section="{section}"{use}>\n{text}\n</excerpt>'
@@ -424,7 +432,9 @@ async def existing_content_digest(topic_id: str) -> str:
                 parts.append(f"{label}:\n" + "\n".join(lines))
 
     quizzes = await execute_query(
-        "SELECT questions FROM topic_quizzes WHERE topic_id = $1 ORDER BY created_at DESC LIMIT 2", topic_id
+        "SELECT questions FROM topic_quizzes WHERE topic_id = $1 AND kind <> 'retry' "
+        "ORDER BY created_at DESC LIMIT 2",
+        topic_id,
     )
     stems = [
         f"- {_clip(str(question.get('question_text') or ''), 200)}"

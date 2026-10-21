@@ -15,7 +15,7 @@ GENERATOR_MODULES = (
 
 def topic_context(chunks: List[Dict[str, Any]], course_map: str = "", **topic: Any) -> TopicContext:
     return TopicContext(
-        topic={"id": "t1", "project_id": "p1", "name": "T", "description": "d", "keywords": [],
+        topic={"id": "t1", "project_id": "p1", "name": topic.get("name", "T"), "description": "d", "keywords": [],
                "objectives": topic.get("objectives", []), "prerequisite_ids": []},
         chunks=chunks,
         course_map=course_map,
@@ -25,13 +25,15 @@ def topic_context(chunks: List[Dict[str, Any]], course_map: str = "", **topic: A
 
 @contextmanager
 def stub_topic_context(chunks: List[Dict[str, Any]], course_map: str = "", digest: str = "",
-                       context: Optional[TopicContext] = None):
+                       context: Optional[TopicContext] = None,
+                       contexts: Optional[Dict[str, TopicContext]] = None):
     """Every generator reads `chunks` (and `course_map`) instead of the database, and the quiz and
-    exam generators see `digest` as what the student already has."""
+    exam generators see `digest` as what the student already has. `contexts` maps a topic id to its
+    own context (a prerequisite, say); any other id gets the main one."""
     result = context or topic_context(chunks, course_map)
 
     async def fetch(topic_id: str, limit: int = 24) -> TopicContext:
-        return result
+        return (contexts or {}).get(topic_id, result)
 
     async def existing(topic_id: str) -> str:
         return digest
