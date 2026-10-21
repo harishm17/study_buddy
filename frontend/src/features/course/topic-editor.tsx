@@ -382,7 +382,7 @@ export function TopicEditor({
     // Requests go one after another so quick key presses reach the server in order.
     queue.current = queue.current.then(async () => {
       try {
-        await apiFetch(`/api/topics/${id}`, { method: 'PATCH', json: { orderIndex: slots[to] } })
+        await apiFetch(`/api/topics/${id}`, { method: 'PATCH', json: { orderIndex: to } })
       } catch {
         setItems(before)
         toast.error("Couldn't move the topic. Try again.")
@@ -652,7 +652,7 @@ export function TopicEditor({
 
       <div className="sticky bottom-0 z-sticky -mx-4 -mb-16 mt-auto border-t border-border bg-surface px-4 py-3 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
         <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-4">
-          <p className="text-small tabular text-fg-2">{pluralize(items.length, 'topic')}</p>
+          <p className="text-small tabular text-fg-2">{running ? 'Finding topics' : pluralize(items.length, 'topic')}</p>
           {allConfirmed ? (
             <Button asChild variant="primary">
               <Link href={`/courses/${courseId}/topics`}>Done</Link>

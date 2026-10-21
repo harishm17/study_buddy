@@ -142,25 +142,27 @@ export function TopicsList({ courseId, topics, summary, missingBlocks, generatio
       />
       <div className="flex flex-col gap-6">
         {building ? <BuildingContent courseId={courseId} generation={generation} /> : null}
-        <div className="flex items-center justify-end gap-3">
-          <span id="sort-label" className="text-small text-fg-2">
-            Sort by
-          </span>
-          <SegmentedControl
-            aria-labelledby="sort-label"
-            value={sort}
-            onValueChange={setSort}
-            options={[
-              { value: 'order', label: 'Course order' },
-              { value: 'needs-work', label: 'Needs work' },
-            ]}
-          />
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-end gap-3">
+            <span id="sort-label" className="text-small text-fg-2">
+              Sort by
+            </span>
+            <SegmentedControl
+              aria-labelledby="sort-label"
+              value={sort}
+              onValueChange={setSort}
+              options={[
+                { value: 'order', label: 'Course order' },
+                { value: 'needs-work', label: 'Needs work' },
+              ]}
+            />
+          </div>
+          <ul aria-label="Topics" className="divide-y divide-border border-y border-border">
+            {ordered.map((topic) => (
+              <TopicRowItem key={topic.id} courseId={courseId} topic={topic} />
+            ))}
+          </ul>
         </div>
-        <ul aria-label="Topics" className="-mt-3 divide-y divide-border border-y border-border">
-          {ordered.map((topic) => (
-            <TopicRowItem key={topic.id} courseId={courseId} topic={topic} />
-          ))}
-        </ul>
       </div>
     </>
   )
