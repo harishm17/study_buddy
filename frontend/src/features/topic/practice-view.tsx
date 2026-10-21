@@ -47,6 +47,7 @@ function ActiveStep({
   onCheck,
   onTryAgain,
   onReveal,
+  onHint,
   onNext,
   isLast,
 }: {
@@ -55,6 +56,8 @@ function ActiveStep({
   onCheck: (answer: string) => void
   onTryAgain: () => void
   onReveal: () => void
+  /** The hint was opened (it is remembered, and the step then does not count towards the score). */
+  onHint: () => void
   onNext: () => void
   isLast: boolean
 }) {
@@ -183,7 +186,14 @@ function ActiveStep({
               Check
             </Button>
             {step.hint && !hintShown ? (
-              <Button variant="ghost" icon={<Lightbulb />} onClick={() => setHintShown(true)}>
+              <Button
+                variant="ghost"
+                icon={<Lightbulb />}
+                onClick={() => {
+                  setHintShown(true)
+                  onHint()
+                }}
+              >
                 Hint
               </Button>
             ) : null}
@@ -285,11 +295,12 @@ function ProblemSwitcher({
 
 /**
  * Practice: one problem at a time, worked a step at a time. Answers are checked here in the
- * browser, and solved steps are remembered in localStorage for this topic.
+ * browser. Solved steps, answers shown and hints used are remembered in the browser and stored on the
+ * server (see practice-progress.ts), so they follow the student across devices.
  */
 export function PracticeView({ topicId, practice }: { topicId: string; practice: PracticeContent }) {
   const problems = practice.items
-  const { progress, markSolved, markRevealed, clear } = usePracticeProgress(topicId)
+  const { progress, markSolved, markRevealed, markHinted, clear } = usePracticeProgress(topicId)
   const [picked, setPicked] = React.useState<number | null>(null)
   const [feedback, setFeedback] = React.useState<Feedback | null>(null)
 
@@ -416,6 +427,7 @@ export function PracticeView({ topicId, practice }: { topicId: string; practice:
                     isLast={last}
                     onCheck={(answer) => onCheck(step, key, answer)}
                     onTryAgain={() => setFeedback(null)}
+                    onHint={() => markHinted(key)}
                     onReveal={() => {
                       markRevealed(key)
                       setFeedback({ key, kind: 'revealed' })

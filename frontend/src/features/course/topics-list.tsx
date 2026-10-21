@@ -26,6 +26,8 @@ export type ListTopic = {
   orderIndex: number
   /** The unit it belongs to, or null (a flat course, or a topic added by hand). */
   unitId: string | null
+  /** On the student's past exams: shows a small tag. */
+  examRelevant: boolean
   mastery: number | null
   dueAt: string | null
   /** "Due today" or "Next review in 4 days", worked out on the server. */
@@ -83,7 +85,10 @@ function TopicRowItem({ courseId, topic }: { courseId: string; topic: ListTopic 
           aria-label={percent === null ? 'Not started' : `${masteryLabel(topic.mastery)}, ${percent}%`}
         />
         <div className="min-w-0 flex-1 basis-40">
-          <p className="truncate text-body-strong text-fg">{topic.name}</p>
+          <p className="flex items-center gap-2 text-body-strong text-fg">
+            <span className="min-w-0 truncate">{topic.name}</span>
+            {topic.examRelevant ? <Badge tone="accent">On past exams</Badge> : null}
+          </p>
           {topic.description ? <p className="truncate text-small text-fg-2">{topic.description}</p> : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="Study path">

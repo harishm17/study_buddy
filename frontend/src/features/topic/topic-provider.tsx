@@ -38,6 +38,8 @@ type TopicContextValue = {
   /** Opening a topic with no notes starts them; true until that has started (or been found running). */
   preparingNotes: boolean
   generate: (kind: ContentKind, mode: GenerateMode, preferences: Record<string, unknown>) => Promise<boolean>
+  /** Start a fresh review quiz set (focused on what was missed, with a prerequisite question or two). */
+  generateReview: () => Promise<boolean>
   dismiss: (kind: ContentKind) => void
   /** Start the next topic's notes in the background (when this topic is marked done). */
   prefetchNext: () => void
@@ -47,6 +49,11 @@ type TopicContextValue = {
 }
 
 const TopicContext = React.createContext<TopicContextValue | null>(null)
+
+/** The topic context, or null outside the topic page (the review list uses the same buttons). */
+export function useOptionalTopic(): TopicContextValue | null {
+  return React.useContext(TopicContext)
+}
 
 export function useTopic(): TopicContextValue {
   const value = React.useContext(TopicContext)
@@ -267,6 +274,25 @@ export function TopicProvider({
     [topicId, track, router]
   )
 
+  const generateReview = React.useCallback<TopicContextValue['generateReview']>(async () => {
+    const kind: ContentKind = 'quiz'
+    setStarting((current) => ({ ...current, [kind]: true }))
+    setStartError((current) => ({ ...current, [kind]: undefined }))
+    setLocalFailure((current) => ({ ...current, [kind]: undefined }))
+    setDismissed((current) => [...current.filter((item) => item !== kind), kind])
+    try {
+      const response = await apiFetch<{ jobId: string | null }>(`/api/topics/${topicId}/fresh-review`, { method: 'POST' })
+      if (response.jobId) track(response.jobId, kind, Date.now())
+      else React.startTransition(() => router.refresh())
+      return true
+    } catch (error) {
+      setStartError((current) => ({ ...current, [kind]: toNotice(error) }))
+      return false
+    } finally {
+      setStarting((current) => ({ ...current, [kind]: false }))
+    }
+  }, [topicId, track, router])
+
   // Start the notes of a topic that has none, once the jobs already running have been found.
   const notesRunning = !!running.notes
   React.useEffect(() => {
@@ -311,12 +337,13 @@ export function TopicProvider({
       starting,
       preparingNotes,
       generate,
+      generateReview,
       dismiss,
       prefetchNext,
       keysSuspended,
       setKeysSuspended,
     }),
-    [topicId, courseId, running, startError, failure, starting, preparingNotes, generate, dismiss, prefetchNext, keysSuspended]
+    [topicId, courseId, running, startError, failure, starting, preparingNotes, generate, generateReview, dismiss, prefetchNext, keysSuspended]
   )
 
   return <TopicContext.Provider value={value}>{children}</TopicContext.Provider>

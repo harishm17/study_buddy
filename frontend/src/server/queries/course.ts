@@ -438,6 +438,8 @@ export type TopicRow = {
   /** Topics (ids, same course, earlier in the order) this one builds on. */
   prerequisiteIds: string[]
   estimatedMinutes: number | null
+  /** The topic's concepts appear on the student's past exams. */
+  examRelevant: boolean
   /** What the topic is taught from, one entry per file and page range, in document order. Empty for topics added by hand. */
   sources: SourceRef[]
   confirmed: boolean
@@ -475,6 +477,7 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
         objectives: true,
         prerequisiteIds: true,
         estimatedMinutes: true,
+        examRelevant: true,
         reviewSchedules: { where: { userId }, take: 1, select: { lastReviewedAt: true } },
       },
     }),
@@ -504,6 +507,7 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
     objectives: extraById.get(topic.id)?.objectives ?? [],
     prerequisiteIds: extraById.get(topic.id)?.prerequisiteIds ?? [],
     estimatedMinutes: extraById.get(topic.id)?.estimatedMinutes ?? null,
+    examRelevant: extraById.get(topic.id)?.examRelevant ?? false,
     sources: mergeSources(sourcesByTopic.get(topic.id) ?? []),
     confirmed: topic.confirmed,
     mastery: topic.mastery,

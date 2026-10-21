@@ -4,8 +4,10 @@ import { pickGenerationFailures } from '@/lib/jobs/failure-message'
 import { asQuestionList, toPublicQuestions, type PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import { buildReview, type QuizReviewItem } from '@/lib/learning/quiz-review'
 import { masteryLevel, type MasteryLevel } from '@/lib/mastery'
+import { getMissedQuestions } from '@/lib/learning/review-server'
 import { mergeSources, type SourceRef } from '@/lib/topics/sources'
 import { parseNotes, parsePracticeProblems, parseSolvedExamples } from '@/features/topic/content'
+import type { ProblemProgress } from '@/features/topic/practice-keys'
 import {
   CONTENT_TYPE_BY_KIND,
   KIND_BY_CONTENT_TYPE,
@@ -26,8 +28,10 @@ import { getCourseShell } from './courses'
 export type QuizSetData = {
   /** The set's id, or "legacy" for the quiz stored before sets existed. */
   id: string
-  /** "Set 3": sets are numbered oldest first. */
+  /** "Set 3": sets are numbered oldest first. A set of missed questions is "Retry". */
   label: string
+  /** retry: the questions missed in the last attempts, copied from the sets they came from. */
+  kind: 'standard' | 'retry'
   createdAt: string
   questions: PublicQuizQuestion[]
 }
@@ -40,6 +44,14 @@ export type QuizAttemptData = {
   answers: Record<string, string>
   /** Null when the set it was taken on no longer exists. */
   review: QuizReviewItem[] | null
+}
+
+/** Whether a review is due, and what the two review actions have to work with. */
+export type TopicReview = {
+  /** The review is due by now (the schedule's date has come). */
+  due: boolean
+  /** Questions missed in the last two attempts: "Retry what you missed" is offered when this is above zero. */
+  missedCount: number
 }
 
 export type TopicFailure = { message: string; errorCode: string | null }
@@ -86,6 +98,9 @@ export type TopicPageData = {
   /** Changes whenever any content is rewritten, so a client can tell a refresh has landed. */
   contentVersion: string
   attempts: QuizAttemptData[]
+  review: TopicReview
+  /** The student's stored progress on the current practice problems (the browser loads it into its cache). */
+  practiceProgress: ProblemProgress[]
   /** Kinds whose latest generation failed and that still have no content. */
   failures: Partial<Record<ContentKind, TopicFailure>>
 }
@@ -119,15 +134,15 @@ export const getTopicPage = cache(async function getTopicPage(
   if (!course || index < 0) return null
   const shellTopic = course.topics[index]
 
-  const [contentRows, quizRows, attemptRows, jobRows, structureRow, sourceRows] = await Promise.all([
+  const [contentRows, quizRows, attemptRows, jobRows, structureRow, sourceRows, practiceRows] = await Promise.all([
     prisma.topicContent.findMany({
       where: { topicId },
-      select: { contentType: true, contentData: true, metadata: true, updatedAt: true },
+      select: { id: true, contentType: true, contentData: true, metadata: true, updatedAt: true },
     }),
     prisma.topicQuiz.findMany({
       where: { topicId },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, questions: true, createdAt: true },
+      select: { id: true, questions: true, kind: true, createdAt: true },
     }),
     prisma.quizAttempt.findMany({
       where: { topicId, userId },
@@ -150,6 +165,7 @@ export const getTopicPage = cache(async function getTopicPage(
       orderBy: [{ material: { uploadedAt: 'asc' } }, { materialId: 'asc' }, { chunkIndexStart: 'asc' }],
       select: { materialId: true, pageStart: true, pageEnd: true, material: { select: { filename: true } } },
     }),
+    prisma.practiceProgress.findMany({ where: { userId, topicId }, orderBy: { problemIndex: 'asc' } }),
   ])
 
   const unit = shellTopic.unitId ? (course.units.find((item) => item.id === shellTopic.unitId) ?? null) : null
@@ -181,11 +197,15 @@ export const getTopicPage = cache(async function getTopicPage(
   const fullSets = new Map<string, Record<string, unknown>[]>()
   const sets: QuizSetData[] = []
   if (storedSets.length > 0) {
-    storedSets.forEach(({ row, questions }, position) => {
+    let standardCount = 0
+    storedSets.forEach(({ row, questions }) => {
       fullSets.set(row.id, questions)
+      const retry = row.kind === 'retry'
+      if (!retry) standardCount += 1
       sets.push({
         id: row.id,
-        label: `Set ${position + 1}`,
+        label: retry ? 'Retry' : `Set ${standardCount}`,
+        kind: retry ? 'retry' : 'standard',
         createdAt: iso(row.createdAt),
         questions: toPublicQuestions(questions),
       })
@@ -196,6 +216,7 @@ export const getTopicPage = cache(async function getTopicPage(
     sets.push({
       id: 'legacy',
       label: 'Set 1',
+      kind: 'standard',
       createdAt: iso(quizRow.updatedAt),
       questions: toPublicQuestions(legacyQuestions),
     })
@@ -237,6 +258,9 @@ export const getTopicPage = cache(async function getTopicPage(
     if (kind) failures[kind] = { message: failure.message, errorCode: failure.errorCode }
   }
 
+  const due = shellTopic.dueAt ? Date.parse(shellTopic.dueAt) <= Date.now() : false
+  const review: TopicReview = { due, missedCount: due ? (await getMissedQuestions(userId, topicId)).length : 0 }
+
   const contentVersion = [
     ...contentRows.map((row) => `${row.contentType}:${row.updatedAt.getTime()}`),
     ...quizRows.map((row) => row.id),
@@ -263,6 +287,16 @@ export const getTopicPage = cache(async function getTopicPage(
     present,
     contentVersion,
     attempts,
+    review,
+    practiceProgress: practiceRows
+      .filter((row) => row.contentId === practiceRow?.id && content.practice?.items[row.problemIndex]?.title === row.problemTitle)
+      .map((row) => ({
+        problemIndex: row.problemIndex,
+        problemTitle: row.problemTitle,
+        solvedSteps: row.solvedSteps,
+        revealedSteps: row.revealedSteps,
+        hintedSteps: row.hintedSteps,
+      })),
     failures,
   }
 })

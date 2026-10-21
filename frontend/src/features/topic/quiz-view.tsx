@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
 import { apiFetch, isApiError } from '@/lib/api/client'
 import type { QuizReviewItem } from '@/lib/learning/quiz-review'
-import type { QuizAttemptData, QuizSetData } from '@/server/queries/topic'
+import type { QuizAttemptData, QuizSetData, TopicReview } from '@/server/queries/topic'
 import { QuizLobby } from './quiz-lobby'
 import { QuizResults, type QuizResult } from './quiz-results'
 import { useQuizSession } from './quiz-session'
@@ -22,10 +22,16 @@ type SubmitResponse = {
 }
 
 type QuizViewProps = {
+  courseId: string
   topicId: string
   sets: QuizSetData[]
   attempts: QuizAttemptData[]
   voiceHref: string
+  /** Whether a review is due, and how many questions were missed lately. */
+  review: TopicReview
+  /** The set to show first (?set=), and whether to start it at once (?start=1, from "Retry what you missed"). */
+  initialSetId?: string
+  autoStart?: boolean
 }
 
 /**
@@ -33,16 +39,39 @@ type QuizViewProps = {
  * A quiz in progress lives in sessionStorage, so "taking" is simply "a session is stored".
  * Grading and results are in memory: the graded attempt is saved on the server either way.
  */
-export function QuizView({ topicId, sets, attempts, voiceHref }: QuizViewProps) {
+export function QuizView({ courseId, topicId, sets, attempts, voiceHref, review, initialSetId, autoStart }: QuizViewProps) {
   const router = useRouter()
   const { setKeysSuspended } = useTopic()
   const { running } = useGeneration('quiz')
-  const [setId, setSetId] = React.useState(sets[0].id)
+  // The newest regular set, unless one was asked for: a retry set made a moment ago is not the one to open next week.
+  const [setId, setSetId] = React.useState(
+    () => (initialSetId && sets.some((item) => item.id === initialSetId) ? initialSetId : (sets.find((item) => item.kind === 'standard') ?? sets[0]).id)
+  )
   const activeSet = sets.find((item) => item.id === setId) ?? sets[0]
   const { session, save, clear } = useQuizSession(topicId, activeSet.id)
   const [grading, setGrading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [result, setResult] = React.useState<{ setId: string; value: QuizResult } | null>(null)
+
+  // Asked for a set from outside (the retry button on the lobby, or a link): show it.
+  React.useEffect(() => {
+    if (initialSetId && sets.some((item) => item.id === initialSetId)) setSetId(initialSetId)
+  }, [initialSetId, sets])
+
+  const started = React.useRef(false)
+  React.useEffect(() => {
+    if (!autoStart) {
+      started.current = false
+      return
+    }
+    if (started.current) return
+    if (initialSetId && setId !== initialSetId) return
+    started.current = true
+    save({ answers: {}, index: 0 })
+    // The address goes back to plain ?view=quiz, so a reload does not start the set again.
+    router.replace(`/courses/${courseId}/topics/${topicId}?view=quiz`, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, initialSetId, setId])
 
   const taking = !!session && !grading && !result
   React.useEffect(() => {
@@ -137,6 +166,9 @@ export function QuizView({ topicId, sets, attempts, voiceHref }: QuizViewProps) 
 
   return (
     <QuizLobby
+      courseId={courseId}
+      topicId={topicId}
+      review={review}
       sets={sets}
       attempts={attempts}
       setId={activeSet.id}

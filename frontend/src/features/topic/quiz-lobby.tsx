@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
 import { formatDate, formatDateTime, pluralize } from '@/lib/format'
-import type { QuizAttemptData, QuizSetData } from '@/server/queries/topic'
+import type { QuizAttemptData, QuizSetData, TopicReview } from '@/server/queries/topic'
 import { cn } from '@/lib/utils'
 import { GenerateOptions } from './generation-ui'
+import { ReviewActions } from './review-actions'
 import { ReviewList, buildEntries } from './quiz-review-list'
 import { ViewSkeleton } from './skeletons'
 import { useHydrated } from './use-hydrated'
@@ -74,6 +75,9 @@ function Attempt({ attempt, set, showSet }: { attempt: QuizAttemptData; set: Qui
 }
 
 type QuizLobbyProps = {
+  courseId: string
+  topicId: string
+  review: TopicReview
   sets: QuizSetData[]
   attempts: QuizAttemptData[]
   setId: string
@@ -84,7 +88,7 @@ type QuizLobbyProps = {
 }
 
 /** Pick a set, see how you did, start, or create a new set. */
-export function QuizLobby({ sets, attempts, setId, onSetChange, onStart, generating }: QuizLobbyProps) {
+export function QuizLobby({ courseId, topicId, review, sets, attempts, setId, onSetChange, onStart, generating }: QuizLobbyProps) {
   const hydrated = useHydrated()
   const set = sets.find((item) => item.id === setId) ?? sets[0]
   const setAttempts = attempts.filter((attempt) => attempt.setId === set.id)
@@ -101,6 +105,22 @@ export function QuizLobby({ sets, attempts, setId, onSetChange, onStart, generat
           </Button>
         </GenerateOptions>
       </div>
+
+      {review.due && !generating ? (
+        <section aria-labelledby="due-review-heading" className="mt-5 rounded-card border border-border bg-surface-2 p-4">
+          <h3 id="due-review-heading" className="text-body-strong text-fg">
+            Due for review
+          </h3>
+          <p className="mt-1 text-small text-fg-2">
+            {review.missedCount > 0
+              ? `You missed ${review.missedCount === 1 ? 'a question' : `${review.missedCount} questions`} lately. Go over ${review.missedCount === 1 ? 'it' : 'them'} again, or take a fresh set.`
+              : 'Take a fresh set of questions to keep this topic strong.'}
+          </p>
+          <div className="mt-3">
+            <ReviewActions courseId={courseId} topicId={topicId} missedCount={review.missedCount} />
+          </div>
+        </section>
+      ) : null}
 
       {generating ? (
         <div className="mt-6">
