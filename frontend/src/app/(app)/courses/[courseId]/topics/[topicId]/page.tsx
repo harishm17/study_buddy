@@ -86,6 +86,6 @@ export default async function TopicPage({ params, searchParams }: { params: Para
         </ContentGate>
       )
     default:
-      return <VoiceView />
+      return <VoiceView courseId={courseId} topic={{ id: topicId, name: topic.name }} />
   }
 }
