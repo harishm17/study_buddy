@@ -31,6 +31,7 @@ _TOPIC_STATE_SQL = """
             FROM material_chunks mc
             JOIN materials m ON mc.material_id = m.id
             WHERE m.project_id = t.project_id AND m.validation_status = 'valid'
+              AND m.role NOT IN ('syllabus', 'exam')
         ) AS newest_chunk_at
     FROM topics t
     WHERE t.id = $1

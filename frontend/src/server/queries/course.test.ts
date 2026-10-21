@@ -8,6 +8,7 @@ const topic = (id: string, mastery: number | null, confirmed = true) => ({
   name: id,
   description: null,
   orderIndex: 0,
+  unitId: null,
   confirmed,
   mastery,
   dueAt: null,

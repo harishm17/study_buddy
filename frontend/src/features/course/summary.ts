@@ -35,6 +35,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   lecture_notes: 'Lecture notes',
   sample_exams: 'Past exams',
   book_chapters: 'Book chapters',
+  syllabus: 'Syllabus or schedule',
 }
 
 export const categoryLabel = (category: string): string => CATEGORY_LABELS[category] ?? 'Materials'

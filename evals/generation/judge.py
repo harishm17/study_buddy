@@ -95,6 +95,7 @@ def render_output(content_type: str, output) -> str:
             for step in ex.get("steps") or []:
                 lines += [
                     f"Step {step.get('step_number')} ({step.get('answer_type')}): {step.get('question', '')}",
+                    *[f"    {option.get('id')}. {option.get('text')}" for option in step.get("options") or []],
                     f"  Hint: {step.get('hint', '')}",
                     f"  Correct answer: {step.get('correct_answer', '')} (also accepted: {', '.join(map(str, step.get('acceptable_answers') or []))})",
                     f"  Explanation: {step.get('explanation', '')}",

@@ -133,6 +133,8 @@ class ExamGrader:
                     if question['question_type'] != 'short_answer'
                     else question.get('sample_answer')
                 ),
+                # File and pages the question is based on, for "From <file>, p. N" in the review.
+                'sources': question.get('sources') or [],
             })
             total_points += points_possible
             earned_points += result['points_earned']

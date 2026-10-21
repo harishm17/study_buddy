@@ -41,6 +41,51 @@ const TOPICS = [
 
 const MATH_TOPIC = 'Discrete random variables'
 
+// The course structure: two units (with a week each) holding the four hand-made topics. The math
+// topic stays outside every unit on purpose, so the demo course shows the "Topics" group too.
+// Sources point at the sample files (algorithms.pdf has 4 pages and 4 chunks, hashing.docx has 3
+// chunks and no pages), objectives hold math so the header's renderer is exercised.
+export const UNITS = [
+  { title: 'Sorting and graphs', weekLabel: 'Week 1' },
+  { title: 'Dynamic programming and hashing', weekLabel: 'Week 2' },
+]
+const STRUCTURE: Record<
+  string,
+  { unit: number; objectives: string[]; minutes: number; after?: string; source: { file: string; pages?: [number, number]; chunks: [number, number] } }
+> = {
+  'Sorting algorithms': {
+    unit: 0,
+    objectives: [
+      'trace merge sort and quicksort on a small array',
+      'compare running times, such as $O(n \\log n)$ and $O(n^2)$',
+      'explain why a comparison sort needs $\\Omega(n \\log n)$ comparisons',
+    ],
+    minutes: 35,
+    source: { file: 'algorithms.pdf', pages: [1, 2], chunks: [0, 1] },
+  },
+  'Graph traversal': {
+    unit: 0,
+    objectives: ['run breadth-first and depth-first search by hand', 'choose between them for a given problem', 'find shortest paths in an unweighted graph'],
+    minutes: 30,
+    after: 'Sorting algorithms',
+    source: { file: 'algorithms.pdf', pages: [3, 3], chunks: [2, 2] },
+  },
+  'Dynamic programming': {
+    unit: 1,
+    objectives: ['spot optimal substructure and overlapping subproblems', 'fill a table bottom up', 'recover the solution from the table'],
+    minutes: 45,
+    after: 'Graph traversal',
+    source: { file: 'algorithms.pdf', pages: [4, 4], chunks: [3, 3] },
+  },
+  'Hash tables': {
+    unit: 1,
+    objectives: ['pick a hash function and handle collisions', 'compare chaining with open addressing', 'work out the load factor and its effect on speed'],
+    minutes: 25,
+    after: 'Sorting algorithms',
+    source: { file: 'hashing.docx', chunks: [0, 2] },
+  },
+}
+
 export type DemoIds = {
   course: string
   setupCourse: string
@@ -158,6 +203,58 @@ async function ensureTopics(api: APIRequestContext, courseId: string): Promise<J
   return topics(api, courseId)
 }
 
+/** Units, objectives, prerequisites, minutes and sources for the hand-made topics. Idempotent. */
+async function ensureStructure(api: APIRequestContext, courseId: string) {
+  // The mock plan wrote a unit per file; its topics are gone by now, so those units are empty.
+  await withPrisma((prisma) => prisma.unit.deleteMany({ where: { projectId: courseId, title: { endsWith: '(mock)' } } }))
+  const unitIds: string[] = []
+  for (const unit of UNITS) {
+    const existing = await withPrisma((prisma) =>
+      prisma.unit.findFirst({ where: { projectId: courseId, title: unit.title }, select: { id: true } })
+    )
+    unitIds.push(
+      existing?.id ??
+        ((await json(await api.post(`/api/projects/${courseId}/units`, { data: unit }), `create unit ${unit.title}`)).unit.id as string)
+    )
+  }
+  const all = await topics(api, courseId)
+  const byName = new Map(all.map((topic) => [String(topic.name), topic.id as string]))
+  const materialIds = new Map(
+    (await materials(api, courseId)).map((item) => [String(item.filename), item.id as string])
+  )
+  for (const [name, plan] of Object.entries(STRUCTURE)) {
+    const id = byName.get(name)
+    if (!id) continue
+    await json(
+      await api.patch(`/api/topics/${id}`, {
+        data: {
+          unitId: unitIds[plan.unit],
+          objectives: plan.objectives,
+          estimatedMinutes: plan.minutes,
+          prerequisiteIds: plan.after && byName.get(plan.after) ? [byName.get(plan.after)] : [],
+        },
+      }),
+      `structure ${name}`
+    )
+    const materialId = materialIds.get(plan.source.file)
+    if (!materialId) continue
+    await withPrisma(async (prisma) => {
+      if ((await prisma.topicSource.count({ where: { topicId: id } })) > 0) return
+      await prisma.topicSource.create({
+        data: {
+          topicId: id,
+          materialId,
+          pageStart: plan.source.pages?.[0] ?? null,
+          pageEnd: plan.source.pages?.[1] ?? null,
+          chunkIndexStart: plan.source.chunks[0],
+          chunkIndexEnd: plan.source.chunks[1],
+          role: 'primary',
+        },
+      })
+    })
+  }
+}
+
 async function ensureContent(api: APIRequestContext, courseId: string) {
   await json(await api.post(`/api/projects/${courseId}/generate-missing-content`), 'generate missing content')
   await waitFor(async () => (await activeJobs(api, courseId, 'generate_content')).length === 0, 'content generation', 600_000, 3000)
@@ -256,7 +353,9 @@ async function ensureChat(api: APIRequestContext, courseId: string) {
  * The mock content never stresses the renderer or the layout, this does.
  */
 async function ensureMathTopic(api: APIRequestContext, courseId: string): Promise<string> {
-  const fixture = JSON.parse(readFileSync(path.join(FIXTURES, 'math-topic.json'), 'utf8')) as Json
+  const algorithms = (await materials(api, courseId)).find((item) => item.filename === 'algorithms.pdf')?.id as string
+  // Sources in the fixture name the sample PDF by a placeholder; the real id exists only now.
+  const fixture = JSON.parse(readFileSync(path.join(FIXTURES, 'math-topic.json'), 'utf8').replaceAll('__ALGORITHMS_PDF__', algorithms)) as Json
   let topicId = (await topics(api, courseId)).find((topic) => topic.name === MATH_TOPIC)?.id as string | undefined
   if (!topicId) {
     const created = await json(
@@ -297,6 +396,8 @@ export async function seedDemo(baseURL: string): Promise<DemoIds> {
     await ensureExam(api, course, found.map((topic) => topic.id))
     await ensureChat(api, course)
     const mathTopic = await ensureMathTopic(api, course)
+    // Last, so that the content above is written the way a hand-made topic's is: from a search.
+    await ensureStructure(api, course)
     const setupCourse = await ensureCourse(api, SETUP_COURSE, 'Reaction mechanisms and synthesis.')
     return { course, setupCourse, topics: found.map((topic) => topic.id as string), mathTopic }
   } finally {

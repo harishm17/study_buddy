@@ -1,6 +1,7 @@
 /**
  * API route for material uploads
  * POST /api/projects/[projectId]/materials?category=lecture_notes&filename=notes.pdf
+ * (category: lecture_notes, book_chapters, sample_exams or syllabus)
  *
  * The request body is the file itself (not multipart), so it can be checked and streamed to
  * storage without being held in memory. The size limit (MAX_UPLOAD_MB, default 25) is judged
@@ -23,9 +24,10 @@ import {
 } from '@/lib/storage/upload-limits'
 import { enqueueValidationJob, TaskEnqueueError } from '@/lib/tasks/cloud-tasks'
 import { z } from 'zod'
+import { roleForCategory } from '@/lib/materials/role'
 
 const uploadSchema = z.object({
-  category: z.enum(['lecture_notes', 'sample_exams', 'book_chapters']),
+  category: z.enum(['lecture_notes', 'sample_exams', 'book_chapters', 'syllabus']),
 })
 
 const SUPPORTED_EXTENSIONS = new Set(['.pdf', '.docx', '.pptx', '.doc'])
@@ -151,6 +153,8 @@ export async function POST(
         id: materialId,
         projectId,
         category: validation.data.category,
+        // Past exams and syllabi are known now; the validator sets the role of everything else.
+        role: roleForCategory(validation.data.category),
         filename,
         sizeBytes: BigInt(fileSize),
         validationStatus: 'pending',
@@ -216,6 +220,7 @@ export async function POST(
         id: material.id,
         filename: material.filename,
         category: material.category,
+        role: material.role,
         sizeBytes: material.sizeBytes.toString(),
         validationStatus: material.validationStatus,
         uploadedAt: material.uploadedAt,
@@ -275,6 +280,7 @@ export async function GET(
         id: true,
         filename: true,
         category: true,
+        role: true,
         sizeBytes: true,
         validationStatus: true,
         validationNotes: true,

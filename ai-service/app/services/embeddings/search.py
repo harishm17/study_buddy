@@ -54,6 +54,25 @@ SOURCE_FULLTEXT = "keyword_match"
 SOURCE_VECTOR = "semantic_search"
 SOURCE_BOTH = "keyword_and_semantic"
 
+# Roles whose files are not course content: left out of topic mapping and generation retrieval
+# (chat searches every valid file).
+NON_CONTENT_ROLES = ("syllabus", "exam")
+
+
+def _material_filter(first_param: int, exclude_roles: Sequence[str], exclude_material_ids: Sequence[str]):
+    """(SQL, args) that keep chunks of files with another role and not in the given files.
+    Parameters are numbered from `first_param`; the SQL is empty when nothing is excluded."""
+    clauses: List[str] = []
+    args: List = []
+    if exclude_roles:
+        args.append(list(exclude_roles))
+        clauses.append(f"AND m.role <> ALL(${first_param + len(args) - 1}::text[])")
+    if exclude_material_ids:
+        args.append([str(material_id) for material_id in exclude_material_ids])
+        clauses.append(f"AND m.id <> ALL(${first_param + len(args) - 1}::text[])")
+    return "\n          ".join(clauses), args
+
+
 _CHUNK_COLUMNS = """
     mc.id,
     mc.chunk_text,
@@ -61,8 +80,10 @@ _CHUNK_COLUMNS = """
     mc.page_start,
     mc.page_end,
     mc.chunk_index,
+    mc.token_count,
     m.id AS material_id,
-    m.filename
+    m.filename,
+    m.category
 """
 
 
@@ -173,8 +194,15 @@ def fuse_rankings(
     return result
 
 
-async def _vector_leg(project_id: str, query_embedding: Sequence[float], pool_size: int) -> List[Dict]:
+async def _vector_leg(
+    project_id: str,
+    query_embedding: Sequence[float],
+    pool_size: int,
+    exclude_roles: Sequence[str] = (),
+    exclude_material_ids: Sequence[str] = (),
+) -> List[Dict]:
     """Nearest chunks of the project's valid materials by cosine similarity."""
+    filter_sql, filter_args = _material_filter(4, exclude_roles, exclude_material_ids)
     sql = f"""
         SELECT {_CHUNK_COLUMNS},
                1 - (mc.chunk_embedding <=> $1::vector) AS similarity
@@ -183,6 +211,7 @@ async def _vector_leg(project_id: str, query_embedding: Sequence[float], pool_si
         WHERE m.project_id = $2
           AND m.validation_status = 'valid'
           AND mc.chunk_embedding IS NOT NULL
+          {filter_sql}
         ORDER BY mc.chunk_embedding <=> $1::vector
         LIMIT $3
     """
@@ -198,7 +227,7 @@ async def _vector_leg(project_id: str, query_embedding: Sequence[float], pool_si
                 await conn.execute("SELECT set_config('hnsw.iterative_scan', 'relaxed_order', true)")
         except Exception:
             pass
-        return await conn.fetch(sql, _vector_literal(query_embedding), project_id, pool_size)
+        return await conn.fetch(sql, _vector_literal(query_embedding), project_id, pool_size, *filter_args)
 
     return [dict(row) for row in await execute_in_transaction(run)]
 
@@ -208,6 +237,8 @@ async def _fulltext_leg(
     phrases: Sequence[str],
     query_embedding: Optional[Sequence[float]],
     pool_size: int,
+    exclude_roles: Sequence[str] = (),
+    exclude_material_ids: Sequence[str] = (),
 ) -> List[Dict]:
     """Chunks matching any phrase, best `ts_rank_cd` first. Carries the vector similarity too."""
     if not phrases:
@@ -224,6 +255,8 @@ async def _fulltext_leg(
         similarity = "NULL::float8"
     tsquery = fulltext_query_sql(len(phrases), first_param=len(params) + 1)
     params.extend(phrases)
+    filter_sql, filter_args = _material_filter(len(params) + 1, exclude_roles, exclude_material_ids)
+    params.extend(filter_args)
     sql = f"""
         WITH q AS (SELECT {tsquery} AS query)
         SELECT {_CHUNK_COLUMNS},
@@ -235,6 +268,7 @@ async def _fulltext_leg(
         WHERE m.project_id = $1
           AND m.validation_status = 'valid'
           AND mc.search_vector @@ q.query
+          {filter_sql}
         ORDER BY text_rank DESC, mc.id
         LIMIT {int(pool_size)}
     """
@@ -256,8 +290,13 @@ async def hybrid_search_chunks(
     topic_description: str,
     keywords: List[str],
     limit: int = 20,
+    exclude_roles: Sequence[str] = NON_CONTENT_ROLES,
+    exclude_material_ids: Sequence[str] = (),
 ) -> List[Dict]:
     """The chunks of a project that best explain a topic, best first.
+
+    Chunks of syllabus and past-exam files are never offered (`exclude_roles`), nor are those of
+    `exclude_material_ids` (the supporting search skips the files a topic is taught from).
 
     Runs the vector and full-text legs over the project's valid materials, fuses them with
     RRF and applies the similarity floor (see the module docstring). Returns at most `limit`
@@ -281,9 +320,16 @@ async def hybrid_search_chunks(
 
     vector_rows: List[Dict] = []
     if query_embedding is not None:
-        vector_rows = await _vector_leg(project_id, query_embedding, CANDIDATE_POOL)
+        vector_rows = await _vector_leg(
+            project_id, query_embedding, CANDIDATE_POOL, exclude_roles, exclude_material_ids
+        )
     fulltext_rows = await _fulltext_leg(
-        project_id, fulltext_phrases(topic_name, keywords), query_embedding, CANDIDATE_POOL
+        project_id,
+        fulltext_phrases(topic_name, keywords),
+        query_embedding,
+        CANDIDATE_POOL,
+        exclude_roles,
+        exclude_material_ids,
     )
 
     # Judged only when chunks have vectors: right after a model change, before re-embedding,

@@ -1,5 +1,7 @@
 # StudyBuddy backend contract and current-UI feature inventory
 
+Learning v2, stage 2 (course structure) changed the topics, materials, content and job sections below; §9 collects what the Stage 2 UI builds on.
+
 ## 0. Global conventions
 
 **Auth**
@@ -123,7 +125,7 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 
 ### Materials
 
-**`POST /api/projects/[projectId]/materials?category=<lecture_notes|sample_exams|book_chapters>&filename=<name>`**
+**`POST /api/projects/[projectId]/materials?category=<lecture_notes|sample_exams|book_chapters|syllabus>&filename=<name>`**
 - The request body is the raw file, not multipart. A `multipart/*` content-type gets 415.
 - `Content-Length` is mandatory. A missing header gets 411, a non-numeric one 400, zero bytes 400, and over the limit 413 `"File must be N MB or smaller."`
 - The limit is `MAX_UPLOAD_MB` (default 25, max 500). It is not exposed by any API; the upload page gets it as a server-side prop.
@@ -131,14 +133,20 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - Other errors: 400 `'Invalid category'`, 400 `'No file provided'`, 400 for a truncated upload.
 - 200:
   ```json
-  { "material": { "id", "filename", "category", "sizeBytes": "string", "validationStatus": "pending", "uploadedAt" }, "jobId": "..." }
+  { "material": { "id", "filename", "category", "role", "sizeBytes": "string", "validationStatus": "pending", "uploadedAt" }, "jobId": "..." }
   ```
+- `role` starts as `exam` for `sample_exams`, `syllabus` for `syllabus` and `content` otherwise; validation then decides (see "Material roles" in §9).
 - Side effects: streams to storage first, then creates the Material (`validationStatus 'pending'`), then a `validate_material` job (stage `validating`), then enqueues it. If the enqueue fails, the job is marked failed, the file and Material are deleted, and the route returns **502** `{error:'Failed to start material validation'}`.
 - The AI service then validates with an LLM check and, if valid, creates a `chunk_material` job itself. When the last chunk job completes, extraction auto-starts (`AUTO_EXTRACT_TOPICS_ON_CHUNK` defaults to true).
 
 **`GET /api/projects/[projectId]/materials`**
-- 200: `{ materials: [{ id, filename, category, sizeBytes:"str", validationStatus, validationNotes, uploadedAt, validatedAt }] }`, newest first.
+- 200: `{ materials: [{ id, filename, category, role, sizeBytes:"str", validationStatus, validationNotes, uploadedAt, validatedAt }] }`, newest first.
 - No UI calls this.
+
+**`PATCH /api/materials/[materialId]`** (new)
+- Body: `{ role: 'content' | 'syllabus' | 'exam' | 'other' }` (the student's say on what a file is for; the UI offers it from the file menu with the labels Content, Syllabus, Past exam, Other).
+- Becoming `syllabus` or `exam` removes that file's `topic_sources` and its `topic_chunk_mappings` in the same transaction, so topics stop being taught from it at once (content already written stays). Becoming `content` or `other` adds nothing by itself: "Find topics again" places its sections.
+- 200: `{ material: { id, role, removedSources } }`. 400 `{ error: 'Invalid input', details }`, 404, 401 (A-shape).
 
 **`DELETE /api/materials/[materialId]`**
 - Deletes the row (cascading chunks and mappings), then the file. Does not cancel running jobs.
@@ -157,24 +165,27 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 ### Topics
 
 **`GET /api/projects/[projectId]/topics`**
-- 200: `{ topics: [{ id, name, description, keywords:string[], orderIndex, userConfirmed, createdAt }] }` by `orderIndex`.
+- 200: `{ topics: [{ id, name, description, keywords:string[], orderIndex, userConfirmed, createdAt, unitId, objectives:string[], prerequisiteIds:string[], estimatedMinutes }] }` by `orderIndex`. The UI reads topics through server queries instead (§9).
 
 **`POST /api/projects/[projectId]/topics`** (manual topic)
-- Body: `{ name: string(1..255), description?: string }`
-- 200: `{ topic: <full Topic row> }`. `userConfirmed` is true, `keywords` is `[]`, `sourceMaterialIds` is `[]`.
+- Body: `{ name: string(1..255), description?: string, unitId?: string | null }`
+- 200: `{ topic: <full Topic row> }`. `userConfirmed` is true, `keywords`, `objectives`, `prerequisiteIds` and `sourceMaterialIds` are `[]`, and there are no `topic_sources`: a hand-added topic is taught from a hybrid search of the course's content files (§9, "Generation context").
+- Without `unitId` the topic belongs to no unit and is last in the course. With `unitId` (a unit of this project, else 404 `{error:'Unit not found'}`) it is last in that unit and the course order is renormalised.
 - Chunk mappings are created lazily when content is generated.
 
 **`PATCH /api/topics/[topicId]`**
-- Body: `{ name?: string.trim.min(1).max(255), description?: string, userConfirmed?: boolean, orderIndex?: int>=0 }`
-- `orderIndex` moves the topic and shifts the others in a transaction.
+- Body: `{ name?: string.trim.min(1).max(255), description?: string, userConfirmed?: boolean, orderIndex?: int>=0, unitId?: string | null, objectives?: string[](<=8, each 1..300), prerequisiteIds?: string[](<=8), estimatedMinutes?: int(1..600) | null }`
+- `orderIndex` is a position among **all** topics in course order; the topic moves there and the others shift, in a transaction. A request with only `orderIndex` changes nothing else (this is what the flat editor sends).
+- `unitId` moves the topic to that unit (a unit of the same project, else 404; `null` removes it from its unit). With no `orderIndex` it becomes the last topic of the target unit. **Any request that sets `unitId` also renormalises the course order** (units in `Unit.orderIndex` order, each unit's topics in `orderIndex` order, topics without a unit last), so `{ unitId, orderIndex }` drops a topic into a unit at a position: compute `orderIndex` as the index the topic should have in the canonical list (`canonicalTopicOrder` in `src/lib/topics/units.ts`).
+- `prerequisiteIds` must be topics of the same project; the topic itself and unknown ids are dropped, and a link that would make a loop (`A` needs `B` which needs `A`) is a 400 `{ error: 'A topic cannot depend on a topic that depends on it' }`.
 - 200: `{ topic }`
 
-**`DELETE /api/topics/[topicId]`** returns `{success:true}` (cascade).
+**`DELETE /api/topics/[topicId]`** returns `{success:true}` (cascade: content, quiz sets, attempts, `topic_sources`). Other topics stop listing it in `prerequisiteIds`. A unit left with no topics stays (the editor can delete it).
 
 **`POST /api/projects/[projectId]/topics/merge`**
 - Body: `{ sourceTopicId: string.min(1), targetTopicId: string.min(1), name?: string.trim.min(1).max(255) }`
 - Same ids give 400 `INVALID_INPUT` "Choose two different topics to merge". An unowned topic gives 404.
-- Moves chunk mappings, content types the target lacks, all quiz sets, quiz attempts, signals, voice sessions and attempts. Progress is OR-ed and the best score kept. The target's review schedule wins. The source is deleted and `orderIndex` is compacted.
+- Moves chunk mappings, `topic_sources`, content types the target lacks, all quiz sets, quiz attempts, signals, voice sessions and attempts. Progress is OR-ed and the best score kept. The target's review schedule wins. The target keeps its unit; objectives are joined (at most 8), estimated minutes add up (at most 180), prerequisites are joined and every topic that listed the source as a prerequisite now lists the target (a link that would make a loop is dropped). The source is deleted, `orderIndex` is compacted and the course order renormalised so units stay contiguous.
 - 200: `{ topic: <target row>, mergedTopicId }`
 - The UI sends only `{sourceTopicId, targetTopicId}`.
 
@@ -190,8 +201,23 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - 200: `{ jobId, status:'queued'|'processing', message, estimatedSeconds:45 }`
 - An existing active job returns the same body with `message:'Topic extraction already in progress'`.
 - Enqueue failure marks the job failed (`ENQUEUE_FAILED` or `ENQUEUE_PERMANENT`) and returns 502 `UPSTREAM_ERROR` "Failed to start topic extraction".
-- Job result: `resultData = { topics_extracted, usage }`.
-- The job upserts topics by normalized name. Topics matched by name are updated and the rest are inserted unconfirmed. Stale unconfirmed topics are deleted. Project `status` becomes `topics_pending`. Confirmed topics survive a re-extract.
+- Job result: `resultData = { topics_extracted (all topics now in the course), new_topics, mode: 'full' | 'incremental', usage }`; the job response is `{ topicsCount }`.
+- The job runs the **course planner** (§9): units, topics with objectives, prerequisites and minutes, and the sections each topic is taught from (`topic_sources`). Project `status` becomes `topics_pending` when it wrote new topics.
+- Before any topic is confirmed it plans the whole course: a planned topic with the (normalised) name of an unconfirmed one reuses that row, other unconfirmed topics are deleted. Once topics are confirmed it only places the **new** sections (files not yet covered by a confirmed topic's sources): sections can join an existing topic, or become new unconfirmed topics in new units (or in an existing unit) after the existing ones. **Confirmed topics are never renamed, moved, merged or deleted.** With nothing new it changes nothing and finishes with the current topic count.
+- Failure `NO_CONTENT_MATERIALS` (permanent, 400): no valid file with text has role `content` or `other`.
+
+**Units** (new; read through server queries, there is no list route)
+
+**`POST /api/projects/[projectId]/units`**
+- Body: `{ title: string.trim(1..200), summary?: string(..600) | null, weekLabel?: string(..80) | null, orderIndex?: int>=0 }`; `orderIndex` is the position among units (default last).
+- 200: `{ unit: { id, title, summary, weekLabel, orderIndex } }`. 400 INVALID_INPUT, 404 for an unowned project.
+
+**`PATCH /api/units/[unitId]`**
+- Body: `{ title?, summary?: string | null, weekLabel?: string | null, orderIndex?: int>=0 }`. Moving a unit moves its topics with it: unit order is compacted and the topics' course order renormalised in the same transaction.
+- 200: `{ unit }`. 404 for an unknown or unowned unit.
+
+**`DELETE /api/units/[unitId]`**
+- Only an empty unit: 409 CONFLICT "Move or delete the topics in this unit first" otherwise. 200 `{ success: true }`.
 
 ### Content (notes, examples, quiz)
 
@@ -543,7 +569,7 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 **`resultData` shapes** (always includes `usage:{calls, models[], input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens, estimated_cost_usd|null}` when LLM calls ran):
 - `validate_material`: `{validation_status:'valid'|'invalid', notes}`
 - `chunk_material`: `{chunks_created}`
-- `extract_topics`: `{topics_extracted}`
+- `extract_topics`: `{topics_extracted, new_topics, mode}`
 - `generate_content`: `{content_id, content_type, metadata}`
 - `generate_exam`: `{exam_id, total_questions, topics_covered}`
 - `grade_exam`: `{submission_id, overall_score, earned_points, total_points}`
@@ -557,7 +583,8 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - `LLM_REQUEST_REJECTED`
 - `ENQUEUE_FAILED`, `ENQUEUE_PERMANENT`, `JOB_DISPATCH_FAILED`
 - `STORAGE_UNAVAILABLE`
-- **`LLM_DAILY_BUDGET`**: its `errorMessage` ("Daily AI usage limit reached ($X of $Y used today, UTC). ...") is for logs and admins and is never shown. Screens show "You've used today's AI allowance. It resets at <local time>." for the code (the reset time is midnight UTC shown in the browser's time zone; see `frontend/src/lib/budget/copy.ts`). No dollar amount reaches student-facing UI. The default cap is `DAILY_LLM_BUDGET_USD = 3.00` per user per UTC day. It covers jobs and chat answers only. It is checked before each LLM job and before a chat answer starts, so one call can end up slightly over.
+- **`LLM_DAILY_BUDGET`**: its `errorMessage` ("Daily AI usage limit reached ($X of $Y used today, UTC). ...") is for logs and admins and is never shown. Screens show "You've used today's AI allowance. It resets at <local time>." for the code (the reset time is midnight UTC shown in the browser's time zone; see `frontend/src/lib/budget/copy.ts`). No dollar amount reaches student-facing UI. The default cap is `DAILY_LLM_BUDGET_USD = 3.00` per user per UTC day, and **`GLOBAL_DAILY_LLM_BUDGET_USD = 40.00` for all users together** (same ledger, same code, same student-facing copy; 0 turns either off). Margins has open sign-up and a shared API key, so the global cap is the ceiling on the day's bill: when everyone together has spent it, no job, chat answer or voice turn starts for anyone until midnight UTC, and the AI service logs one `GLOBAL daily LLM budget reached` warning (with both figures) at most once a minute. The error message differs in the logs and `errorMessage` ("...for the whole service...") but the code is the same `LLM_DAILY_BUDGET`, so students see the usual allowance message. The caps cover jobs, chat answers and voice turns. They are checked before each LLM job and before a chat answer starts, so one call can end up slightly over.
+- **`NO_CONTENT_MATERIALS`** (extract_topics, permanent): every valid file is a syllabus or a past exam, so there was nothing to plan. `describeJobFailure` has user-safe text for it.
 - Others that can appear: `MATERIAL_NOT_FOUND`, `VALIDATION_FAILED`, `NO_CONTENT` (also sets the material `invalid`), `CHUNKING_FAILED`, `TOPIC_EXTRACTION_FAILED`, `CONTENT_GENERATION_FAILED`, `EXAM_GENERATION_FAILED`, `EXAM_GRADING_FAILED`, `SUBMISSION_NOT_FOUND`, `INVALID_INPUT`, `JOB_LEASE_EXPIRED`, `JOB_FAILED`.
 - `describeJobFailure(code, msg)` returns the text, with the fallback `"Generation failed. Try again."`
 - "LLM not configured" has two surfaces:
@@ -582,11 +609,14 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
   - `setup` goes to `topics_pending` when an extraction job finishes, then to `active` on `topics/confirm`.
   - `completed` is never set by code; only PATCH can set it.
 - **Material:**
-  - `category: lecture_notes|sample_exams|book_chapters`
+  - `category: lecture_notes|sample_exams|book_chapters|syllabus`
+  - `role: content|syllabus|exam|other` (default `content`): what the file is for (§9, "Material roles")
   - `filename, gcsPath, sizeBytes (BigInt)`
   - `validationStatus: pending|valid|invalid`, `validationNotes?`, `metadata {mimeType, extension}`, `uploadedAt, validatedAt?`
   - `MaterialChunk`: text, `vector(384)` embedding, generated `tsvector`, `sectionHierarchy`, `pageStart/End`, `chunkIndex`, `tokenCount`.
-- **Topic:** `name, description?, keywords[], orderIndex, sourceMaterialIds[], userConfirmed`.
+- **Unit** (new): `id, projectId, title, summary?, orderIndex, weekLabel?, createdAt`; index `(projectId, orderIndex)`; deleting a unit sets its topics' `unitId` to null.
+- **TopicSource** (new): `id, topicId, materialId, pageStart?, pageEnd?, chunkIndexStart, chunkIndexEnd, role: primary|supporting`. The planner writes one `primary` row per planned section: a contiguous range of one file's chunks. Cascades with the topic and the material.
+- **Topic:** `name, description?, keywords[], orderIndex, sourceMaterialIds[], userConfirmed`, plus (new) `unitId?`, `objectives[]`, `prerequisiteIds[]`, `estimatedMinutes?`.
   - There is **no `Topic.status` field**. The only state is `userConfirmed`, plus the project status.
   - `TopicChunkMapping(topicId, chunkId, relevanceScore, relevanceSource: keyword_match|semantic_search|llm_validated)`.
   - Flow: extract (an AI job creates topics with `userConfirmed=false`), review, then confirm. During review the student can rename, reorder (up/down via `orderIndex`), merge, delete, add manually (auto-confirmed) and re-extract. `topics/confirm` confirms all topics. Re-extract deletes unconfirmed leftovers but keeps confirmed topics.
@@ -629,15 +659,17 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 All text fields are markdown, with LaTeX math (`$..$` and `$$..$$`) and fenced code blocks with language tags.
 
 **`section_notes`**
-- `contentData`: a single markdown **string** (not sectioned JSON). The model is told to use `# Topic`, `## Overview`, `## Key Concepts`, `## How It Works`, `## Common Pitfalls`, `## Exam-Ready Recap` (ending with 5-8 recall bullets). About 300-1400 words depending on `detail_level`.
-- `metadata`: `{ chunk_count:number, citations: [{ filename, category, pages:"4"|"4-5"|"n/a", material_id?:string|null, page?:number|null }] }`. Older notes lack `material_id` and `page`.
+- `contentData`: a single markdown **string** (not sectioned JSON). New notes are a lesson: `# Topic`, `## What you'll learn` (the topic's objectives as "You can ..." bullets), `## The idea`, `## Key concepts`, `## Worked example` (one, from the source; left out when `include_examples` is false), `## Check yourself`, `## Common pitfalls`, `## Summary` (5-8 recall bullets). About 400-1500 words depending on `detail_level`. **Old notes** use `## Overview`, `## Key Concepts`, `## How It Works`, `## Common Pitfalls`, `## Exam-Ready Recap` and must keep rendering.
+- ` ```check ` blocks. Under "Check yourself" each quick question is a fenced block whose info string is `check`: first line `Q: <question>`, next line `A: <answer>`; math is allowed in both lines. The renderer shows the question with a "Show answer" reveal. The AI service's post-processor normalises the fence (` ``` Check `, ` ```CHECK `) and wraps loose `Q:`/`A:` pairs under "Check yourself" into blocks, but a stored note can still hold a malformed block: show an unparseable ` ```check ` block as an ordinary code block. Until the renderer exists, a check block shows as a plain code block with the question and the answer.
+- `metadata`: `{ chunk_count:number, citations: [{ filename, category, pages:"4"|"4-5"|"n/a", material_id?:string|null, page?:number|null }] }`. For a topic with sources, citations are its **primary spans**: one per file, `pages` from the first to the last page of that file's primary chunks, `page` the first page. For a hand-added topic they are the pages of the file's most relevant chunk, as before. Older notes lack `material_id` and `page`.
 - The UI strips leftover `[Citation: ...]` and "If you want, I can..." lines, and promotes bare headings.
 
 **`solved_examples`**
 - `contentData`: array of
   ```ts
   { title, problem_statement, solution_steps: [{ step_number, description, work, explanation }],
-    final_answer /* 2-5 markdown bullets */, key_concepts: string[], difficulty?: 'easy'|'medium'|'hard' }
+    final_answer /* 2-5 markdown bullets */, key_concepts: string[], difficulty?: 'easy'|'medium'|'hard',
+    sources: [{ material_id, filename, page_start: number | null, page_end: number | null }] /* new; [] when unknown; absent in old content */ }
   ```
 - `metadata`: `{ example_type:'solved', difficulty_level, count }`. Appending (`append:true`) concatenates arrays and updates `count`.
 
@@ -645,17 +677,23 @@ All text fields are markdown, with LaTeX math (`$..$` and `$$..$$`) and fenced c
 - `contentData`: array of
   ```ts
   { title, problem_statement,
-    steps: [{ step_number, question, hint, answer_type:'numeric'|'text'|'multiple_choice', correct_answer: string,
-              acceptable_answers: string[], explanation, feedback_correct, feedback_incorrect }],
-    key_concepts: string[], difficulty?: string, estimated_time_minutes: number }
+    steps: [{ step_number, question, hint, answer_type:'numeric'|'text'|'multiple_choice',
+              options?: [{ id:'A'.., text }]   /* multiple_choice: ALWAYS present with 2-5 entries in new content */,
+              correct_answer: string, acceptable_answers: string[],
+              tolerance?: number               /* numeric only: accepted absolute difference */,
+              explanation, feedback_correct, feedback_incorrect }],
+    key_concepts: string[], difficulty?: string, estimated_time_minutes: number,
+    sources: [{ material_id, filename, page_start, page_end }] }
   ```
-- The answers are **not stripped**. Checking happens client-side.
+- **Field changes for the UI:** `options` is new. A `multiple_choice` step is only stored with 2 to 5 options (options the model wrote into the question as `A) ...` lines are moved into `options`; a problem with a multiple_choice step that has none is dropped by the generator and the job retries). `correct_answer` is the id of one option. Options are shuffled when stored, and letter references in `explanation` and the feedback follow the shuffle. Show `options` when present; **content written before this change has no `options`** and its options are lines of the question text (`splitChoices` in `practice-check.ts` still handles that). `tolerance` is new and optional; the checker uses it as an absolute tolerance, else 1% relative.
+- The answers are **not stripped**. Checking happens client-side (`checkPracticeAnswer` in `practice-check.ts`: normalised text, numeric equivalence of fractions, decimals, percents and thousands separators, simple algebra by comparing at several points, and accepted-answer lists; see its header comment).
 - `metadata`: `{ example_type:'interactive', difficulty_level, count }`.
 
 **`topic_quiz`**
 - Stored (server only): array of full question dicts:
   - `question_type: 'multiple_choice'|'short_answer'|'numerical'|'true_false'`, `question_text`, `explanation`, `points (1-5)`, `concepts_tested[]`, `difficulty?`
   - MC: `options:[{id:'A'..'D',text}]`, `correct_answer: 'A'`
+  - every question: `sources: [{ material_id, filename, page_start, page_end }]` (new; where in the files it is based on; `[]` when unknown; absent in old quizzes). Never sent before the quiz is submitted (it hints at where the answer is), so it is not in the public shape; the graded **review** items carry it (`QuizReviewItem.sources`), and so do exam question results (`ExamQuestionResult.sources`) and `aiGrading.graded_questions[].sources`.
   - TF: `correct_answer: boolean`
   - numerical: `correct_answer: number`, `unit?`, `tolerance?`
   - short_answer: `sample_answer`, `key_points[]`
@@ -667,6 +705,7 @@ All text fields are markdown, with LaTeX math (`$..$` and `$$..$$`) and fenced c
   `correct_answer`, `explanation`, `sample_answer`, `key_points` and `tolerance` are removed.
 - `metadata`: `{ total_questions, difficulty_level, question_types:string[], quiz_set_id }`.
 - A quiz needs at least `max(1, (requested+1)//2)` valid questions, otherwise the job fails with `LLM_BAD_OUTPUT`.
+- Quiz and exam prompts ask for at least half application questions with numbers and scenarios different from the excerpts and from what the topic's notes, examples, practice and earlier quizzes already show (their worked example and problem statements are passed to the generator as a "do not reuse" block).
 
 **Grading rules** (AI-service `exam_grader.py`; quizzes, exams and voice answers all use it):
 - MC: case-insensitive match on the option id.
@@ -1036,6 +1075,124 @@ All text fields are markdown, with LaTeX math (`$..$` and `$$..$$`) and fenced c
 - Two Prisma import paths exist (`@/lib/prisma` and `@/lib/db/prisma`), both exporting the same client.
 - Exam deadlines use the client clock with `remainingSeconds` (the `serverNow` field is available but ignored).
 - A PDF cited with `#page=N` relies on the browser's PDF viewer; DOCX and PPTX have no deep link.
+
+## 9. Course structure (learning v2, stage 2): what the Stage 2 UI builds on
+
+The backend half of Stage 2 is done; this section is the contract for the React half. Everything the UI needs is in server queries (`src/server/queries/*`) and the API routes listed in §2. Migration: `frontend/prisma/migrations/20261101000000_course_structure` (additive; also adds an index on `llm_usage_events(created_at)` for the global budget, and sets `role = 'exam'` on materials uploaded as `sample_exams`).
+
+### 9.1 Model in one paragraph
+
+A course is **units** (week, chapter, lecture group) of **topics**. Each topic has `objectives` (verb phrases that finish "By the end you can ..."), `prerequisiteIds` (topics earlier in the course), `estimatedMinutes` and **sources** (`topic_sources`: the sections of the student's files it is taught from, with page ranges). Course order is still `Topic.orderIndex`, global across units. A topic with no `unitId` (added by hand, or in a course planned before units) belongs to no unit: render those in a plain "Topics" group with no unit header, and a **flat course** (no units at all) looks exactly as it does today. A topic with no sources is taught from a hybrid search of the course's content files, as before.
+
+### 9.2 Material roles
+
+`Material.role` is `content | syllabus | exam | other`, labelled **Content / Syllabus / Past exam / Other** (`ROLE_LABELS`, `src/lib/materials/role.ts`).
+- Set by the AI service when validation finishes: the student's category wins for `sample_exams` (exam) and `syllabus` (syllabus); otherwise the validator's reading of the file (`kind`: content, syllabus, exam or other). If no model is available it is `content`. Between upload and validation it holds the category's role (`content` for notes and book chapters).
+- The student can change it: `PATCH /api/materials/[id] { role }` (§2). The role badge belongs in the materials table; `MaterialRow.role` carries it.
+- **Syllabus and exam files are never topic sources**, and topic mapping and generation retrieval skip them (including the supporting chunks, which also skip `other`). Chat still searches every valid file. The syllabus text is given to the planner (for ordering and unit names) and the names of exam files are listed in its prompt.
+- New upload category `syllabus`, label **"Syllabus or schedule"** (`CATEGORY_LABELS` in `features/course/summary.ts`; the upload select in `materials-manager.tsx` builds its options from it, so it is already offered).
+
+### 9.3 The course planner (the `extract_topics` job)
+
+Same job, endpoint, target key (`extract:{projectId}`), polling and "Find again" button as before; only what it writes changed.
+1. **Outline, no model.** Per content file, consecutive chunks with the same first two heading levels form a section (a file without headings: a section per ~1,500 tokens; a huge section is cut into parts of ~4,500). Sections are numbered S1..Sn in upload order, then document order.
+2. **One plan call** (purpose `extract_topics`, model setting `MODEL_TOPICS`, now defaulting to `claude-opus-5-5:low`): units of topics with name, description, 3-5 objectives, keywords, section ids, prerequisite keys and estimated minutes. A course whose outline is over `PLANNER_MAX_OUTLINE_TOKENS` (120,000 tokens) or `PLANNER_MAX_SECTIONS_PER_CALL` (400 sections), or whose source is over `PLANNER_MAX_SOURCE_TOKENS_PER_CALL` (150,000 tokens, about 50 topics), is planned per group of files, then a cheap `order_units` call orders the units.
+3. **Validation:** unknown section ids dropped; a section named twice stays with the first topic; an unplaced section joins the topic of the neighbouring section in the same file (previous, else next); topics with no section and units with no topic are dropped; prerequisites keep only earlier topics. Two additions to the spec: a file nothing in the plan touched becomes a topic of its own in a last unit "Other material", and a plan with a single topic gives it every section.
+4. **One transaction** writes units, topics (unconfirmed) and one `topic_sources` row per section (plus `topic_chunk_mappings` for those chunks, `relevance_source = 'course_plan'`).
+5. **Find again / new files after confirmation:** see `POST .../extract-topics` in §2. The UI should expect new topics to arrive *unconfirmed* in a course that is otherwise confirmed (`deriveSetup` then shows "Review topics" again until they are confirmed); confirmed topics are never touched. After a new upload the AI service starts this job by itself once the last file is chunked, as before.
+A course planned before this change has confirmed topics but no sources: its files count as already planned when they were uploaded before its newest confirmed topic was created, so a new upload plans only itself.
+
+### 9.4 Generation context (what the lesson is written from)
+
+For a topic with sources: all chunks of its primary sources in document order up to `TOPIC_SOURCE_TOKEN_BUDGET` (16,000 tokens; whole sections are kept and the rest dropped from the end, logged), plus up to `TOPIC_SUPPORTING_CHUNKS` (4) chunks from *other* content files, labelled supporting in the prompt. The prompt also carries the **course map** (unit and topic names in order, this topic marked, its objectives and prerequisites) and rules to teach only this topic's objectives, assume the prerequisites and not reuse another topic's worked example. Prompt caching is unchanged: the excerpt block (which includes the course map) is cached only for regenerations of a type.
+Each generated item says which excerpts it used; the AI service stores the file and pages as `sources` (§5). Nothing in the UI needs the excerpt indexes.
+
+### 9.5 Server queries (new and changed fields)
+
+All types are exported from the query modules.
+
+```ts
+// src/server/queries/courses.ts
+type ShellUnit = { id; title; summary: string | null; weekLabel: string | null; orderIndex: number }
+CourseShell.units: ShellUnit[]            // course order; [] for a flat course; includes units with no topic
+ShellTopic.unitId: string | null
+NavCourse.units: { id; title; weekLabel; orderIndex }[]     // sidebar, switcher, palette
+NavTopic.unitId: string | null
+
+// src/server/queries/course.ts
+MaterialRow.role: 'content' | 'syllabus' | 'exam' | 'other'
+TopicsData.units: ShellUnit[]
+TopicRow = { ...existing,
+  unitId: string | null,
+  objectives: string[],                   // "compute a posterior with Bayes' rule": finish "By the end you can ..."
+  prerequisiteIds: string[],              // look names up in TopicsData.topics
+  estimatedMinutes: number | null,
+  sources: SourceRef[] }                  // one entry per file and page range, document order; [] for hand-added topics
+
+// src/server/queries/topic.ts
+TopicPageData.topic.structure: {
+  unit: { id; title; weekLabel } | null,
+  objectives: string[],
+  prerequisites: { id; name }[],          // link each to its topic page
+  estimatedMinutes: number | null,
+  sources: SourceRef[] }                  // "File, pp. a-b" links to the file viewer
+
+// src/lib/topics/sources.ts
+type SourceRef = { materialId: string | null; filename: string; pageStart: number | null; pageEnd: number | null }
+```
+
+Helpers (pure, unit-tested): `src/lib/topics/units.ts` (`groupTopicsByUnit(topics, units, { includeEmpty })` returns `[{ unit | null, topics }]`; `canonicalTopicOrder`; `unitMastery`; `cleanPrerequisites`; `reachesPrerequisite`), `src/lib/topics/sources.ts` (`formatPages`, `sourceText` "a.pdf, pp. 4-9", `fromLabel` "From a.pdf, p. 4", `fromLine`, `mergeSources`, `parseSources`), `src/lib/materials/role.ts`. For links to the file viewer use `viewerUrl({ materialId, filename, pageStart })` from `src/lib/chat/citations.ts`, as the notes citations do.
+Unit mastery = `unitMastery(topics.map((t) => t.mastery))`: mean over all the unit's topics, not-started ones counting as 0 (the same rule as course mastery).
+
+### 9.6 Per-item sources in content
+
+Parsed content types (`src/features/topic/types.ts`) now carry `sources: SourceRef[]`: `SolvedExample.sources`, `PracticeProblem.sources`; the graded `QuizReviewItem.sources` and `ExamQuestionResult.sources` carry them too. Show "From <file>, p. N" (`fromLine(item.sources)`) under each worked example, practice problem and quiz or exam review item, linking to the file viewer. Empty array: show nothing (content written before this change). `PracticeStep` also gains `options: {id, text}[]` and `tolerance: number | null` (§5). `practice-view.tsx` already uses `step.options` when present and falls back to `splitChoices` for old content.
+
+### 9.7 Editor cookbook
+
+| Student action | Call |
+|---|---|
+| Rename a unit, edit its week label or summary | `PATCH /api/units/[id] { title?, weekLabel?, summary? }` |
+| Move a unit up or down | `PATCH /api/units/[id] { orderIndex }` (position among units; its topics move with it) |
+| Add a unit | `POST /api/projects/[id]/units { title }` |
+| Delete a unit | move its topics out first, then `DELETE /api/units/[id]` (409 while it has topics) |
+| Rename a topic, edit objectives or minutes | `PATCH /api/topics/[id] { name?, objectives?, estimatedMinutes? }` |
+| Move a topic to another unit (select) | `PATCH /api/topics/[id] { unitId }` (last in that unit), or `{ unitId, orderIndex }` for a position |
+| Reorder within a unit | `PATCH /api/topics/[id] { orderIndex }` where `orderIndex` is the topic's target index in the whole course order (units and topics are listed canonically, so this is the sum of the earlier units' sizes plus the index inside the unit) |
+| Take a topic out of every unit | `PATCH /api/topics/[id] { unitId: null }` |
+| Merge | `POST /api/projects/[id]/topics/merge` (keeps the target's unit; moves sources) |
+| Delete | `DELETE /api/topics/[id]` |
+| Add a topic | `POST /api/projects/[id]/topics { name, unitId? }` |
+| Edit prerequisites | `PATCH /api/topics/[id] { prerequisiteIds }` (400 on a loop) |
+Sources are read-only: show them per topic, no route edits them. "Find again" is `POST .../extract-topics` as before.
+The existing flat editor keeps working unchanged (it only sends `orderIndex`, rename and merge calls).
+
+### 9.8 The mock stack (`LLM_PROVIDER=mock`, what the e2e runs on)
+
+- **Plan:** one unit per file ("<file> (mock)"), topics of up to three sections ("<file> part 1 (mock)", ...), each with three objectives and a prerequisite on the previous topic of the same unit. A lone small file (2 or 3 sections) still gets one topic per section. Topic names end with "(mock)" and `seed-demo.ts` deletes those and adds its own hand-made topics, which exercises the no-sources path.
+- **Notes:** the lesson format with an extra `## Overview` heading first (the existing e2e looks for it) and one ` ```check ` block.
+- **Examples, practice and quiz questions:** fixed text; every item has `sources` pointing at the topic's first excerpt (file and pages). The mock practice problem has a single numeric step (answer 4), so completion flows are unchanged. A multiple-choice step as the real model writes it (and as the UI must handle it):
+  ```json
+  { "step_number": 2, "question": "Which grows fastest?", "hint": "...", "answer_type": "multiple_choice",
+    "options": [{ "id": "A", "text": "O(n)" }, { "id": "B", "text": "O(n log n)" }, { "id": "C", "text": "O(n^2)" }],
+    "correct_answer": "C", "acceptable_answers": [], "explanation": "...", "feedback_correct": "...", "feedback_incorrect": "..." }
+  ```
+- Mock calls cost nothing, so neither budget is ever reached; the tests set a tiny cap to cover the copy.
+
+### 9.9 Answer checking (practice)
+
+`checkPracticeAnswer(step, input)` now also accepts: fractions, decimals, percents and thousands separators as the same number (`1/17`, `3/51`, `0.0588`, `5.88%`), within `step.tolerance` (absolute) or 1% for `numeric` steps and 1e-6 for `text` steps; LaTeX-light and spacing differences; simple algebraic expressions that are equal as functions (`p(1-p)^k` and `(1-p)^k p`, compared at pseudo-random points by a small safe evaluator, never `eval`); hyphen or space in terms; comma, semicolon or "or" separated alternatives in a key (`0.0588, 1/17, 5.88%`), and list answers in any order (`2, 3` and `3, 2`). No new dependency. The prompt tells the model to use `numeric` for anything numeric with a tolerance, `text` only for a short canonical form, and one form per `acceptable_answers` entry.
+
+### 9.10 Settings added (AI service)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MODEL_TOPICS` | `claude-opus-5-5:low` | model and effort of the one planning call (was Haiku) |
+| `TOPIC_SOURCE_TOKEN_BUDGET` | 16000 | tokens of primary source per generation |
+| `TOPIC_SUPPORTING_CHUNKS` | 4 | supporting chunks from other content files |
+| `PLANNER_MAX_OUTLINE_TOKENS` / `PLANNER_MAX_SECTIONS_PER_CALL` / `PLANNER_MAX_SOURCE_TOKENS_PER_CALL` | 120000 / 400 / 150000 | past any of them, plan per group of files |
+| `PLANNER_SYLLABUS_TOKENS` | 6000 | syllabus text given to the planner |
+| `GLOBAL_DAILY_LLM_BUDGET_USD` | 40 | ceiling on all users together per UTC day (0 = off) |
 
 ---
 

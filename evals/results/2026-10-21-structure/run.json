@@ -1,0 +1,57 @@
+{
+  "label": "structure",
+  "date": "2026-10-21",
+  "code": {
+    "commit": "2f592c383a9a48480d500b2708030ea67684d0d7",
+    "branch": "feat/course-structure",
+    "app_dirty": false
+  },
+  "corpora": [
+    "mit-18.05",
+    "mit-6.006"
+  ],
+  "types": [
+    "notes",
+    "solved",
+    "interactive",
+    "quiz"
+  ],
+  "models": [
+    {
+      "slug": "opus-medium",
+      "label": "opus:medium",
+      "model_id": "claude-opus-5-5",
+      "effort": "medium"
+    }
+  ],
+  "params": {
+    "examples": 3,
+    "questions": 10,
+    "difficulty": "medium",
+    "detail_level": "comprehensive"
+  },
+  "judge": "opus:medium",
+  "mock": false,
+  "seed": 0,
+  "max_usd": 12.0,
+  "max_judge_usd": 4.0,
+  "notes_sections": [
+    "What you'll learn",
+    "The idea",
+    "Key concepts",
+    "Worked example",
+    "Check yourself",
+    "Common pitfalls",
+    "Summary",
+    "Overview",
+    "How it works",
+    "Exam-ready recap"
+  ],
+  "topics_source": "the app's course planner",
+  "stopped": null,
+  "spend": {
+    "generation": 4.6791,
+    "topics": 0.1552,
+    "judge": 2.1592
+  }
+}

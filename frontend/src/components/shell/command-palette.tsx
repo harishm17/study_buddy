@@ -75,13 +75,14 @@ function PaletteBody() {
     const ordered = [...nav].sort((a, b) => Number(b.id === params.courseId) - Number(a.id === params.courseId))
     for (const course of ordered) {
       for (const topic of course.topics) {
+        const unit = course.units.find((item) => item.id === topic.unitId)?.title
         list.push({
           id: `topic:${topic.id}`,
           label: topic.name,
-          hint: course.id === params.courseId ? undefined : course.name,
+          hint: course.id === params.courseId ? unit : unit ? `${course.name}, ${unit}` : course.name,
           icon: ListBullets,
           group: 'Topics',
-          keywords: [course.name],
+          keywords: unit ? [course.name, unit] : [course.name],
           remember: true,
           run: ({ router }) => router.push(`/courses/${course.id}/topics/${topic.id}`),
         })

@@ -54,8 +54,9 @@ const PAGES: [string, string][] = [
   ['home', '/home'],
   ['course overview', `/courses/${course}`],
   ['course setup guide', `/courses/${setupCourse}`],
-  ['topics list', `/courses/${course}/topics`],
-  ['topic notes', `${topic}?view=notes`],
+  ['topics list with units', `/courses/${course}/topics`],
+  ['topic editor with units', `/courses/${course}/topics?edit=1`],
+  ['topic notes with objectives and sources', `${topic}?view=notes`],
   ['topic examples', `${topic}?view=examples`],
   ['topic practice', `${topic}?view=practice`],
   ['topic quiz', `${topic}?view=quiz`],
@@ -64,7 +65,7 @@ const PAGES: [string, string][] = [
   ['math topic examples', `${math}?view=examples`],
   ['math topic practice', `${math}?view=practice`],
   ['math topic quiz', `${math}?view=quiz`],
-  ['materials', `/courses/${course}/materials`],
+  ['materials with role badges', `/courses/${course}/materials`],
   ['ask', `/courses/${course}/ask`],
   ['mock exams', `/courses/${course}/exams`],
   ['new mock exam', `/courses/${course}/exams/new`],
@@ -82,6 +83,19 @@ test.describe('signed in', () => {
       await expectNoSidewaysScroll(page, url)
     })
   }
+
+  test('the objectives open on a phone without widening the page', async ({ page }) => {
+    await page.goto(topic + '?view=notes', { waitUntil: 'networkidle' })
+    const toggle = page.getByRole('button', { name: /By the end you can/ })
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.click()
+    await expect(page.getByText('trace merge sort and quicksort on a small array')).toBeVisible()
+    const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }))
+    expect(scrollWidth).toBeLessThanOrEqual(innerWidth)
+  })
 
   test('graded exam results fit the window', async ({ page }) => {
     const { exams } = await (await page.request.get(`/api/projects/${course}/exams`)).json()

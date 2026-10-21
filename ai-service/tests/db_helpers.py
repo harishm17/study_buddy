@@ -32,14 +32,17 @@ async def seed_project(pool, user_id: str) -> str:
 
 
 async def seed_material(pool, project_id: str, gcs_path: str = "gs://b/u/p/doc.pdf",
-                        filename: str = "doc.pdf", status: str = "pending") -> str:
+                        filename: str = "doc.pdf", status: str = "pending", role: str = "content",
+                        uploaded_at: str = "") -> str:
     material_id = new_id()
+    # uploaded_at: "SQL:<expression>" to place a file in the upload order.
     await pool.execute(
-        """
-        INSERT INTO materials (id, project_id, category, filename, gcs_path, size_bytes, validation_status)
-        VALUES ($1, $2, 'lecture_notes', $3, $4, 100, $5)
+        f"""
+        INSERT INTO materials (id, project_id, category, filename, gcs_path, size_bytes, validation_status, role
+                               {', uploaded_at' if uploaded_at else ''})
+        VALUES ($1, $2, 'lecture_notes', $3, $4, 100, $5, $6{', ' + uploaded_at[4:] if uploaded_at else ''})
         """,
-        material_id, project_id, filename, gcs_path, status,
+        material_id, project_id, filename, gcs_path, status, role,
     )
     return material_id
 
@@ -99,12 +102,12 @@ def literal(vector):
     return "[" + ",".join(repr(v) for v in vector) + "]"
 
 
-async def add_chunk(db, material_id, index, text, vector=None, heading=None):
+async def add_chunk(db, material_id, index, text, vector=None, heading=None, page=None, tokens=None):
     chunk_id = new_id()
     await db.execute(
-        "INSERT INTO material_chunks (id, material_id, chunk_text, chunk_embedding, section_hierarchy, chunk_index) "
-        "VALUES ($1, $2, $3, $4::vector, $5, $6)",
-        chunk_id, material_id, text, literal(vector) if vector else None, heading, index,
+        "INSERT INTO material_chunks (id, material_id, chunk_text, chunk_embedding, section_hierarchy, chunk_index, "
+        "page_start, page_end, token_count) VALUES ($1, $2, $3, $4::vector, $5, $6, $7, $7, $8)",
+        chunk_id, material_id, text, literal(vector) if vector else None, heading, index, page, tokens,
     )
     return chunk_id
 

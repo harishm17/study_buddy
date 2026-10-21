@@ -83,3 +83,15 @@ test('exam questions keep their topic but not their key points or sample answer'
     assert.equal(payload.includes(secret), false, secret)
   }
 })
+
+test('sources are not public before a quiz is answered, but reach the review after grading', async () => {
+  const { buildReview } = await import('./quiz-review')
+  const question = {
+    ...full,
+    sources: [{ material_id: 'm1', filename: 'bio.pdf', page_start: 3, page_end: 5 }],
+  }
+  assert.equal('sources' in (toPublicQuestion(question) as Record<string, unknown>), false)
+  const [item] = buildReview([question], { '0': { isCorrect: true, pointsEarned: 2, pointsPossible: 2 } })
+  assert.deepEqual(item.sources, [{ materialId: 'm1', filename: 'bio.pdf', pageStart: 3, pageEnd: 5 }])
+  assert.deepEqual(buildReview([full], {})[0].sources, [])
+})

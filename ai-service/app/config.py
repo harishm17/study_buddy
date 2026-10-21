@@ -38,15 +38,16 @@ class Settings(BaseSettings):
     # One model per purpose, "<model-id>:<effort>" (see app/services/llm/models.py for every form
     # that is accepted, and which call sites use which setting). Empty means the fallback above:
     # today's behaviour is Opus at medium effort for MODEL_NOTES, MODEL_EXAMPLES, MODEL_PRACTICE,
-    # MODEL_QUIZ and MODEL_EXAM, and Haiku at low effort for MODEL_GRADING, MODEL_TOPICS and
-    # MODEL_VALIDATION.
+    # MODEL_QUIZ and MODEL_EXAM, and Haiku at low effort for MODEL_GRADING and MODEL_VALIDATION.
+    # MODEL_TOPICS plans the whole course in one call and structure quality decides how good
+    # every later lesson is, so it defaults to the notes model at low effort.
     MODEL_NOTES: str = ""
     MODEL_EXAMPLES: str = ""
     MODEL_PRACTICE: str = ""
     MODEL_QUIZ: str = ""
     MODEL_EXAM: str = ""
     MODEL_GRADING: str = ""
-    MODEL_TOPICS: str = ""
+    MODEL_TOPICS: str = "claude-opus-5-5:low"
     # "Ask your materials" answers: the main model, short thinking.
     MODEL_CHAT: str = ":low"
     # Voice coach turns and drills: the fast model, short thinking. The browser does
@@ -55,6 +56,20 @@ class Settings(BaseSettings):
     MODEL_VALIDATION: str = ""
 
     VOICE_MAX_TOKENS: int = 800
+
+    # Course structure. A topic is taught from the chunks of its primary sources, in document
+    # order, up to this many tokens (whole sections are kept, the rest dropped from the end).
+    TOPIC_SOURCE_TOKEN_BUDGET: int = 16000
+    # Chunks from content files the topic is not taught from, added as supporting excerpts.
+    TOPIC_SUPPORTING_CHUNKS: int = 4
+    # The course planner sends the whole outline in one call. Past this many outline tokens, this
+    # many sections, or this many tokens of source (the plan lists about one topic per 3,000 and
+    # must fit one answer), it plans per group of files and then fixes the order across them.
+    PLANNER_MAX_OUTLINE_TOKENS: int = 120000
+    PLANNER_MAX_SECTIONS_PER_CALL: int = 400
+    PLANNER_MAX_SOURCE_TOKENS_PER_CALL: int = 150000
+    # Syllabus or calendar text given to the planner, for ordering and unit names.
+    PLANNER_SYLLABUS_TOKENS: int = 6000
 
     CHAT_MAX_TOKENS: int = 4000
     # Excerpts offered to the model per question, and the cosine similarity below which a chunk
@@ -96,6 +111,9 @@ class Settings(BaseSettings):
     # Most a user's LLM-backed jobs and chat answers may cost per UTC day, from the stored
     # costs. 0 turns the cap off.
     DAILY_LLM_BUDGET_USD: float = 8.00
+    # Most ALL users together may cost per UTC day, from the same ledger. Sign-up is open and
+    # the API key is shared, so this is the ceiling on the day's bill. 0 turns it off.
+    GLOBAL_DAILY_LLM_BUDGET_USD: float = 40.00
 
     # Dispatching jobs to this service. With ENABLE_CLOUD_TASKS the service creates Cloud
     # Tasks (project, location and queue below); otherwise it posts to AI_SERVICE_URL itself.

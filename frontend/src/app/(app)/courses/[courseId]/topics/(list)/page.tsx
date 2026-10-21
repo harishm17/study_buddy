@@ -37,7 +37,10 @@ export default async function TopicsPage({
             keywords: topic.keywords,
             orderIndex: topic.orderIndex,
             confirmed: topic.confirmed,
+            unitId: topic.unitId,
+            sources: topic.sources,
           }))}
+          units={data.units}
           extractJob={data.extractJob}
           extractFailure={data.extractFailure}
           filesReady={data.materialsReady}
@@ -60,11 +63,13 @@ export default async function TopicsPage({
         summary={courseSummary(data.topics.length, counts, due)}
         generation={data.generation}
         now={now}
+        units={data.units}
         topics={data.topics.map((topic) => ({
           id: topic.id,
           name: topic.name,
           description: topic.description,
           orderIndex: topic.orderIndex,
+          unitId: topic.unitId,
           mastery: topic.mastery,
           dueAt: topic.dueAt,
           timing: reviewTiming(topic.dueAt, now),

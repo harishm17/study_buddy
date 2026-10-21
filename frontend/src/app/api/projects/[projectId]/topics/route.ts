@@ -1,17 +1,22 @@
 /**
  * API routes for topics
  * GET /api/projects/[projectId]/topics - List topics
- * POST /api/projects/[projectId]/topics - Create topic (manual)
+ * POST /api/projects/[projectId]/topics - Create topic (manual): { name, description?, unitId? }
+ *   A topic added by hand has no sources (it is taught from a search of the course files), no
+ *   objectives and no prerequisites. With unitId it joins that unit as its last topic; without
+ *   one it is last in the course and belongs to no unit.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import { z } from 'zod'
+import { normalizeTopicOrder } from '@/lib/topics/normalize-order'
 
 const createTopicSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
+  unitId: z.string().min(1).nullable().optional(),
 })
 
 // Kept for API clients; the UI reads this through server queries.
@@ -50,6 +55,10 @@ export async function GET(
         orderIndex: true,
         userConfirmed: true,
         createdAt: true,
+        unitId: true,
+        objectives: true,
+        prerequisiteIds: true,
+        estimatedMinutes: true,
       },
     })
 
@@ -113,17 +122,34 @@ export async function POST(
 
     const nextOrder = (maxOrder?.orderIndex ?? -1) + 1
 
+    const unitId = validation.data.unitId ?? null
+    if (unitId) {
+      const unit = await prisma.unit.findFirst({ where: { id: unitId, projectId }, select: { id: true } })
+      if (!unit) {
+        return NextResponse.json({ error: 'Unit not found' }, { status: 404 })
+      }
+    }
+
     // Create topic
-    const topic = await prisma.topic.create({
-      data: {
-        projectId,
-        name: validation.data.name,
-        description: validation.data.description || '',
-        keywords: [],
-        orderIndex: nextOrder,
-        sourceMaterialIds: [],
-        userConfirmed: true, // Manually created topics are auto-confirmed
-      },
+    const topic = await prisma.$transaction(async (tx) => {
+      const created = await tx.topic.create({
+        data: {
+          projectId,
+          name: validation.data.name,
+          description: validation.data.description || '',
+          keywords: [],
+          orderIndex: nextOrder,
+          sourceMaterialIds: [],
+          objectives: [],
+          prerequisiteIds: [],
+          unitId,
+          userConfirmed: true, // Manually created topics are auto-confirmed
+        },
+      })
+      if (!unitId) return created
+      // Last in its unit, which is not the end of the course unless the unit is the last one.
+      await normalizeTopicOrder(tx, projectId)
+      return tx.topic.findUniqueOrThrow({ where: { id: created.id } })
     })
 
     return NextResponse.json({ topic })

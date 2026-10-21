@@ -135,53 +135,6 @@ class TestGenerateContent:
         assert len(content) == 1
 
 
-class TestExtractTopics:
-    async def test_searches_run_before_the_transaction_opens(self, db, world, monkeypatch):
-        events = []
-        topics = [
-            SimpleNamespace(name="Sets", description="d", keywords=["set"]),
-            SimpleNamespace(name="Logic", description="d", keywords=[]),
-        ]
-        material_id = await seed_material(db, world.project_id, status="valid")
-        chunk_id = new_id()
-        await db.execute(
-            "INSERT INTO material_chunks (id, material_id, chunk_text, chunk_index) VALUES ($1, $2, 'text', 0)",
-            chunk_id, material_id,
-        )
-
-        async def extract(project_id):
-            return topics
-
-        async def search(project_id, name, description, keywords, limit):
-            events.append(f"search:{name}")
-            return [{"id": chunk_id, "relevance_score": 0.9, "relevance_source": "hybrid"}]
-
-        real_transaction = jobs.execute_in_transaction
-
-        async def transaction(operations):
-            events.append("transaction")
-            return await real_transaction(operations)
-
-        monkeypatch.setattr(jobs, "extract_topics_from_materials", extract)
-        monkeypatch.setattr(jobs, "hybrid_search_chunks", search)
-        monkeypatch.setattr(jobs, "execute_in_transaction", transaction)
-        job_id = await seed_job(
-            db, world.user_id, "extract_topics", project_id=world.project_id,
-            input_data={"projectId": world.project_id},
-        )
-
-        result = await jobs.extract_topics_job(
-            JobPayload(jobId=job_id, jobType="extract_topics", data={"projectId": world.project_id})
-        )
-
-        assert result["topicsCount"] == 2
-        assert events == ["search:Sets", "search:Logic", "transaction"]
-        assert await db.fetchval("SELECT count(*) FROM topic_chunk_mappings") == 2
-        assert await db.fetchval("SELECT status FROM projects WHERE id = $1", world.project_id) == "topics_pending"
-        job = await get_job(db, job_id)
-        assert json.loads(job["result_data"]) == {"topics_extracted": 2}
-
-
 class TestGradeExam:
     @pytest.fixture
     async def submission(self, db, world, monkeypatch):

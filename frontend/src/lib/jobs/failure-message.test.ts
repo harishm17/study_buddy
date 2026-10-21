@@ -22,6 +22,7 @@ test('the daily budget message never shows the job message, which carries dollar
 
 test('missing source material explains what to do', () => {
   assert.match(describeJobFailure('NO_SOURCE_MATERIAL', 'No relevant chunks found for topic x'), /Add material/)
+  assert.match(describeJobFailure('NO_CONTENT_MATERIALS', 'x'), /Mark at least one as course content/)
 })
 
 test('raw server messages never reach the student for other codes', () => {

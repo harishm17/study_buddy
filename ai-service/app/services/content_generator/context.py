@@ -1,20 +1,41 @@
 """Source excerpts and prompt framing shared by every content generator.
 
-Every generator for a topic sends the same system prompt and the same excerpt block, in
-the same order. Nothing is cached the first time a content type is generated: a cache write
-costs 1.25x the input price and nothing would read it. A regeneration of the same type for the
-same topic (more examples, more practice, a new quiz set, a review set) marks the excerpt block
-cacheable (cache_excerpts=True). The structured-output schema is part of the prompt prefix, so
-only calls with the same schema share an entry, which is why different content types never do.
-"""
-from typing import Dict, List
+A topic is taught from its **primary sources**: the `topic_sources` rows the course planner wrote,
+one per section, read in document order up to TOPIC_SOURCE_TOKEN_BUDGET tokens (whole sections
+are kept, the rest dropped from the end). Up to TOPIC_SUPPORTING_CHUNKS chunks from *other*
+course-content files are added, labelled as supporting. A topic without sources (added by hand,
+or planned before sources existed) is taught from its mapped chunks, found by hybrid search.
+Syllabus and past-exam files are never part of the context.
 
-from app.db.connection import execute_query
+The prompt also carries the course map (units and topics in order, this topic's objectives and
+prerequisites), so a lesson stays inside its own topic.
+
+Every generator for a topic sends the same system prompt and the same excerpt block, in the same
+order. Nothing is cached the first time a content type is generated: a cache write costs 1.25x the
+input price and nothing would read it. A regeneration of the same type for the same topic (more
+examples, more practice, a new quiz set, a review set) marks the excerpt block cacheable
+(cache_excerpts=True). The structured-output schema is part of the prompt prefix, so only calls
+with the same schema share an entry, which is why different content types never do.
+"""
+import json
+import logging
+import re
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Sequence
+
+from app.config import settings
+from app.db.connection import execute_one, execute_query
+from app.services.embeddings.search import NON_CONTENT_ROLES, hybrid_search_chunks
 from app.services.embeddings.topic_mapping import ensure_topic_mappings
 from app.services.llm.base import LLMMessage
 
-# Chunks are ~350 tokens, so this is about 8k tokens of excerpts per topic.
+logger = logging.getLogger(__name__)
+
+# Chunks are ~350 tokens, so this is about 8k tokens of excerpts for a topic taught from mappings.
 TOPIC_CHUNK_LIMIT = 24
+
+# Supporting excerpts come from files that are course content only.
+SUPPORTING_EXCLUDED_ROLES = (*NON_CONTENT_ROLES, "other")
 
 
 class NoSourceMaterialError(ValueError):
@@ -27,6 +48,8 @@ CONTENT_SYSTEM_PROMPT = """You write study material for university students from
 
 Ground everything in the source excerpts you are given. When the excerpts do not cover something, stay with what they do cover rather than inventing course-specific facts.
 
+The course map tells you where this topic sits in the course. Teach only this topic's objectives: do not teach the neighbouring topics. Assume the listed prerequisites are already known: refer to them by name and do not teach them again. Excerpts marked as supporting come from other parts of the course: use them only to clarify, and never copy a worked example from them (a worked example that belongs to another topic's source is taught there).
+
 Formatting rules for every text field:
 - Use markdown: short paragraphs, bullet lists, headings where they help.
 - Put any code snippet, memory layout, command or pseudo-code in a fenced code block with a language tag (```c, ```python, ```text). Use `inline code` only for short identifiers or expressions.
@@ -36,35 +59,214 @@ Formatting rules for every text field:
 - Do not end with offers of further help."""
 
 
-async def fetch_topic_chunks(topic_id: str, limit: int = TOPIC_CHUNK_LIMIT) -> List[Dict]:
-    """The topic's mapped chunks, most relevant first, in a stable order.
+@dataclass
+class TopicContext:
+    """What a generator needs for one topic."""
 
-    The mappings are brought up to date first: a topic with none (added by hand) or older than
-    the newest chunk of its project is mapped again (see `ensure_topic_mappings`).
-    """
-    await ensure_topic_mappings(topic_id, limit)
-    return await execute_query(
+    topic: Dict[str, Any]
+    # Excerpt chunks in prompt order; each has `source_kind`: primary, supporting or mapped.
+    chunks: List[Dict[str, Any]]
+    course_map: str = ""
+    primary_count: int = 0
+    dropped_sections: int = field(default=0)
+
+
+_CHUNK_SQL = """
+    SELECT mc.id, mc.chunk_text, mc.section_hierarchy, mc.page_start, mc.page_end, mc.chunk_index,
+           mc.token_count, m.id AS material_id, m.filename, m.category
+    FROM material_chunks mc
+    JOIN materials m ON m.id = mc.material_id
+"""
+
+
+def _tokens(chunk: Dict[str, Any]) -> int:
+    value = chunk.get("token_count")
+    return int(value) if value else max(1, len(str(chunk.get("chunk_text") or "")) // 4)
+
+
+async def _primary_chunks(topic_id: str) -> tuple[List[Dict[str, Any]], int]:
+    """(chunks of the topic's primary sources in document order within the token budget, number
+    of sections left out). Empty when the topic has no usable source rows."""
+    sources = await execute_query(
         """
-        SELECT
-            mc.id,
-            mc.chunk_text,
-            mc.section_hierarchy,
-            mc.page_start,
-            mc.page_end,
-            m.id AS material_id,
-            m.filename,
-            m.category,
-            tcm.relevance_score
+        SELECT ts.material_id, ts.chunk_index_start, ts.chunk_index_end
+        FROM topic_sources ts
+        JOIN materials m ON m.id = ts.material_id
+        WHERE ts.topic_id = $1 AND ts.role = 'primary'
+          AND m.validation_status = 'valid' AND m.role <> ALL($2::text[])
+        ORDER BY m.uploaded_at, m.id, ts.chunk_index_start
+        """,
+        topic_id,
+        list(NON_CONTENT_ROLES),
+    )
+    if not sources:
+        return [], 0
+    rows = await execute_query(
+        _CHUNK_SQL
+        + """
+        JOIN unnest($1::text[], $2::int[], $3::int[]) AS s(material_id, first_index, last_index)
+          ON s.material_id = mc.material_id AND mc.chunk_index BETWEEN s.first_index AND s.last_index
+        ORDER BY m.uploaded_at, m.id, mc.chunk_index
+        """,
+        [row["material_id"] for row in sources],
+        [row["chunk_index_start"] for row in sources],
+        [row["chunk_index_end"] for row in sources],
+    )
+    # Whole sections, in order, until the budget is spent. Chunks of one section are
+    # consecutive; sections are told apart by the source rows.
+    by_material: Dict[str, List[Dict[str, Any]]] = {}
+    for row in rows:
+        by_material.setdefault(row["material_id"], []).append(dict(row))
+    kept: List[Dict[str, Any]] = []
+    seen: set = set()
+    used = 0
+    dropped = 0
+    budget = settings.TOPIC_SOURCE_TOKEN_BUDGET
+    for position, source in enumerate(sources):
+        section = [
+            chunk
+            for chunk in by_material.get(source["material_id"], [])
+            if source["chunk_index_start"] <= chunk["chunk_index"] <= source["chunk_index_end"]
+            and chunk["id"] not in seen
+        ]
+        size = sum(_tokens(chunk) for chunk in section)
+        if kept and used + size > budget:
+            # Drop from the end: this section and every one after it.
+            dropped += len(sources) - position
+            break
+        if not kept and size > budget:
+            # One section bigger than the whole budget: keep its start.
+            clipped: List[Dict[str, Any]] = []
+            total = 0
+            for chunk in section:
+                if clipped and total + _tokens(chunk) > budget:
+                    break
+                clipped.append(chunk)
+                total += _tokens(chunk)
+            dropped += 1 if len(clipped) < len(section) else 0
+            section, size = clipped, total
+        for chunk in section:
+            seen.add(chunk["id"])
+            kept.append({**chunk, "source_kind": "primary"})
+        used += size
+    if dropped:
+        logger.info(
+            "Topic %s: %s source sections do not fit the %s-token budget and were left out (kept %s tokens)",
+            topic_id, dropped, budget, used,
+        )
+    return kept, dropped
+
+
+async def _supporting_chunks(topic: Dict[str, Any], primary: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """A few chunks from course-content files the topic is not taught from."""
+    limit = settings.TOPIC_SUPPORTING_CHUNKS
+    if limit <= 0:
+        return []
+    try:
+        found = await hybrid_search_chunks(
+            topic["project_id"],
+            topic["name"],
+            topic["description"] or "",
+            list(topic["keywords"] or []),
+            limit=limit,
+            exclude_roles=SUPPORTING_EXCLUDED_ROLES,
+            exclude_material_ids=sorted({str(chunk["material_id"]) for chunk in primary}),
+        )
+    except Exception as exc:  # supporting excerpts are a bonus: never fail the lesson for them
+        logger.warning("Supporting search failed for topic %s: %s", topic["id"], exc)
+        return []
+    return [{**chunk, "source_kind": "supporting"} for chunk in found[:limit]]
+
+
+async def _mapped_chunks(topic_id: str, limit: int) -> List[Dict[str, Any]]:
+    await ensure_topic_mappings(topic_id, limit)
+    rows = await execute_query(
+        """
+        SELECT mc.id, mc.chunk_text, mc.section_hierarchy, mc.page_start, mc.page_end, mc.chunk_index,
+               mc.token_count, m.id AS material_id, m.filename, m.category, tcm.relevance_score
         FROM topic_chunk_mappings tcm
         JOIN material_chunks mc ON tcm.chunk_id = mc.id
         JOIN materials m ON mc.material_id = m.id
-        WHERE tcm.topic_id = $1
+        WHERE tcm.topic_id = $1 AND m.role <> ALL($3::text[])
         ORDER BY tcm.relevance_score DESC, mc.id
         LIMIT $2
         """,
         topic_id,
         limit,
+        list(NON_CONTENT_ROLES),
     )
+    return [{**dict(row), "source_kind": "mapped"} for row in rows]
+
+
+async def build_course_map(topic: Dict[str, Any]) -> str:
+    """The course in order, this topic marked, with its objectives and prerequisites."""
+    topics = await execute_query(
+        "SELECT id, name, unit_id FROM topics WHERE project_id = $1 ORDER BY order_index, created_at, id",
+        topic["project_id"],
+    )
+    units = await execute_query(
+        "SELECT id, title, week_label FROM units WHERE project_id = $1 ORDER BY order_index, id",
+        topic["project_id"],
+    )
+    lines: List[str] = []
+    if len(topics) > 1:
+        lines.append("Course map (topics in the order they are taught):")
+        mark = lambda t: f"- {t['name']}" + ("  <- THIS TOPIC" if t["id"] == topic["id"] else "")  # noqa: E731
+        grouped = {unit["id"] for unit in units}
+        for unit in units:
+            members = [t for t in topics if t["unit_id"] == unit["id"]]
+            if not members:
+                continue
+            label = f" ({unit['week_label']})" if unit["week_label"] else ""
+            lines.append(f"Unit: {unit['title']}{label}")
+            lines.extend("  " + mark(t) for t in members)
+        loose = [t for t in topics if t["unit_id"] not in grouped]
+        if loose and units:
+            lines.append("Other topics")
+        lines.extend(("  " if units else "") + mark(t) for t in loose)
+    objectives = [o for o in (topic.get("objectives") or []) if o]
+    if objectives:
+        lines.append("")
+        lines.append("This topic's objectives (teach these and nothing beyond them): by the end the student can")
+        lines.extend(f"- {objective}" for objective in objectives)
+    names = {t["id"]: t["name"] for t in topics}
+    prerequisites = [names[pid] for pid in (topic.get("prerequisite_ids") or []) if pid in names]
+    if prerequisites:
+        lines.append("")
+        lines.append(
+            "Prerequisites (the student already knows these: refer to them by name, do not teach them again): "
+            + "; ".join(prerequisites)
+        )
+    return "\n".join(lines).strip()
+
+
+async def fetch_topic_context(topic_id: str, limit: int = TOPIC_CHUNK_LIMIT) -> TopicContext:
+    """The topic's excerpts and course map. Raises LookupError for an unknown topic."""
+    topic = await execute_one(
+        """
+        SELECT id, project_id, name, description, keywords, objectives, prerequisite_ids
+        FROM topics WHERE id = $1
+        """,
+        topic_id,
+    )
+    if topic is None:
+        raise LookupError(f"Topic {topic_id} not found")
+    topic = dict(topic)
+
+    primary, dropped = await _primary_chunks(topic_id)
+    if primary:
+        chunks = primary + await _supporting_chunks(topic, primary)
+    else:
+        # Added by hand, or planned before sources existed: today's hybrid mapping.
+        chunks = await _mapped_chunks(topic_id, limit)
+    course_map = await build_course_map(topic) if chunks else ""
+    return TopicContext(topic=topic, chunks=chunks, course_map=course_map,
+                        primary_count=len(primary), dropped_sections=dropped)
+
+
+async def fetch_topic_chunks(topic_id: str, limit: int = TOPIC_CHUNK_LIMIT) -> List[Dict]:
+    """The topic's excerpt chunks in prompt order (see `fetch_topic_context`)."""
+    return (await fetch_topic_context(topic_id, limit)).chunks
 
 
 def _pages(chunk: Dict) -> str:
@@ -76,23 +278,35 @@ def _pages(chunk: Dict) -> str:
     return f"pp. {start}-{end}"
 
 
-def format_source_excerpts(topic_name: str, topic_description: str, chunks: List[Dict]) -> str:
+def format_source_excerpts(
+    topic_name: str, topic_description: str, chunks: List[Dict], course_map: str = ""
+) -> str:
     parts = [
         f"Topic: {topic_name}",
         f"Description: {topic_description or 'n/a'}",
-        "",
-        "Source excerpts from the student's course materials:",
     ]
+    if course_map:
+        parts += ["", course_map]
+    parts += ["", "Source excerpts from the student's course materials:"]
+    announced_supporting = False
     for index, chunk in enumerate(chunks, 1):
         text = str(chunk.get("chunk_text") or "").strip()
         if not text:
             continue
+        supporting = chunk.get("source_kind") == "supporting"
+        if supporting and not announced_supporting:
+            parts.append(
+                "Supporting excerpts from other files of the course (use only to clarify; "
+                "do not build the lesson on them and do not copy their worked examples):"
+            )
+            announced_supporting = True
         section = chunk.get("section_hierarchy") or "n/a"
         source = chunk.get("filename") or "unknown file"
         category = str(chunk.get("category") or "material").replace("_", " ")
+        use = ' use="supporting"' if supporting else ""
         parts.append(
             f'<excerpt index="{index}" source="{source}" kind="{category}" '
-            f'location="{_pages(chunk)}" section="{section}">\n{text}\n</excerpt>'
+            f'location="{_pages(chunk)}" section="{section}"{use}>\n{text}\n</excerpt>'
         )
     return "\n".join(parts)
 
@@ -103,13 +317,14 @@ def content_messages(
     chunks: List[Dict],
     instructions: str,
     cache_excerpts: bool = False,
+    course_map: str = "",
 ) -> List[LLMMessage]:
     """System prompt, the excerpt block (cacheable when asked), then the task instructions."""
     return [
         LLMMessage(role="system", content=CONTENT_SYSTEM_PROMPT),
         LLMMessage(
             role="user",
-            content=format_source_excerpts(topic_name, topic_description, chunks),
+            content=format_source_excerpts(topic_name, topic_description, chunks, course_map),
             cache=cache_excerpts,
         ),
         LLMMessage(role="user", content=instructions),
@@ -118,3 +333,114 @@ def content_messages(
 
 def focus_line(focus: str | None) -> str:
     return f"\nThe student asked to focus on: {focus.strip()}\n" if focus and focus.strip() else ""
+
+
+# ---------------------------------------------------------------- where an item came from
+
+
+def resolve_sources(indexes: Sequence[int], chunks: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """File and pages for the excerpt indexes a generated item says it is based on.
+
+    Indexes are 1-based positions in `chunks` (the `index` attribute of each excerpt); unknown
+    ones are ignored. Pages of one file that touch or overlap are merged into one range.
+    """
+    per_file: Dict[str, Dict[str, Any]] = {}
+    for index in indexes:
+        if not isinstance(index, int) or not 1 <= index <= len(chunks):
+            continue
+        chunk = chunks[index - 1]
+        entry = per_file.setdefault(
+            str(chunk["material_id"]),
+            {"material_id": str(chunk["material_id"]), "filename": chunk.get("filename"), "ranges": []},
+        )
+        start, end = chunk.get("page_start"), chunk.get("page_end")
+        entry["ranges"].append((start, end if end is not None else start))
+    sources: List[Dict[str, Any]] = []
+    for entry in per_file.values():
+        paged = sorted((a, b) for a, b in entry["ranges"] if a is not None)
+        merged: List[List[int]] = []
+        for start, end in paged:
+            if merged and start <= merged[-1][1] + 1:
+                merged[-1][1] = max(merged[-1][1], end)
+            else:
+                merged.append([start, end])
+        if not merged:
+            sources.append({"material_id": entry["material_id"], "filename": entry["filename"],
+                            "page_start": None, "page_end": None})
+        for start, end in merged:
+            sources.append({"material_id": entry["material_id"], "filename": entry["filename"],
+                            "page_start": start, "page_end": end})
+    return sources
+
+
+def attach_sources(items: Sequence[Dict[str, Any]], chunks: Sequence[Dict[str, Any]]) -> None:
+    """Replace each item's `source_excerpts` (excerpt indexes) with `sources` (file and pages)."""
+    for item in items:
+        item["sources"] = resolve_sources(item.pop("source_excerpts", None) or [], chunks)
+
+
+# ---------------------------------------------------------------- what the student has already seen
+
+_WORKED_EXAMPLE = re.compile(r"(?ims)^##\s+worked example[^\n]*\n(.*?)(?=^##\s|\Z)")
+
+
+def _json_value(value: Any) -> Any:
+    return json.loads(value) if isinstance(value, str) else value
+
+
+def _clip(text: str, limit: int) -> str:
+    flat = re.sub(r"\s+", " ", text or "").strip()
+    return flat if len(flat) <= limit else flat[: limit - 3].rstrip() + "..."
+
+
+async def existing_content_digest(topic_id: str) -> str:
+    """The worked example in the notes, the examples and practice problems and earlier quiz
+    questions the topic already has, as a short "do not reuse" block for quiz and exam prompts.
+    Empty when the topic has none of them."""
+    parts: List[str] = []
+    rows = await execute_query(
+        """
+        SELECT content_type, content_data FROM topic_content
+        WHERE topic_id = $1 AND content_type IN ('section_notes', 'solved_examples', 'interactive_examples')
+        """,
+        topic_id,
+    )
+    by_type = {row["content_type"]: _json_value(row["content_data"]) for row in rows}
+
+    notes = by_type.get("section_notes")
+    if isinstance(notes, str):
+        match = _WORKED_EXAMPLE.search(notes)
+        if match and match.group(1).strip():
+            parts.append("Worked example in the notes:\n" + _clip(match.group(1), 1200))
+    for content_type, label in (("solved_examples", "Solved examples"), ("interactive_examples", "Practice problems")):
+        items = by_type.get(content_type)
+        if isinstance(items, list):
+            lines = [
+                f"- {_clip(str(item.get('title') or ''), 80)}: {_clip(str(item.get('problem_statement') or ''), 300)}"
+                for item in items[:6]
+                if isinstance(item, dict)
+            ]
+            if lines:
+                parts.append(f"{label}:\n" + "\n".join(lines))
+
+    quizzes = await execute_query(
+        "SELECT questions FROM topic_quizzes WHERE topic_id = $1 ORDER BY created_at DESC LIMIT 2", topic_id
+    )
+    stems = [
+        f"- {_clip(str(question.get('question_text') or ''), 200)}"
+        for row in quizzes
+        for question in (_json_value(row["questions"]) or [])[:10]
+        if isinstance(question, dict)
+    ]
+    if stems:
+        parts.append("Earlier quiz questions:\n" + "\n".join(stems[:12]))
+    return "\n\n".join(parts)
+
+
+def do_not_reuse_block(digest: str) -> str:
+    if not digest:
+        return ""
+    return (
+        "\nThe student has already seen the material below. Do not reuse its numbers, names, data or "
+        "scenarios: write new situations with different values.\n<already_seen>\n" + digest + "\n</already_seen>\n"
+    )

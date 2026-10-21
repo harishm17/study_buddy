@@ -4,6 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import {
+  CaretDown,
   ChatCircleText,
   Exam,
   Files,
@@ -15,6 +16,7 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { MasteryIndicator } from '@/components/ui/mastery-indicator'
 import { Tooltip } from '@/components/ui/tooltip'
+import { groupTopicsByUnit } from '@/lib/topics/units'
 import { useIsMac } from '@/lib/hooks/use-is-mac'
 import { cn } from '@/lib/utils'
 import { AccountMenu } from './account-menu'
@@ -22,6 +24,8 @@ import { Brand } from './brand'
 import { CourseSwitcher } from './course-switcher'
 import { useShell } from './shell-provider'
 import { useSidebarCollapsed } from './sidebar-state'
+import { readUnitChoices, useUnitState } from './unit-state'
+import type { NavCourse, NavTopic } from '@/server/queries/courses'
 
 type NavItem = {
   key: string
@@ -61,6 +65,114 @@ function NavLink({ item, rail }: { item: NavItem; rail: boolean }) {
     </Tooltip>
   ) : (
     link
+  )
+}
+
+function TopicLink({ courseId, topic, active }: { courseId: string; topic: NavTopic; active: boolean }) {
+  return (
+    <li>
+      <Link
+        href={`/courses/${courseId}/topics/${topic.id}`}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'flex h-8 max-lg:h-11 items-center gap-2.5 rounded-control px-2.5 text-[13.5px] text-fg-2',
+          'transition-colors duration-120 hover:bg-surface-2 hover:text-fg',
+          active && 'bg-surface-2 text-fg'
+        )}
+      >
+        <MasteryIndicator mastery={topic.mastery} variant="ring" />
+        <span className="min-w-0 flex-1 truncate">{topic.name}</span>
+      </Link>
+    </li>
+  )
+}
+
+/** A mastery value for a unit: the mean over its topics, not-started ones counting as 0. */
+const unitMasteryOf = (topics: NavTopic[]): number | null =>
+  topics.length === 0 ? null : topics.reduce((sum, topic) => sum + (topic.mastery ?? 0), 0) / topics.length
+
+/**
+ * The sidebar's topic list. A flat course is one plain list; with units each unit is a button that
+ * opens and closes its topics (remembered per course). A unit with no saved choice is open when it
+ * holds the current topic, or, away from a topic, when it is the first with unfinished work.
+ */
+function TopicList({ course, activeTopicId }: { course: NavCourse; activeTopicId: string | undefined }) {
+  const { choices, setOpen } = useUnitState(course.units.length > 0 ? course.id : null)
+  const idPrefix = React.useId()
+  // The nav list is already in course order; groupTopicsByUnit wants that order as a number.
+  const groups = React.useMemo(
+    () => groupTopicsByUnit(course.topics.map((topic, orderIndex) => ({ ...topic, orderIndex })), course.units),
+    [course.topics, course.units]
+  )
+
+  const activeUnitId = course.topics.find((topic) => topic.id === activeTopicId)?.unitId ?? null
+  const firstUnfinished = groups.find((group) => group.unit && group.topics.some((topic) => (topic.mastery ?? 0) < 0.8))?.unit?.id
+  const defaultUnit = activeUnitId ?? firstUnfinished ?? groups.find((group) => group.unit)?.unit?.id ?? null
+
+  // Opening a topic from anywhere (a link, the palette, the next button) shows it in the list.
+  const courseId = course.id
+  React.useEffect(() => {
+    if (activeUnitId && readUnitChoices(courseId)[activeUnitId] === false) setOpen(activeUnitId, true)
+  }, [courseId, activeTopicId, activeUnitId, setOpen])
+
+  if (course.units.length === 0) {
+    return (
+      <ul className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+        {course.topics.map((topic) => (
+          <TopicLink key={topic.id} courseId={course.id} topic={topic} active={activeTopicId === topic.id} />
+        ))}
+      </ul>
+    )
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
+      {groups.map((group, index) => {
+        if (!group.unit) {
+          return (
+            <ul key="loose" className={cn(index > 0 && 'mt-1')}>
+              {group.topics.map((topic) => (
+                <TopicLink key={topic.id} courseId={course.id} topic={topic} active={activeTopicId === topic.id} />
+              ))}
+            </ul>
+          )
+        }
+        const unit = group.unit
+        const open = choices[unit.id] ?? unit.id === defaultUnit
+        const panelId = `${idPrefix}-${unit.id}`
+        return (
+          <div key={unit.id}>
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={panelId}
+              onClick={() => setOpen(unit.id, !open)}
+              title={unit.weekLabel ? `${unit.weekLabel}: ${unit.title}` : unit.title}
+              className={cn(
+                'flex h-8 w-full max-lg:h-11 items-center gap-2 rounded-control px-2.5 text-left text-[13.5px] font-medium text-fg',
+                'transition-colors duration-120 hover:bg-surface-2'
+              )}
+            >
+              <CaretDown
+                aria-hidden="true"
+                weight="bold"
+                className={cn('size-3 shrink-0 text-fg-3 transition-transform duration-180', !open && '-rotate-90')}
+              />
+              <span className="min-w-0 flex-1 truncate">
+                {unit.weekLabel ? <span className="sr-only">{unit.weekLabel}: </span> : null}
+                {unit.title}
+              </span>
+              <MasteryIndicator mastery={unitMasteryOf(group.topics)} variant="ring" />
+            </button>
+            <ul id={panelId} hidden={!open} className="ml-[15px] border-l border-border pl-1.5">
+              {group.topics.map((topic) => (
+                <TopicLink key={topic.id} courseId={course.id} topic={topic} active={activeTopicId === topic.id} />
+              ))}
+            </ul>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -168,27 +280,7 @@ export function SidebarContent({ allowRail = false }: { allowRail?: boolean }) {
       {course?.active && course.topics.length > 0 ? (
         <div className="mt-5 flex min-h-0 flex-1 flex-col rail:hidden">
           <h2 className="px-5 pb-1.5 text-caption text-fg-3">Topics</h2>
-          <ul className="min-h-0 flex-1 overflow-y-auto px-3 pb-2">
-            {course.topics.map((topic) => {
-              const active = params.topicId === topic.id
-              return (
-                <li key={topic.id}>
-                  <Link
-                    href={`${base}/topics/${topic.id}`}
-                    aria-current={active ? 'page' : undefined}
-                    className={cn(
-                      'flex h-8 max-lg:h-11 items-center gap-2.5 rounded-control px-2.5 text-[13.5px] text-fg-2',
-                      'transition-colors duration-120 hover:bg-surface-2 hover:text-fg',
-                      active && 'bg-surface-2 text-fg'
-                    )}
-                  >
-                    <MasteryIndicator mastery={topic.mastery} variant="ring" />
-                    <span className="min-w-0 flex-1 truncate">{topic.name}</span>
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
+          <TopicList course={course} activeTopicId={params.topicId} />
         </div>
       ) : (
         <div className="flex-1" />

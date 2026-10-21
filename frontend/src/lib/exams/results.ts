@@ -5,6 +5,7 @@
  */
 
 import { reviewAnswer } from '@/lib/learning/quiz-questions'
+import { parseSources, type SourceRef } from '@/lib/topics/sources'
 
 type RawQuestion = Record<string, unknown>
 
@@ -21,6 +22,8 @@ export type ExamQuestionResult = {
   isCorrect: boolean
   feedback: string | null
   needsReview: boolean
+  /** Where in the files the question is based on (empty for exams written before sources existed). */
+  sources: SourceRef[]
 }
 
 export type WeakTopic = {
@@ -113,6 +116,7 @@ export function buildQuestionResults(
       isCorrect: graded?.is_correct === true,
       feedback: asString(graded?.feedback),
       needsReview: graded?.needs_review === true,
+      sources: parseSources(question.sources ?? graded?.sources),
     }
   })
 }

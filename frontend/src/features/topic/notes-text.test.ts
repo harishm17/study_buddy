@@ -23,6 +23,14 @@ test('promotes bare section names and drops the leading title', () => {
   assert.ok(out.includes('## Key Concepts'))
 })
 
+test('promotes the lesson labels and leaves check blocks alone', () => {
+  const out = cleanNotes("What you'll learn\n- sort things\n\nThe idea\nCompare and swap.\n\nCheck yourself\n```check\nQ: Why?\nA: Because.\n```")
+  assert.ok(out.includes("## What you'll learn"))
+  assert.ok(out.includes('## The idea'))
+  assert.ok(out.includes('## Check yourself'))
+  assert.ok(out.includes('```check\nQ: Why?\nA: Because.\n```'))
+})
+
 test('read time is at least a minute for any text', () => {
   assert.equal(readMinutes(''), 0)
   assert.equal(readMinutes('one two three'), 1)

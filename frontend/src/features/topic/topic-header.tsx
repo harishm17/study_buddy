@@ -3,7 +3,8 @@
 import * as React from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import { CaretLeft, CaretRight, ChatCircleText, DotsThree, PencilSimple } from '@phosphor-icons/react/dist/ssr'
+import Link from 'next/link'
+import { CaretLeft, CaretRight, ChatCircleText, Clock, DotsThree, PencilSimple } from '@phosphor-icons/react/dist/ssr'
 import { PageHeader } from '@/components/shell/slots'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -18,12 +19,15 @@ import { Field } from '@/components/ui/field'
 import { IconButton } from '@/components/ui/icon-button'
 import { Input } from '@/components/ui/input'
 import { MasteryIndicator } from '@/components/ui/mastery-indicator'
+import { MathText } from '@/components/ui/math-text'
 import { DueLabel } from '@/components/ui/relative-time'
 import { toast } from '@/components/ui/toaster'
 import { apiFetch, isApiError } from '@/lib/api/client'
 import { formatDate, formatWeekday } from '@/lib/format'
+import type { TopicStructure } from '@/server/queries/topic'
 import { KIND_COPY } from './copy'
 import { RegenerateDialog } from './generation-ui'
+import { TopicStructureBlock, unitLabel } from './topic-structure'
 import { useTopicView } from './use-topic-view'
 import { CONTENT_KINDS, type ContentKind } from './types'
 
@@ -44,6 +48,8 @@ type TopicHeaderProps = {
   bestQuiz: number | null
   previous: TopicNeighbourLink | null
   next: TopicNeighbourLink | null
+  /** Unit, objectives, prerequisites, time and sources. */
+  structure: TopicStructure
 }
 
 /** "Next review Thu" within a week, "Next review Oct 29" after that, "Due today" once it is due. */
@@ -67,6 +73,7 @@ export function TopicHeader({
   bestQuiz,
   previous,
   next,
+  structure,
 }: TopicHeaderProps) {
   const router = useRouter()
   const view = useTopicView()
@@ -76,6 +83,16 @@ export function TopicHeader({
 
   return (
     <header className="pb-6">
+      {structure.unit ? (
+        <p className="mb-1 text-small text-fg-3">
+          <Link
+            href={`/courses/${courseId}/topics`}
+            className="rounded-chip underline decoration-border-strong decoration-1 underline-offset-[3px] hover:text-fg"
+          >
+            {unitLabel(structure.unit)}
+          </Link>
+        </p>
+      ) : null}
       <div className="flex items-start justify-between gap-4">
         <h1 className="min-w-0 text-title text-fg">{name}</h1>
         <div className="flex shrink-0 items-center gap-1">
@@ -99,12 +116,19 @@ export function TopicHeader({
           />
         </div>
       </div>
-      {description ? <p className="mt-1.5 line-clamp-2 max-w-[68ch] text-body text-fg-2">{description}</p> : null}
+      {description ? <p className="mt-1.5 line-clamp-2 max-w-[68ch] text-body text-fg-2"><MathText>{description}</MathText></p> : null}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-small text-fg-2">
         <MasteryIndicator mastery={mastery} showPercent className="text-small" />
         {bestQuiz !== null ? <span className="tabular">Best quiz {Math.round(bestQuiz)}%</span> : null}
         {dueAt && daysUntilDue !== null ? <NextReview dueAt={dueAt} daysUntil={daysUntilDue} /> : null}
+        {structure.estimatedMinutes ? (
+          <span className="inline-flex items-center gap-1.5 tabular">
+            <Clock aria-hidden="true" className="size-4 text-fg-3" />
+            About {structure.estimatedMinutes} min
+          </span>
+        ) : null}
       </div>
+      <TopicStructureBlock courseId={courseId} structure={structure} />
     </header>
   )
 }

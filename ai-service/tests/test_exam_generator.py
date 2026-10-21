@@ -3,17 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.context_stub import stub_topic_context
 from app.services.exam_generator import ExamGenerator, plan_exam, split_by_weight
 from app.services.llm.base import LLMCreditError, LLMUnavailableError
 from app.services.llm.schemas import ChoiceOption, GeneratedQuestion, QuestionSet
-
-
-@pytest.fixture(autouse=True)
-def _mappings_are_current(monkeypatch):
-    """These tests stub the mapped chunks; generation-time remapping has its own tests."""
-    monkeypatch.setattr(
-        "app.services.content_generator.context.ensure_topic_mappings", AsyncMock()
-    )
 
 
 DIST = {"multiple_choice": 60, "short_answer": 30, "numerical": 10}
@@ -72,7 +65,7 @@ async def _generate(side_effect, total=4):
     llm = MagicMock()
     llm.generate_structured = AsyncMock(side_effect=side_effect)
     with patch("app.services.exam_generator.execute_query", AsyncMock(return_value=TOPICS)), \
-         patch("app.services.content_generator.context.execute_query", AsyncMock(return_value=CHUNKS)), \
+         stub_topic_context(CHUNKS), \
          patch("app.services.llm.factory.LLMFactory.get_provider", return_value=llm):
         return await ExamGenerator().generate_exam(
             "p1", ["t1", "t2"], {"total_questions": total, "question_type_distribution": {"multiple_choice": 100}}

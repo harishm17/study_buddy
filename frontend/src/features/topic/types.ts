@@ -42,6 +42,10 @@ export type TopicCitation = {
   page: number | null
 }
 
+import type { SourceRef } from '@/lib/topics/sources'
+
+export type { SourceRef }
+
 export type NotesContent = {
   text: string
   citations: TopicCitation[]
@@ -62,6 +66,8 @@ export type SolvedExample = {
   finalAnswer: string
   keyConcepts: string[]
   difficulty: 'easy' | 'medium' | 'hard' | null
+  /** Where in the files the example is based on (empty for content written before sources existed). */
+  sources: SourceRef[]
 }
 
 export type ExamplesContent = { items: SolvedExample[]; updatedAt: string }
@@ -71,8 +77,12 @@ export type PracticeStep = {
   question: string
   hint: string
   answerType: 'numeric' | 'text' | 'multiple_choice'
+  /** multiple_choice steps: 2 to 5 options to show. Empty for older content (the options are then in the question text). */
+  options: { id: string; text: string }[]
   correctAnswer: string
   acceptableAnswers: string[]
+  /** numeric steps: the accepted absolute difference; null means within 1%. */
+  tolerance: number | null
   explanation: string
   feedbackCorrect: string
   feedbackIncorrect: string
@@ -85,6 +95,7 @@ export type PracticeProblem = {
   keyConcepts: string[]
   difficulty: string | null
   minutes: number | null
+  sources: SourceRef[]
 }
 
 export type PracticeContent = { items: PracticeProblem[]; updatedAt: string }

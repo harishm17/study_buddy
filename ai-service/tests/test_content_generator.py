@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.context_stub import stub_topic_context
 from app.services.content_generator.context import (
     CONTENT_SYSTEM_PROMPT,
     NoSourceMaterialError,
@@ -19,14 +20,6 @@ from app.services.llm.schemas import (
     SolvedExampleSet,
     SolutionStep,
 )
-
-
-@pytest.fixture(autouse=True)
-def _mappings_are_current(monkeypatch):
-    """These tests stub the mapped chunks; generation-time remapping has its own tests."""
-    monkeypatch.setattr(
-        "app.services.content_generator.context.ensure_topic_mappings", AsyncMock()
-    )
 
 
 CHUNKS = [
@@ -68,9 +61,9 @@ def _llm(text=None, structured=None):
     return llm
 
 
-def _patched(llm, chunks=CHUNKS):
+def _patched(llm, chunks=CHUNKS, **stub):
     return (
-        patch("app.services.content_generator.context.execute_query", AsyncMock(return_value=chunks)),
+        stub_topic_context(chunks, **stub),
         patch("app.services.llm.factory.LLMFactory.get_provider", return_value=llm),
     )
 
@@ -128,7 +121,7 @@ class TestNotesGeneration:
         db, factory = _patched(llm)
         with db, factory:
             await NotesGenerator().generate_notes("t1", "P", "d", {"detail_level": "brief"})
-        assert "300-500 words" in llm.generate_text.call_args.args[0][-1].content
+        assert "400-600 words" in llm.generate_text.call_args.args[0][-1].content
 
     @pytest.mark.asyncio
     async def test_too_short_notes_are_rejected(self):

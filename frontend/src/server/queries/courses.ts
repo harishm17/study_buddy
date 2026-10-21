@@ -62,11 +62,23 @@ export async function listCourses(userId: string): Promise<CourseListItem[]> {
   })
 }
 
+/** A unit (a week, a chapter, a lecture group). Topics of a flat course have no unit. */
+export type ShellUnit = {
+  id: string
+  title: string
+  summary: string | null
+  /** "Week 3" or "Class 11" when the syllabus said so. */
+  weekLabel: string | null
+  orderIndex: number
+}
+
 export type ShellTopic = {
   id: string
   name: string
   description: string | null
   orderIndex: number
+  /** The unit it belongs to, or null (added by hand, or planned before units existed). */
+  unitId: string | null
   confirmed: boolean
   /** 0..1 from the review schedule, or null with no signal yet. */
   mastery: number | null
@@ -84,6 +96,8 @@ export type CourseShell = {
   updatedAt: string
   materialCount: number
   setup: CourseSetup
+  /** In course order; empty for a flat course. A unit with no topics is included (the editor shows it). */
+  units: ShellUnit[]
   topics: ShellTopic[]
 }
 
@@ -98,6 +112,10 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
       status: true,
       updatedAt: true,
       _count: { select: { materials: true } },
+      units: {
+        orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, title: true, summary: true, weekLabel: true, orderIndex: true },
+      },
       topics: {
         orderBy: { orderIndex: 'asc' },
         select: {
@@ -105,6 +123,7 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
           name: true,
           description: true,
           orderIndex: true,
+          unitId: true,
           userConfirmed: true,
           content: { select: { contentType: true } },
           progress: {
@@ -127,6 +146,7 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
       name: topic.name,
       description: topic.description,
       orderIndex: topic.orderIndex,
+      unitId: topic.unitId,
       confirmed: topic.userConfirmed,
       mastery: schedule?.mastery ?? null,
       dueAt: schedule?.dueAt.toISOString() ?? null,
@@ -154,11 +174,13 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
       confirmedTopicCount: topics.filter((topic) => topic.confirmed).length,
       contentBlockCount: topics.reduce((sum, topic) => sum + topic.content.length, 0),
     }),
+    units: project.units,
     topics,
   }
 })
 
-export type NavTopic = { id: string; name: string; mastery: number | null }
+export type NavTopic = { id: string; name: string; mastery: number | null; unitId: string | null }
+export type NavUnit = { id: string; title: string; weekLabel: string | null; orderIndex: number }
 
 export type NavCourse = {
   id: string
@@ -171,6 +193,8 @@ export type NavCourse = {
   needsTopicReview: boolean
   /** The course is past setup, so the sidebar lists its topics. */
   active: boolean
+  /** In course order; empty for a flat course. */
+  units: NavUnit[]
   topics: NavTopic[]
 }
 
@@ -189,11 +213,16 @@ export const getNavIndex = cache(async (userId: string): Promise<NavCourse[]> =>
       status: true,
       updatedAt: true,
       _count: { select: { materials: true } },
+      units: {
+        orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, title: true, weekLabel: true, orderIndex: true },
+      },
       topics: {
         orderBy: { orderIndex: 'asc' },
         select: {
           id: true,
           name: true,
+          unitId: true,
           userConfirmed: true,
           _count: { select: { content: true } },
           reviewSchedules: { where: { userId }, take: 1, select: { mastery: true, dueAt: true } },
@@ -222,10 +251,12 @@ export const getNavIndex = cache(async (userId: string): Promise<NavCourse[]> =>
       }).length,
       needsTopicReview: project.topics.length > 0 && confirmed < project.topics.length,
       active: setup.mode === 'active',
+      units: project.units,
       topics: project.topics.map((topic) => ({
         id: topic.id,
         name: topic.name,
         mastery: topic.reviewSchedules[0]?.mastery ?? null,
+        unitId: topic.unitId,
       })),
     }
   })

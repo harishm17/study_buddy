@@ -27,10 +27,12 @@ import python from 'highlight.js/lib/languages/python'
 import rust from 'highlight.js/lib/languages/rust'
 import sql from 'highlight.js/lib/languages/sql'
 import typescript from 'highlight.js/lib/languages/typescript'
-import { Check, Copy } from '@phosphor-icons/react/dist/ssr'
+import { Check, Copy, Eye, EyeSlash } from '@phosphor-icons/react/dist/ssr'
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
 import { protectMathText } from '@/lib/utils/math-text'
 import { createSlugger } from '@/lib/markdown-outline'
+import { parseCheckBlock } from '@/lib/markdown/check-block'
+import { Button } from './button'
 import { cn } from '@/lib/utils'
 
 const LANGUAGES = { bash, c, cpp, go, java, javascript, json, latex, python, rust, sql, typescript }
@@ -119,6 +121,51 @@ function CodeBlock({ children }: { children?: React.ReactNode }) {
   )
 }
 
+/** The text of a rendered node: strings and the strings inside elements. */
+function reactText(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(reactText).join('')
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return reactText(node.props.children)
+  return ''
+}
+
+/**
+ * A "Check yourself" item (a ```check block in the notes): the question is shown, the answer waits
+ * behind a button. The button says what it does and reports its state, so it works with a keyboard
+ * and a screen reader; the answer is labelled in words, not by colour.
+ */
+function CheckYourself({ question, answer }: { question: string; answer: string }) {
+  const [open, setOpen] = React.useState(false)
+  const panelId = React.useId()
+  return (
+    <div className="md-check rounded-card border border-border bg-surface p-4">
+      <p className="mb-1.5 text-caption text-fg-3">Question</p>
+      <Markdown variant="compact" className="text-[16px]! leading-[26px]!">
+        {question}
+      </Markdown>
+      <Button
+        size="sm"
+        variant="secondary"
+        className="mt-3"
+        icon={open ? <EyeSlash /> : <Eye />}
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {open ? 'Hide answer' : 'Show answer'}
+      </Button>
+      {open ? (
+        <div id={panelId} className="mt-3 rounded-control bg-surface-2 px-3.5 py-3">
+          <p className="mb-1 text-caption text-fg-3">Answer</p>
+          <Markdown variant="compact" className="text-[16px]! leading-[26px]!">
+            {answer}
+          </Markdown>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 type CitationRenderer = (marker: number) => React.ReactNode
 
 function buildComponents(renderCitation?: CitationRenderer, inline = false): Components {
@@ -134,6 +181,13 @@ function buildComponents(renderCitation?: CitationRenderer, inline = false): Com
       )
     },
     pre({ children }) {
+      const code = React.Children.toArray(children).find(React.isValidElement) as
+        | React.ReactElement<{ className?: string; children?: React.ReactNode }>
+        | undefined
+      if (!inline && /(?:^|\s)language-check(?:\s|$)/.test(code?.props.className ?? '')) {
+        const item = parseCheckBlock(reactText(code?.props.children))
+        if (item) return <CheckYourself question={item.question} answer={item.answer} />
+      }
       return <CodeBlock>{children}</CodeBlock>
     },
     table({ children }) {

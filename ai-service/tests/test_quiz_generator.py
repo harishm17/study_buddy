@@ -3,18 +3,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.context_stub import stub_topic_context
 from app.services.content_generator.context import NoSourceMaterialError
 from app.services.content_generator.quiz import QuestionType, QuizGenerator, minimum_usable
 from app.services.llm.base import LLMOutputError
 from app.services.llm.schemas import ChoiceOption, GeneratedQuestion, QuestionSet
-
-
-@pytest.fixture(autouse=True)
-def _mappings_are_current(monkeypatch):
-    """These tests stub the mapped chunks; generation-time remapping has its own tests."""
-    monkeypatch.setattr(
-        "app.services.content_generator.context.ensure_topic_mappings", AsyncMock()
-    )
 
 
 CHUNKS = [
@@ -50,7 +43,7 @@ def _tf():
 async def _run(questions, **kwargs):
     llm = MagicMock()
     llm.generate_structured = AsyncMock(return_value=QuestionSet(questions=questions))
-    with patch("app.services.content_generator.context.execute_query", AsyncMock(return_value=CHUNKS)), \
+    with stub_topic_context(CHUNKS), \
          patch("app.services.llm.factory.LLMFactory.get_provider", return_value=llm):
         result = await QuizGenerator().generate_quiz("t1", "ML", "desc", **kwargs)
     return result, llm
@@ -87,7 +80,7 @@ class TestQuizGenerator:
 
     @pytest.mark.asyncio
     async def test_no_chunks_is_not_retryable(self):
-        with patch("app.services.content_generator.context.execute_query", AsyncMock(return_value=[])), \
+        with stub_topic_context([]), \
              patch("app.services.llm.factory.LLMFactory.get_provider", return_value=MagicMock()):
             with pytest.raises(NoSourceMaterialError):
                 await QuizGenerator().generate_quiz("t1", "ML", "desc")

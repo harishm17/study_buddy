@@ -233,14 +233,17 @@ async def prepare_corpus(args, corpus: dict, topics_input: Optional[dict], run_d
         if not all_topics:
             raise SystemExit(f"topic extraction returned no topics for {corpus_id}")
         selected = select_topics(all_topics, args.num_topics if args.num_topics is not None else 4, args.topic_indexes)
-        source = "the app's extract_topics_from_materials"
+        source = "the app's course planner"
     log(f"  {len(all_topics)} topics, generating {len(selected)}: " + "; ".join(t["name"] for t in selected))
 
-    ids = await adapters.store_topics(project_id, all_topics)
-    for topic_id, topic in zip(ids, all_topics):
-        count = await adapters.map_topic(project_id, topic_id, topic)
-        if count == 0:
-            log(f"  warning: no chunks mapped to '{topic['name']}'")
+    if all(t.get("id") for t in all_topics):
+        ids = [t["id"] for t in all_topics]  # the planner stored them with their sources
+    else:
+        ids = await adapters.store_topics(project_id, all_topics)
+        for topic_id, topic in zip(ids, all_topics):
+            count = await adapters.map_topic(project_id, topic_id, topic)
+            if count == 0:
+                log(f"  warning: no chunks mapped to '{topic['name']}'")
     rows = []
     excerpts = {}
     for topic in selected:

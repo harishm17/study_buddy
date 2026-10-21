@@ -265,22 +265,56 @@ class MeteredProvider(LLMProvider):
 
 
 async def extract_topics(project_id: str, provider: LLMProvider) -> List[Dict[str, Any]]:
-    """The app's topic extraction, called as the extract-topics job calls it.
+    """The app's course planner, called as the extract-topics job calls it.
 
-    Stage 2 of learning v2 replaces `extract_topics_from_materials` with a planner; change this
-    one function to call it. Return one dict per topic, in the order the student studies them:
-    `{"name", "description", "keywords"}`.
+    Sets each material's role the way validation would (syllabus and calendar pages are
+    `syllabus`, sample exams `exam`, the rest `content`), plans the course and stores the plan
+    (units, topics, topic sources). Returns one dict per topic in study order, with the stored
+    `id` so the runner keeps the planner's topics and sources instead of re-mapping them.
     """
+    from app.db.connection import execute_query, execute_update
+    from app.services.course_planner import plan_course, write_plan
     from app.services.llm.factory import LLMFactory
-    from app.services.topic_extractor import extract_topics_from_materials
 
+    await execute_update(
+        """
+        UPDATE materials SET role = CASE
+            WHEN category = 'sample_exams' THEN 'exam'
+            WHEN category = 'syllabus' OR filename ~* '(syllabus|calendar|schedule)' THEN 'syllabus'
+            ELSE 'content' END
+        WHERE project_id = $1
+        """,
+        project_id,
+    )
     previous = LLMFactory._instance
-    LLMFactory._instance = provider  # the extractor asks the factory for its provider
+    LLMFactory._instance = provider  # the planner asks the factory for its provider
     try:
-        topics = await extract_topics_from_materials(project_id)
+        job = await plan_course(project_id)
+        await write_plan(job)
     finally:
         LLMFactory._instance = previous
-    return [{"name": t.name, "description": t.description, "keywords": list(t.keywords)} for t in topics]
+    rows = await execute_query(
+        """
+        SELECT t.id, t.name, t.description, t.keywords, t.objectives, t.estimated_minutes,
+               u.title AS unit, u.order_index AS unit_order
+        FROM topics t LEFT JOIN units u ON u.id = t.unit_id
+        WHERE t.project_id = $1
+        ORDER BY t.order_index
+        """,
+        project_id,
+    )
+    return [
+        {
+            "id": r["id"],
+            "name": r["name"],
+            "description": r["description"] or "",
+            "keywords": list(r["keywords"] or []),
+            "unit": r["unit"],
+            "objectives": list(r["objectives"] or []),
+            "estimated_minutes": r["estimated_minutes"],
+        }
+        for r in rows
+    ]
 
 
 async def store_topics(project_id: str, topics: List[Dict[str, Any]]) -> List[str]:

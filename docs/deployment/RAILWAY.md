@@ -98,4 +98,4 @@ setup: `ai` about 0.5 GB (mostly the local embedding model), `web` about 0.13 GB
 about 0.11 GB, which is roughly $7–8 a month at $10 per GB-month.
 The Hobby plan includes $5 of usage a month across every project in the account, and the
 bucket's storage is $0.015 per GB-month with free egress. `railway usage` shows what has been
-used so far. Claude calls are billed by Anthropic, capped per user by `DAILY_LLM_BUDGET_USD`.
+used so far. Claude calls are billed by Anthropic, capped per user by `DAILY_LLM_BUDGET_USD` and for all users together by `GLOBAL_DAILY_LLM_BUDGET_USD` (default 40, per UTC day).

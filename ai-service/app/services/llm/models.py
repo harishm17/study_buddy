@@ -11,7 +11,8 @@ belongs to which setting:
     topic_quiz              MODEL_QUIZ         topic quiz generator
     exam_questions          MODEL_EXAM         mock exam question generator
     grade_short_answer      MODEL_GRADING      exam short-answer grader
-    extract_topics          MODEL_TOPICS       course topic extraction
+    extract_topics          MODEL_TOPICS       course planner (units, topics, sources)
+    order_units             MODEL_VALIDATION   cross-file unit order of a large course plan
     chat                    MODEL_CHAT         "Ask your materials" answers
     voice                   MODEL_VOICE        voice coach turns
     voice_drill             MODEL_VOICE        voice drill packs
@@ -56,6 +57,7 @@ PURPOSES = {
     "voice": PurposeConfig("MODEL_VOICE", "fast"),
     "voice_drill": PurposeConfig("MODEL_VOICE", "fast"),
     "validate_material": PurposeConfig("MODEL_VALIDATION", "fast"),
+    "order_units": PurposeConfig("MODEL_VALIDATION", "fast"),
 }
 
 MODEL_SETTINGS = tuple(sorted({config.setting for config in PURPOSES.values()}))

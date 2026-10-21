@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   ArrowSquareOut,
   CheckCircle,
+  Tag,
   DotsThree,
   FileDoc,
   FilePdf,
@@ -17,9 +18,21 @@ import {
   XCircle,
 } from '@phosphor-icons/react/dist/ssr'
 import { PageIntro } from '@/components/shell/page'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { IconButton } from '@/components/ui/icon-button'
 import { Progress } from '@/components/ui/progress'
@@ -31,6 +44,7 @@ import { stageLabel } from '@/components/ui/job-status'
 import { useJob } from '@/features/jobs/use-job'
 import { apiFetch, isApiError } from '@/lib/api/client'
 import { formatBytes } from '@/lib/format'
+import { isMaterialRole, MATERIAL_ROLES, ROLE_LABELS, roleForCategory, type MaterialRole } from '@/lib/materials/role'
 import { UploadAbortedError, uploadMaterial } from '@/lib/uploads/upload-file'
 import { cn } from '@/lib/utils'
 import type { MaterialRow } from '@/server/queries/course'
@@ -43,7 +57,7 @@ import {
   problemMessage,
 } from './summary'
 
-type Category = 'lecture_notes' | 'sample_exams' | 'book_chapters'
+type Category = 'lecture_notes' | 'sample_exams' | 'book_chapters' | 'syllabus'
 
 const CATEGORY_OPTIONS = (Object.keys(CATEGORY_LABELS) as Category[]).map((value) => ({
   value,
@@ -91,15 +105,22 @@ const FAILED_ICON = <WarningCircle aria-hidden="true" className="size-4 shrink-0
 // ---------------------------------------------------------------------------------------
 // Rows
 
+/** What the file is for. Syllabus and past exam files are shown in the accent tone; the word carries the meaning. */
+function RoleBadge({ role }: { role: MaterialRole }) {
+  return <Badge tone={role === 'syllabus' || role === 'exam' ? 'accent' : 'neutral'}>{ROLE_LABELS[role]}</Badge>
+}
+
 function RowShell({
   filename,
   category,
+  role,
   size,
   status,
   menu,
 }: {
   filename: string
   category: string
+  role: MaterialRole
   size: number
   status: React.ReactNode
   menu: React.ReactNode
@@ -111,13 +132,19 @@ function RowShell({
           <FileIcon filename={filename} />
           <div className="min-w-0">
             <p className="truncate text-body-strong text-fg">{filename}</p>
-            <p className="truncate text-caption font-normal text-fg-3 md:hidden">
-              {categoryLabel(category)}, {formatBytes(size)}
+            <p className="flex min-w-0 items-center gap-2 text-caption font-normal text-fg-3 md:hidden">
+              <span className="truncate">
+                {categoryLabel(category)}, {formatBytes(size)}
+              </span>
+              <RoleBadge role={role} />
             </p>
           </div>
         </div>
       </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-small text-fg-2 max-md:hidden">{categoryLabel(category)}</td>
+      <td className="whitespace-nowrap px-3 py-2.5 max-md:hidden">
+        <RoleBadge role={role} />
+      </td>
       <td className="whitespace-nowrap px-3 py-2.5 text-small tabular text-fg-2 max-md:hidden">{formatBytes(size)}</td>
       <td className="min-w-0 px-3 py-2.5 max-md:col-span-2 max-md:row-start-2 max-md:p-0 max-md:pl-8">{status}</td>
       <td className="w-10 py-1.5 pl-3 text-right max-md:col-start-2 max-md:row-start-1 max-md:p-0">{menu}</td>
@@ -139,7 +166,11 @@ function RowMenu({ filename, children }: { filename: string; children: React.Rea
 }
 
 function ServerRow({ row, onDeleted }: { row: MaterialRow; onDeleted: () => void }) {
+  const router = useRouter()
   const refreshSoon = useRefreshSoon()
+  // The role the student just picked shows at once; the server's value takes over once it is saved.
+  const [picked, setPicked] = React.useState<{ value: MaterialRole; base: MaterialRole } | null>(null)
+  const role = picked && picked.base === row.role ? picked.value : row.role
   const { job: live } = useJob(row.job?.id ?? null, { timeoutMs: 600_000, onSettled: refreshSoon })
   const [confirmOpen, setConfirmOpen] = React.useState(false)
 
@@ -190,11 +221,35 @@ function ServerRow({ row, onDeleted }: { row: MaterialRow; onDeleted: () => void
     onDeleted()
   }
 
+  async function onRole(next: string) {
+    if (!isMaterialRole(next) || next === role) return
+    setPicked({ value: next, base: row.role })
+    try {
+      const result = await apiFetch<{ material: { removedSources: number } }>(`/api/materials/${row.id}`, {
+        method: 'PATCH',
+        json: { role: next },
+      })
+      const dropped = next === 'syllabus' || next === 'exam'
+      toast.success(
+        dropped
+          ? result.material.removedSources > 0
+            ? `Marked as ${ROLE_LABELS[next].toLowerCase()}. Topics no longer use it. Find topics again to update them.`
+            : `Marked as ${ROLE_LABELS[next].toLowerCase()}`
+          : `Marked as ${ROLE_LABELS[next].toLowerCase()}. Find topics again to use it.`
+      )
+      router.refresh()
+    } catch {
+      setPicked(null)
+      toast.error("Couldn't change the file's role. Try again.")
+    }
+  }
+
   return (
     <>
       <RowShell
         filename={row.filename}
         category={row.category}
+        role={role}
         size={row.sizeBytes}
         status={status}
         menu={
@@ -205,6 +260,18 @@ function ServerRow({ row, onDeleted }: { row: MaterialRow; onDeleted: () => void
             >
               Open file
             </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger icon={<Tag />}>Use as</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup value={role} onValueChange={onRole}>
+                  {MATERIAL_ROLES.map((value) => (
+                    <DropdownMenuRadioItem key={value} value={value}>
+                      {ROLE_LABELS[value]}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
             <DropdownMenuSeparator />
             <DropdownMenuItem icon={<Trash />} destructive onSelect={() => setConfirmOpen(true)}>
               Delete
@@ -250,6 +317,7 @@ function LocalRow({ upload, onDismiss }: { upload: LocalUpload; onDismiss: () =>
     <RowShell
       filename={upload.filename}
       category={upload.category}
+      role={roleForCategory(upload.category)}
       size={upload.size}
       status={status}
       menu={
@@ -349,7 +417,7 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
         <PageIntro
           className="mb-0"
           title="Materials"
-          description="Lecture notes, past exams and book chapters for this course."
+          description="Lecture notes, a syllabus, past exams and book chapters for this course."
           actions={
             <Button variant="primary" icon={<UploadSimple />} onClick={() => inputRef.current?.click()}>
               Upload
@@ -392,7 +460,7 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
           </Button>
         </p>
         <p className="text-small text-fg-2">PDF, DOCX, PPTX or DOC, up to {maxUploadMb} MB each.</p>
-        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+        <div className="flex max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-2">
           <span id={`category-label-${variant}`} className="text-small text-fg-2">
             These are:
           </span>
@@ -401,6 +469,7 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
             options={CATEGORY_OPTIONS}
             value={category}
             onValueChange={setCategory}
+            className="min-w-0 flex-wrap justify-center overflow-visible"
           />
         </div>
         <input
@@ -431,6 +500,7 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
               <tr className="border-b border-border text-caption text-fg-3">
                 <th scope="col" className="py-2 pr-3 font-medium">Name</th>
                 <th scope="col" className="px-3 py-2 font-medium">Type</th>
+                <th scope="col" className="px-3 py-2 font-medium">Used as</th>
                 <th scope="col" className="px-3 py-2 font-medium">Size</th>
                 <th scope="col" className="px-3 py-2 font-medium">Status</th>
                 <th scope="col" className="w-10 py-2 pl-3">

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { CheckCircle, CircleHalf, XCircle } from '@phosphor-icons/react/dist/ssr'
+import { SourceLine } from '@/components/learning/source-link'
 import { LazyMarkdown } from '@/components/ui/lazy-markdown'
 import { MathText } from '@/components/ui/math-text'
 import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
@@ -112,6 +113,7 @@ export function ReviewList({ entries }: { entries: ReviewEntry[] }) {
                   ) : null}
                 </>
               ) : null}
+              <SourceLine sources={review.sources} className="mt-2" />
             </div>
           </li>
         )

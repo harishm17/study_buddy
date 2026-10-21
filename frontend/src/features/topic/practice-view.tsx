@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { ArrowRight, Check, CaretLeft, CaretRight, Eye, Lightbulb, Plus, XCircle } from '@phosphor-icons/react/dist/ssr'
+import { SourceLine } from '@/components/learning/source-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -63,7 +64,13 @@ function ActiveStep({
   const nextRef = React.useRef<HTMLButtonElement>(null)
   const retryRef = React.useRef<HTMLButtonElement>(null)
 
-  const choices = step.answerType === 'multiple_choice' ? splitChoices(step.question) : null
+  // Options are stored with the step; content written before that has them in the question text.
+  const choices =
+    step.answerType !== 'multiple_choice'
+      ? null
+      : step.options.length >= 2
+        ? { stem: step.question, options: step.options }
+        : splitChoices(step.question)
   const locked = feedback === 'correct' || feedback === 'revealed'
 
   React.useEffect(() => {
@@ -376,6 +383,7 @@ export function PracticeView({ topicId, practice }: { topicId: string; practice:
             {problem.minutes ? <span className="ml-1 text-caption text-fg-3">About {problem.minutes} min</span> : null}
           </div>
         )}
+        <SourceLine sources={problem.sources} />
       </div>
 
       <ol className="mt-8 flex flex-col">

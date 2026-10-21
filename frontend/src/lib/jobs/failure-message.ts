@@ -19,6 +19,8 @@ export const contentTypeLabel = (contentType: string): string =>
 const MESSAGES: Record<string, string> = {
   NO_SOURCE_MATERIAL:
     'None of your uploaded material matched this topic, so there was nothing to write from. Add material that covers it or edit the topic, then retry.',
+  NO_CONTENT_MATERIALS:
+    'Every material in this course is marked as a syllabus or a past exam, so there was nothing to find topics in. Mark at least one as course content, then find topics again.',
   LLM_RATE_LIMITED: 'The AI service is busy right now. Wait a minute and retry.',
   LLM_UNAVAILABLE: 'The AI service is not reachable right now. Retry in a few minutes.',
   LLM_CREDIT_EXHAUSTED: 'Generation is paused because the AI service account is out of credit.',
