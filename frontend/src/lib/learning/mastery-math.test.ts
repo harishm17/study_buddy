@@ -21,24 +21,25 @@ test('a voice-only student is scored on voice alone', () => {
 })
 
 test('weights are renormalised over the sources present', () => {
-  // quiz 0.55 and exam 0.2 are present: (0.55 * 1 + 0.2 * 0.5) / 0.75
+  // quiz 0.45 and exam 0.25 are present: (0.45 * 1 + 0.25 * 0.5) / 0.7
   const result = computeMasteryFromSignals({
     ...none,
     quizScores: [100],
     examScores: [0.5],
     daysSinceLastPractice: 0,
   })
-  assert.ok(Math.abs(result.mastery - 0.65 / 0.75) < 1e-9)
+  assert.ok(Math.abs(result.mastery - 0.575 / 0.7) < 1e-9)
 })
 
-test('all three sources use the original 55/25/20 split', () => {
+test('quiz, voice and exam alone use the 45/25/15 split, renormalised', () => {
   const result = computeMasteryFromSignals({
     quizScores: [100],
     voiceScores: [0],
     examScores: [1],
     daysSinceLastPractice: 0,
   })
-  assert.ok(Math.abs(result.mastery - 0.75) < 1e-9)
+  // (0.45 * 1 + 0.15 * 0 + 0.25 * 1) / 0.85
+  assert.ok(Math.abs(result.mastery - 0.7 / 0.85) < 1e-9)
 })
 
 test('no data at all is zero mastery', () => {
@@ -96,4 +97,100 @@ test('masteryFromHistory treats a topic with no results as 30 days idle', () => 
   const result = masteryFromHistory({ quiz: [], voice: [], exam: [], now: Date.now() })
   assert.equal(result.mastery, 0)
   assert.ok(Math.abs(result.recencyPenalty - 0.25) < 1e-9)
+})
+
+import { DECAY_FLOOR, MASTERY_WEIGHTS, displayMastery } from './mastery-math'
+
+test('the weights are quiz 45, exam 25, voice 15 and practice 15 and add up to one', () => {
+  assert.deepEqual(MASTERY_WEIGHTS, { quiz: 0.45, exam: 0.25, voice: 0.15, practice: 0.15 })
+  assert.ok(Math.abs(Object.values(MASTERY_WEIGHTS).reduce((sum, weight) => sum + weight, 0) - 1) < 1e-9)
+})
+
+test('all four sources use the 45/25/15/15 split', () => {
+  const result = computeMasteryFromSignals({
+    quizScores: [100],
+    examScores: [0],
+    voiceScores: [1],
+    practiceScores: [0],
+    daysSinceLastPractice: 0,
+  })
+  assert.ok(Math.abs(result.mastery - 0.6) < 1e-9)
+})
+
+test('practice alone is scored on practice alone', () => {
+  const result = computeMasteryFromSignals({ ...none, practiceScores: [0.6], daysSinceLastPractice: 0 })
+  assert.ok(Math.abs(result.mastery - 0.6) < 1e-9)
+  assert.ok(Math.abs(result.practice - 0.6) < 1e-9)
+})
+
+test('quiz and practice renormalise over 0.45 + 0.15', () => {
+  const result = computeMasteryFromSignals({ ...none, quizScores: [100], practiceScores: [0], daysSinceLastPractice: 0 })
+  assert.ok(Math.abs(result.mastery - 0.45 / 0.6) < 1e-9)
+})
+
+test('practice scores are optional', () => {
+  const result = computeMasteryFromSignals({ ...none, quizScores: [50], daysSinceLastPractice: 0 })
+  assert.equal(result.practice, 0)
+  assert.ok(Math.abs(result.mastery - 0.5) < 1e-9)
+})
+
+test('masteryFromHistory counts practice, and its date counts as practice', () => {
+  const now = Date.parse('2026-10-21T00:00:00Z')
+  const day = 24 * 60 * 60 * 1000
+  const result = masteryFromHistory({
+    quiz: [{ score: 100, at: new Date(now - 10 * day) }],
+    voice: [],
+    exam: [],
+    practice: [{ score: 0.5, at: new Date(now - day) }],
+    now,
+  })
+  const expected = computeMasteryFromSignals({
+    quizScores: [100],
+    voiceScores: [],
+    examScores: [],
+    practiceScores: [0.5],
+    daysSinceLastPractice: 1,
+  })
+  assert.deepEqual(result, expected)
+})
+
+const DAY = 24 * 60 * 60 * 1000
+const NOW = Date.parse('2026-10-21T12:00:00Z')
+
+test('displayed mastery is the stored mastery until the review is due', () => {
+  assert.equal(displayMastery(0.8, { dueAt: new Date(NOW + DAY), intervalDays: 7 }, NOW), 0.8)
+  assert.equal(displayMastery(0.8, { dueAt: new Date(NOW), intervalDays: 7 }, NOW), 0.8)
+})
+
+test('displayed mastery fades with 0.5^(overdue / (2 * interval))', () => {
+  // 7-day interval, 7 days overdue: 0.5^(7/14) = 0.7071
+  const shown = displayMastery(0.8, { dueAt: new Date(NOW - 7 * DAY), intervalDays: 7 }, NOW) as number
+  assert.ok(Math.abs(shown - 0.8 * Math.pow(0.5, 0.5)) < 1e-9)
+  // 1-day interval, 1 day overdue: 0.5^(1/2)
+  const quick = displayMastery(1, { dueAt: new Date(NOW - DAY), intervalDays: 1 }, NOW) as number
+  assert.ok(Math.abs(quick - Math.SQRT1_2) < 1e-9)
+})
+
+test('displayed mastery never falls below half of the stored mastery', () => {
+  const far = displayMastery(0.8, { dueAt: new Date(NOW - 365 * DAY), intervalDays: 3 }, NOW) as number
+  assert.ok(Math.abs(far - 0.8 * DECAY_FLOOR) < 1e-12)
+  // The floor is reached at twice the interval.
+  const atFloor = displayMastery(0.6, { dueAt: new Date(NOW - 6 * DAY), intervalDays: 3 }, NOW) as number
+  assert.ok(Math.abs(atFloor - 0.3) < 1e-9)
+})
+
+test('displayed mastery keeps no-signal, no-schedule and bad inputs as they are', () => {
+  assert.equal(displayMastery(null, { dueAt: new Date(NOW - DAY), intervalDays: 1 }, NOW), null)
+  assert.equal(displayMastery(undefined, null, NOW), null)
+  assert.equal(displayMastery(0.7, null, NOW), 0.7)
+  assert.equal(displayMastery(0.7, { dueAt: null, intervalDays: 3 }, NOW), 0.7)
+  assert.equal(displayMastery(0.7, { dueAt: 'not a date', intervalDays: 3 }, NOW), 0.7)
+  // A zero or missing interval counts as one day, so the result is finite.
+  const shown = displayMastery(0.7, { dueAt: new Date(NOW - DAY), intervalDays: 0 }, NOW) as number
+  assert.ok(Number.isFinite(shown) && shown < 0.7)
+})
+
+test('displayed mastery accepts ISO strings and accepts a Date as the clock', () => {
+  const iso = new Date(NOW - 2 * DAY).toISOString()
+  assert.equal(displayMastery(0.9, { dueAt: iso, intervalDays: 1 }, new Date(NOW)), displayMastery(0.9, { dueAt: iso, intervalDays: 1 }, NOW))
 })

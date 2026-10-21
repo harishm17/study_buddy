@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
+import { displayMastery } from '@/lib/learning/mastery-math'
 
 export type DueReview = {
   topicId: string
@@ -27,6 +28,7 @@ export async function dueReviews(userId: string, limit = 5): Promise<{ items: Du
         topicId: true,
         dueAt: true,
         mastery: true,
+        intervalDays: true,
         topic: { select: { name: true } },
         project: { select: { id: true, name: true } },
       },
@@ -34,6 +36,7 @@ export async function dueReviews(userId: string, limit = 5): Promise<{ items: Du
     prisma.reviewSchedule.count({ where }),
   ])
 
+  const now = Date.now()
   return {
     total,
     items: rows.map((row) => ({
@@ -42,7 +45,7 @@ export async function dueReviews(userId: string, limit = 5): Promise<{ items: Du
       courseId: row.project.id,
       courseName: row.project.name,
       dueAt: row.dueAt.toISOString(),
-      mastery: row.mastery,
+      mastery: displayMastery(row.mastery, row, now) ?? row.mastery,
     })),
   }
 }
