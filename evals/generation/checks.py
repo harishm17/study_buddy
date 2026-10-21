@@ -239,23 +239,51 @@ def significant_numbers(text: str) -> Set[str]:
     return found
 
 
-def recall_copy_check(questions: List[dict], reference_text: str) -> Dict[str, object]:
-    """Quiz questions whose numbers all come from the topic's notes or worked examples.
+_WORD = re.compile(r"[A-Za-z]{4,}")
+_WINDOW_WORDS = 60
+_MIN_WORD_SHARE = 0.4
 
-    A question counts when its question text has two or more significant numbers and every one
-    of them appears in `reference_text`. Such a question tests recall of the example, not
-    transfer. The rate is over questions with two or more significant numbers.
+
+def _windows(text: str, size: int = _WINDOW_WORDS) -> List[str]:
+    """Overlapping windows of about `size` words (step size/2), so a passage is never split
+    without also appearing whole in a neighbouring window."""
+    words = (text or "").split()
+    if len(words) <= size:
+        return [" ".join(words)] if words else []
+    step = size // 2
+    return [" ".join(words[i : i + size]) for i in range(0, len(words) - step, step)]
+
+
+def _content_words(text: str) -> Set[str]:
+    return {w.lower() for w in _WORD.findall(text or "")}
+
+
+def recall_copy_check(questions: List[dict], reference_text: str) -> Dict[str, object]:
+    """Quiz questions that restate one of the topic's own worked examples or notes passages.
+
+    A question counts when its question text has two or more significant numbers, and some
+    window of about 60 words of `reference_text` (the topic's notes, worked examples and
+    practice) contains every one of those numbers and at least 40% of the question's content
+    words. Matching numbers alone is not enough: small numbers such as 3, 4 or 12 appear all
+    over a set of notes, and a new scenario that happens to use them is transfer, not recall.
+    The rate is over questions with two or more significant numbers.
     """
-    reference = significant_numbers(reference_text)
+    windows = [(significant_numbers(w), _content_words(w)) for w in _windows(reference_text)]
     eligible = 0
     copied = []
     for i, question in enumerate(questions):
-        numbers = significant_numbers(question.get("question_text", ""))
+        text = question.get("question_text", "")
+        numbers = significant_numbers(text)
         if len(numbers) < 2:
             continue
         eligible += 1
-        if numbers <= reference:
-            copied.append({"index": i, "numbers": sorted(numbers, key=float)})
+        words = _content_words(text)
+        for window_numbers, window_words in windows:
+            if numbers <= window_numbers and (
+                not words or len(words & window_words) / len(words) >= _MIN_WORD_SHARE
+            ):
+                copied.append({"index": i, "numbers": sorted(numbers, key=float)})
+                break
     return {
         "questions": len(questions),
         "with_numbers": eligible,
