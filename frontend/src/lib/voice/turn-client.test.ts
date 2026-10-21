@@ -1,0 +1,203 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import {
+  cleanForSpeech,
+  createSentenceChunker,
+  isTerminal,
+  parseVoiceEvent,
+  readVoiceEvents,
+  type VoiceEvent,
+} from './turn-client'
+
+describe('parseVoiceEvent', () => {
+  it('ignores junk and unknown or malformed events', () => {
+    for (const line of [
+      '',
+      'not json',
+      '5',
+      'null',
+      '[]',
+      '{"type":"mystery"}',
+      '{"type":"text"}',
+      '{"type":"question","index":"1","text":"q"}',
+      '{"type":"evaluation","score":1}',
+      '{"type":"hint"}',
+    ]) {
+      assert.equal(parseVoiceEvent(line), null, line)
+    }
+  })
+
+  it('parses a text delta', () => {
+    assert.deepEqual(parseVoiceEvent('{"type":"text","delta":"Hi "}'), { type: 'text', delta: 'Hi ' })
+  })
+
+  it('parses a question with options, dropping empty ones', () => {
+    const event = parseVoiceEvent(
+      JSON.stringify({
+        type: 'question',
+        index: 2,
+        total: 10,
+        text: 'Which one?',
+        questionType: 'multiple_choice',
+        options: [{ id: 'A', text: 'First' }, { id: '', text: 'x' }, { id: 'B', text: 'Second' }],
+      })
+    )
+    assert.deepEqual(event, {
+      type: 'question',
+      index: 2,
+      total: 10,
+      text: 'Which one?',
+      questionType: 'multiple_choice',
+      options: [{ id: 'A', text: 'First' }, { id: 'B', text: 'Second' }],
+    })
+  })
+
+  it('parses a question without options and fills defaults', () => {
+    assert.deepEqual(parseVoiceEvent('{"type":"question","index":0,"text":"Why?"}'), {
+      type: 'question',
+      index: 0,
+      total: 0,
+      text: 'Why?',
+      questionType: 'conceptual',
+    })
+  })
+
+  it('parses an evaluation, keeping ungraded only when true', () => {
+    assert.deepEqual(
+      parseVoiceEvent('{"type":"evaluation","isCorrect":true,"score":0.75,"comment":"Good","explanation":"Because"}'),
+      { type: 'evaluation', isCorrect: true, score: 0.75, comment: 'Good', explanation: 'Because' }
+    )
+    const ungraded = parseVoiceEvent('{"type":"evaluation","isCorrect":false,"score":0,"comment":"","explanation":"","ungraded":true}')
+    assert.equal(ungraded?.type === 'evaluation' && ungraded.ungraded, true)
+  })
+
+  it('parses hint, session_complete, done and error', () => {
+    assert.deepEqual(parseVoiceEvent('{"type":"hint","text":"Think about it"}'), { type: 'hint', text: 'Think about it' })
+    assert.deepEqual(parseVoiceEvent('{"type":"session_complete"}'), { type: 'session_complete' })
+    assert.deepEqual(parseVoiceEvent('{"type":"done","text":"All set."}'), { type: 'done', text: 'All set.' })
+    assert.deepEqual(parseVoiceEvent('{"type":"error","code":"LLM_UNAVAILABLE","message":"Busy","retryable":true}'), {
+      type: 'error',
+      code: 'LLM_UNAVAILABLE',
+      message: 'Busy',
+      retryable: true,
+    })
+    const bare = parseVoiceEvent('{"type":"error"}')
+    assert.deepEqual(bare, { type: 'error', code: 'VOICE_TURN_FAILED', message: '', retryable: true })
+  })
+
+  it('knows which events end a turn', () => {
+    assert.equal(isTerminal({ type: 'done', text: '' }), true)
+    assert.equal(isTerminal({ type: 'error', code: 'x', message: '', retryable: false }), true)
+    assert.equal(isTerminal({ type: 'text', delta: 'a' }), false)
+  })
+})
+
+describe('readVoiceEvents', () => {
+  it('reads events split across chunks and skips junk lines', async () => {
+    const encoder = new TextEncoder()
+    const chunks = [
+      '{"type":"text","del',
+      'ta":"Hello"}\nnot json\n{"type":"text","delta":" there"}\n{"type":"do',
+      'ne","text":"Hello there"}',
+    ]
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+        controller.close()
+      },
+    })
+    const events: VoiceEvent[] = []
+    for await (const event of readVoiceEvents(body)) events.push(event)
+    assert.deepEqual(events, [
+      { type: 'text', delta: 'Hello' },
+      { type: 'text', delta: ' there' },
+      { type: 'done', text: 'Hello there' },
+    ])
+  })
+})
+
+/** Feed `text` through a chunker `size` characters at a time. */
+function chunk(text: string, size: number, options?: { minChars?: number }): string[] {
+  const chunker = createSentenceChunker(options)
+  const out: string[] = []
+  for (let i = 0; i < text.length; i += size) out.push(...chunker.push(text.slice(i, i + size)))
+  out.push(...chunker.flush())
+  return out
+}
+
+describe('createSentenceChunker', () => {
+  it('splits on . ! ? and gives the same sentences however the text is cut up', () => {
+    const text = 'That is right. Well done! Shall we go on? Yes.'
+    const expected = ['That is right.', 'Well done!', 'Shall we go on?', 'Yes.']
+    for (const size of [1, 2, 3, 7, 100]) assert.deepEqual(chunk(text, size), expected, `size ${size}`)
+  })
+
+  it('holds a sentence back until the next one starts, so the first can be spoken early', () => {
+    const chunker = createSentenceChunker()
+    assert.deepEqual(chunker.push('Good job.'), [])
+    assert.deepEqual(chunker.push(' '), [])
+    assert.deepEqual(chunker.push('Now'), ['Good job.'])
+    assert.deepEqual(chunker.flush(), ['Now'])
+  })
+
+  it('splits on newlines, even without punctuation', () => {
+    assert.deepEqual(chunk('First line\nSecond line\n\nThird', 4), ['First line', 'Second line', 'Third'])
+  })
+
+  it('keeps decimals intact', () => {
+    assert.deepEqual(chunk('Pi is about 3.14 and e is 2.718. That is it.', 3), [
+      'Pi is about 3.14 and e is 2.718.',
+      'That is it.',
+    ])
+  })
+
+  it('does not split after abbreviations or initials', () => {
+    assert.deepEqual(chunk('Ask Dr. Smith about it. Use e.g. a hash map, i.e. a table. Then J. K. Rowling vs. Tolkien.', 5), [
+      'Ask Dr. Smith about it.',
+      'Use e.g. a hash map, i.e. a table.',
+      'Then J. K. Rowling vs. Tolkien.',
+    ])
+  })
+
+  it('does not split before a lower-case word', () => {
+    assert.deepEqual(chunk('Lists, sets, etc. and maps are collections. Next one.', 6), [
+      'Lists, sets, etc. and maps are collections.',
+      'Next one.',
+    ])
+  })
+
+  it('treats an ellipsis and repeated marks as one end', () => {
+    assert.deepEqual(chunk('Hmm... let me think. Really?! Yes.', 4), ['Hmm...', 'let me think.', 'Really?!', 'Yes.'])
+  })
+
+  it('keeps a closing quote or bracket with its sentence', () => {
+    assert.deepEqual(chunk('He said "stop." Then (quietly.) we left.', 3), ['He said "stop."', 'Then (quietly.) we left.'])
+  })
+
+  it('returns the unfinished tail on flush', () => {
+    const chunker = createSentenceChunker()
+    assert.deepEqual(chunker.push('One. Two and a half'), ['One.'])
+    assert.deepEqual(chunker.flush(), ['Two and a half'])
+    assert.deepEqual(chunker.flush(), [])
+  })
+
+  it('returns a single sentence with no space after it only on flush', () => {
+    const chunker = createSentenceChunker()
+    assert.deepEqual(chunker.push('Done.'), [])
+    assert.deepEqual(chunker.flush(), ['Done.'])
+  })
+
+  it('merges short sentences into the next one with minChars', () => {
+    assert.deepEqual(chunk('Yes. That is correct, nicely done. Ok.', 5, { minChars: 12 }), [
+      'Yes. That is correct, nicely done.',
+      'Ok.',
+    ])
+  })
+
+  it('strips markdown a synthesizer would read aloud', () => {
+    assert.equal(cleanForSpeech('**Great** answer, use `a map` here.'), 'Great answer, use a map here.')
+    assert.equal(cleanForSpeech('- First point'), 'First point')
+    assert.equal(cleanForSpeech('## Heading'), 'Heading')
+    assert.deepEqual(chunk('**Nice.** Next one.', 4), ['Nice.', 'Next one.'])
+  })
+})

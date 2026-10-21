@@ -1,6 +1,6 @@
 // Voice minutes are metered on the server, from timestamps on VoiceDrillSession:
-//   connectedAt  set when a realtime token is minted
-//   lastSeenAt   refreshed by a heartbeat from the open call
+//   connectedAt  set on the first voice turn
+//   lastSeenAt   refreshed by every turn and by a heartbeat from the open session
 //   endedAt      set when the client ends or aborts the session
 // The browser can vanish without ending the session, so an unended session only counts up
 // to its last heartbeat.

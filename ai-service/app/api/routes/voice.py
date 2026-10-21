@@ -1,15 +1,36 @@
-"""Voice coach endpoints for StudyBuddy."""
-from typing import Any, Dict, List, Optional
-import re
+"""Voice coach endpoints for StudyBuddy.
 
-import httpx
-from fastapi import APIRouter, HTTPException
+The browser does speech-to-text and text-to-speech, so the model only ever sees text:
+POST /voice/turn is one model call of that conversation, streamed back as newline-delimited
+JSON (see `turn` below). The Next.js server owns the conversation and runs the tools.
+"""
+import json
+import logging
+import re
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
+
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.config import settings
+from app.db.connection import execute_one
+from app.services.budget import over_budget_message, record_usage_event
+from app.services.chat import usage_payload
+from app.services.llm.base import (
+    LLMError,
+    LLMMessage,
+    LLMNotConfiguredError,
+    LLMProvider,
+    LLMUsage,
+    TurnDone,
+    TurnText,
+    TurnToolUse,
+)
 from app.services.llm.factory import LLMFactory
-from app.services.llm.base import LLMMessage
 from app.services.llm.schemas import DrillQuestionSet
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/voice")
 
@@ -57,23 +78,6 @@ def _filter_concept_questions(questions: List[Dict[str, Any]]) -> List[Dict[str,
     return filtered
 
 
-def _concept_instructions(language: str) -> str:
-    language_name = "English" if language.lower().startswith("en") else language
-    return (
-        "You are StudyBuddy's conceptual oral exam coach. "
-        f"Use {language_name} by default. "
-        "Do not provide calculations, equations, formulas, or numeric solving. "
-        "Focus on definitions, intuition, relationships, trade-offs, comparisons, and reasoning."
-    )
-
-
-class RealtimeTokenRequest(BaseModel):
-    session_id: Optional[str] = None
-    language: str = Field(default="en", min_length=2, max_length=8)
-    voice: Optional[str] = None
-    expires_after: int = Field(default=120, ge=30, le=600)
-
-
 class DrillGenerateRequest(BaseModel):
     topic: Optional[str] = None
     notes: str
@@ -81,88 +85,119 @@ class DrillGenerateRequest(BaseModel):
     difficulty: str = Field(default="medium")
 
 
-@router.post("/realtime/token")
-async def create_realtime_token(
-    payload: RealtimeTokenRequest,
-):
-    """Mint a Realtime client secret via OpenAI."""
-    if not settings.voice_enabled:
-        raise HTTPException(
-            status_code=503,
-            detail="Voice coaching is turned off: OPENAI_API_KEY is not configured.",
-        )
-    voice = payload.voice or settings.OPENAI_REALTIME_VOICE
-    session = {
-        "type": "realtime",
-        "model": settings.OPENAI_REALTIME_MODEL,
-        "instructions": _concept_instructions(payload.language),
-        "voice": voice,
-        "audio": {
-            "input": {
-                "transcription": {
-                    "model": settings.OPENAI_TRANSCRIPTION_MODEL,
-                    "language": payload.language,
-                },
-                "turn_detection": {
-                    "type": "server_vad",
-                    "create_response": True,
-                    "interrupt_response": True,
-                },
-            },
-        },
-    }
+class VoiceTurnRequest(BaseModel):
+    user_id: str = Field(min_length=1)
+    project_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    system: str = Field(max_length=40_000)
+    # Anthropic message format; content may hold tool_use and tool_result blocks.
+    messages: List[Dict[str, Any]] = Field(min_length=1, max_length=100)
+    # Anthropic tool definitions. Empty for a plain conversation.
+    tools: List[Dict[str, Any]] = Field(default_factory=list, max_length=10)
 
-    body = {
-        "expires_after": {
-            "anchor": "created_at",
-            "seconds": payload.expires_after,
-        },
-        "session": session,
-    }
 
-    headers = {
-        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
+def _fail(status: int, code: str, message: str, retryable: bool = False) -> JSONResponse:
+    """The same body shape as the LLMError handler in main.py."""
+    return JSONResponse(
+        status_code=status,
+        content={"detail": message, "error_code": code, "retryable": retryable},
+    )
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        response = await client.post(
-            "https://api.openai.com/v1/realtime/client_secrets",
-            headers=headers,
-            json=body,
-        )
 
-    if response.status_code >= 400:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+async def _record_voice_usage(payload: VoiceTurnRequest, usage: Optional[LLMUsage]) -> None:
+    """One ledger row per model call, so voice counts toward the daily budget."""
+    if usage is None:
+        return
+    figures = usage_payload(usage)
+    await record_usage_event(
+        user_id=payload.user_id,
+        project_id=payload.project_id,
+        source="voice",
+        source_id=payload.session_id,
+        models=usage.model,
+        input_tokens=figures["input_tokens"],
+        output_tokens=figures["output_tokens"],
+        cost_usd=figures["cost_usd"],
+    )
 
-    data = response.json()
-    raw_client_secret = data.get("client_secret")
-    if isinstance(raw_client_secret, str):
-        client_secret = {"value": raw_client_secret}
-    elif isinstance(raw_client_secret, dict):
-        client_secret = {
-            "value": raw_client_secret.get("value"),
-            "expires_at": raw_client_secret.get("expires_at"),
+
+async def stream_voice_turn(provider: LLMProvider, payload: VoiceTurnRequest) -> AsyncIterator[Dict[str, Any]]:
+    """Events for one model call. Failures become an `error` event, never an exception."""
+    try:
+        async for event in provider.stream_turn(
+            system=payload.system,
+            messages=payload.messages,
+            tools=payload.tools,
+            tier="fast",
+            effort=settings.VOICE_EFFORT or None,
+            max_tokens=settings.VOICE_MAX_TOKENS,
+            purpose="voice",
+        ):
+            if isinstance(event, TurnText):
+                yield {"type": "text", "delta": event.text}
+            elif isinstance(event, TurnToolUse):
+                yield {"type": "tool_use", "id": event.id, "name": event.name, "input": event.input}
+            elif isinstance(event, TurnDone):
+                await _record_voice_usage(payload, event.usage)
+                yield {
+                    "type": "done",
+                    "stop_reason": event.stop_reason,
+                    "content": event.content,
+                    "usage": usage_payload(event.usage),
+                }
+    except LLMError as exc:
+        logger.warning("Voice turn failed: %s: %s", exc.code, exc)
+        await _record_voice_usage(payload, exc.usage)
+        yield {"type": "error", "code": exc.code, "message": str(exc), "retryable": exc.retryable}
+    except Exception as exc:  # the stream has started: report it in-band
+        logger.exception("Voice turn crashed")
+        yield {
+            "type": "error",
+            "code": "VOICE_TURN_FAILED",
+            "message": f"The coach could not reply: {exc}",
+            "retryable": True,
         }
-    elif isinstance(data.get("value"), str):
-        client_secret = {
-            "value": data.get("value"),
-            "expires_at": data.get("expires_at"),
-        }
-    else:
-        client_secret = {"value": None}
 
-    if not client_secret.get("value"):
-        raise HTTPException(status_code=502, detail="Realtime token response missing client_secret value")
 
-    expires_at = data.get("expires_at")
-    if expires_at is None and isinstance(data.get("client_secret"), dict):
-        expires_at = data.get("client_secret", {}).get("expires_at")
-    return {
-        "client_secret": client_secret,
-        "expires_at": expires_at,
-        "session": data.get("session"),
-    }
+async def _ndjson(events: AsyncIterator[Dict[str, Any]]) -> AsyncIterator[bytes]:
+    async for event in events:
+        yield (json.dumps(event, ensure_ascii=False) + "\n").encode()
+
+
+@router.post("/turn", response_model=None)
+async def turn(payload: VoiceTurnRequest) -> Union[StreamingResponse, JSONResponse]:
+    """One model call of a voice coaching conversation, streamed as NDJSON.
+
+    Events, one JSON object per line:
+        {"type": "text", "delta": "..."}
+        {"type": "tool_use", "id": "...", "name": "...", "input": {...}}
+        {"type": "done", "stop_reason": "end_turn" | "tool_use" | "max_tokens", "content": [...], "usage": {...}}
+        {"type": "error", "code": "LLM_...", "message": "...", "retryable": bool}
+    `content` is the assistant message exactly as returned (text, tool_use and thinking
+    blocks): the caller appends it to the conversation, then sends its tool results back.
+
+    Problems found before the model runs (not configured, unknown project, daily budget) are
+    ordinary HTTP errors with an `error_code`, like /chat/answer.
+    """
+    if not settings.llm_configured:
+        return _fail(503, LLMNotConfiguredError.code, "ANTHROPIC_API_KEY is not configured")
+
+    project = await execute_one(
+        "SELECT id FROM projects WHERE id = $1 AND user_id = $2", payload.project_id, payload.user_id
+    )
+    if project is None:
+        return _fail(404, "PROJECT_NOT_FOUND", "Project not found")
+
+    over_budget = await over_budget_message(payload.user_id)
+    if over_budget:
+        return _fail(429, "LLM_DAILY_BUDGET", over_budget)
+
+    return StreamingResponse(
+        _ndjson(stream_voice_turn(LLMFactory.get_provider(), payload)),
+        media_type="application/x-ndjson",
+        # No proxy may hold the stream back.
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/generate-drill")
