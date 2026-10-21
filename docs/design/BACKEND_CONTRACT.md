@@ -104,8 +104,8 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 ### Projects
 
 **`POST /api/projects`**
-- Body: `z.object({ name: string.min(1).max(200), description: string.max(1000).nullable().optional() })`
-- 200: `{ project: Project }` (full row: `id, userId, name, description, status:'setup', createdAt, updatedAt`)
+- Body: `z.object({ name: string.min(1).max(200), description: string.max(1000).nullable().optional(), examDate: 'YYYY-MM-DD'|null (optional), dailyMinutes: int 10..600 (optional) })`
+- 200: `{ project: Project }` (full row: `id, userId, name, description, status:'setup', examDate, dailyMinutes, examPromptDismissed, createdAt, updatedAt`)
 - 400: `{error:'Invalid input', details: ZodIssue[]}`
 
 **`GET /api/projects/[projectId]`**
@@ -113,7 +113,8 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - 404: A-shape
 
 **`PATCH /api/projects/[projectId]`**
-- Body: `{ name?: string(1..255), description?: string /*cannot be null*/, status?: 'setup'|'topics_pending'|'active'|'completed' }`
+- Body: `{ name?: string(1..255), description?: string /*cannot be null*/, status?: 'setup'|'topics_pending'|'active'|'completed', examDate?: 'YYYY-MM-DD'|null, dailyMinutes?: int 10..600, examPromptDismissed?: boolean }`
+  - `examDate` is a calendar date, stored as midnight UTC of that date; `null` clears it. `dailyMinutes` is the study time per day the plan fits (default 45). `examPromptDismissed` closes the overview's "When is your exam?" card.
 - 200: `{ project }`
 - 400: `{error:'Invalid input', details: <ZodError object>}`
 
@@ -462,30 +463,17 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 
 ### Planner and health
 
-**`GET /api/projects/[projectId]/next-actions`**
-- 200: `{ generatedAt, actions: NextAction[] }`, max 8, ascending `priority`.
-- `NextAction = { id, type: 'upload_materials'|'extract_topics'|'confirm_topics'|'study_topic'|'review_topic'|'take_quiz'|'voice_drill'|'generate_content'|'take_exam', topicId:string|null, title, reason, priority:number, etaMinutes }`.
-- Gating, in order:
-  - No materials gives a single `upload_materials` action.
-  - No topics gives a single `extract_topics` action.
-  - `project.status==='topics_pending'` or any unconfirmed topic gives a single `confirm_topics` action.
-- Otherwise it builds, in order:
-  - active-generation action (priority -1)
-  - review due (0)
-  - generate missing (1)
-  - study (2)
-  - quiz for topics below 70 (3)
-  - voice drill for topics with mastery below 0.6 (4)
-  - take_exam if exams exist (5)
-  - generate-exam fallback (5)
-- Batch ids contain `-batch`. The active-generation action's id ends in `-batch-active`.
-- Stale jobs (older than 6 min, or pending and unstarted for over 90 s) are ignored.
+**`GET /api/projects/[projectId]/next-actions[?tz=IANA]`**
+- 200: `{ generatedAt, actions: NextAction[] }`: the next setup step while the course is being set up, otherwise today's items of the study plan that are still to do, in order.
+- `NextAction = { id, type: 'upload_materials'|'extract_topics'|'confirm_topics'|'study_topic'|'review_topic'|'take_quiz'|'take_exam', topicId:string|null, title, reason, priority:number, etaMinutes }`.
+  - Setup (`upload_materials`, `extract_topics`, `confirm_topics`) is a single action while the course has no materials, no topics, or unconfirmed topics.
+  - Plan items map `learn` to `study_topic`, `quiz` to `take_quiz`, `review` to `review_topic`, both kinds of mock exam to `take_exam`.
+  - `voice_drill` and `generate_content` are gone (voice review is on the Review page; content is written when a topic opens).
+- `tz` is the student's IANA zone (`UTC` when missing or invalid): "today" is their today.
 
-**`GET /api/projects/[projectId]/study-plan[?date=YYYY-MM-DD&tz=IANA]`**
-- Defaults: today in `tz` (`UTC` if `tz` is missing), start 09:00 local. Items are laid out back-to-back with 5-minute gaps.
-- 200: `{ date, timeZone, generatedAt, plan: (NextAction & { startAt:ISO, endAt:ISO })[] }`
-- 400 `INVALID_INPUT` for a bad tz or date format.
-- No UI calls this. `studyPlanUrl()` exists but is unused.
+**`GET /api/projects/[projectId]/study-plan[?tz=IANA]`**
+- 200: `{ generatedAt, timeZone, plan: Plan }` (the shape is in section 10.2). Recomputed on every call from the student's real progress.
+- 400 `INVALID_INPUT` for a bad tz. 404 for a course that is not theirs. The UI reads the same data through server queries.
 
 **`GET /api/projects/[projectId]/health`**
 - 200:
@@ -623,19 +611,20 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - **TopicContent:** unique per `(topicId, contentType)`.
   - `contentType: section_notes | solved_examples | interactive_examples | topic_quiz`.
   - `contentData` JSON, `metadata?` JSON. See §5 for shapes.
-- **TopicQuiz:** a quiz set, `id, topicId, questions JSON, createdAt`. Each quiz generation inserts a new row.
+- **TopicQuiz:** a quiz set, `id, topicId, questions JSON, kind ('standard'|'retry'), createdAt`. Each quiz generation inserts a new `standard` row; "Retry what you missed" inserts a `retry` row (section 10.4).
   - No API route lists quiz sets or exposes `quizSetId`. The UI reads them server-side from Prisma on the topic page.
   - The latest set's id is in `TopicContent.metadata.quiz_set_id`.
 - **TopicProgress:** unique per `(topicId, userId)`: `notesCompleted, examplesCompleted, quizCompleted, quizScore (best %, nullable), lastAccessedAt`.
 - **QuizAttempt:** `userId, topicId, quizSetId?, answers {idx: string}, results {idx: {isCorrect, pointsEarned, pointsPossible, feedback?}}, score (0-100), takenAt`.
-- **LearningSignal:** `userId, projectId, topicId?, source: quiz|voice|exam, score (0..1), confidence? (1..5), metadata`.
+- **LearningSignal:** `userId, projectId, topicId?, source: quiz|voice|exam|practice, score (0..1), confidence? (1..5), metadata`.
 - **ReviewSchedule:** unique per `(userId, topicId)`: `mastery, dueAt, intervalDays, streak, lastReviewedAt`.
   - Interval by mastery: >=0.8 gives 14 days, >=0.6 gives 7, >=0.4 gives 3, otherwise 1. A wrong answer gives 1. Confidence of 4 or more bumps the interval one tier.
 - **Mastery** (`FE/lib/learning/mastery-math.ts`):
-  - It blends the last 5 quiz scores, 20 voice scores and 20 exam question scores (all 0..1).
-  - Weights are 0.55, 0.25 and 0.2, renormalized over the sources that have data.
+  - It blends the last 5 quiz scores, 20 voice scores, 20 exam question scores and 20 practice scores (all 0..1).
+  - Weights are quiz 0.45, exam 0.25, voice 0.15 and practice 0.15, renormalized over the sources that have data.
   - A recency penalty up to 0.25 grows linearly over 14 days since the last practice.
-  - **No API returns mastery directly.** It surfaces only via `confidence` and inside the planner.
+  - **No API returns mastery directly.** It surfaces via `confidence`, the plan and the pages' server queries.
+  - The stored value (`ReviewSchedule.mastery`) is what was earned. What the pages show is `displayMastery`: once a review is overdue it fades, `mastery * 0.5^(overdueDays / (2 * intervalDays))`, never below half of `mastery`, computed when read (section 10.5).
 - **OverallQuiz and OverallQuizAttempt:** present in the schema, **unused anywhere** (dead).
 - **SampleExam:** `projectId, name, questions JSON[], durationMinutes, difficultyLevel, topicsCovered[] (topic names)`.
   - Exam questions carry `topic_id` and `topic_name`.
@@ -915,7 +904,7 @@ All text fields are markdown, with LaTeX math (`$..$` and `$$..$$`) and fenced c
 | `lib/exams/results.ts` | Pure | `ExamQuestionResult`, `WeakTopic` types |
 | `hooks/useExamAutosave.ts` | React hook | debounced PUT autosave (see above) |
 | `lib/utils/learning-markdown.ts` | Pure | `formatLearningMarkdown` |
-| `lib/utils/timezone.ts` | Pure | `browserTimeZone`, `studyPlanUrl` (unused) |
+| `lib/utils/timezone.ts` | Pure | `browserTimeZone` |
 | `lib/voice/language.ts`, `concept.ts`, `grading.ts` | Pure | language detect, concept filter, hints |
 | `hooks/useRealtimeVoice.ts` | OpenAI-specific, browser-only | WebRTC transport |
 
@@ -1046,7 +1035,7 @@ All text fields are markdown, with LaTeX math (`$..$` and `$$..$$`) and fenced c
 
 **Dead or unused**
 - Schema models `OverallQuiz` and `OverallQuizAttempt`.
-- `studyPlanUrl`, `formatBytes`, `generateShortId`.
+- `formatBytes`, `generateShortId`.
 - npm dependencies `@auth/prisma-adapter`, `@tanstack/react-query`, `react-hook-form` and `@hookform/resolvers` are installed but unused in `src`.
 - Voice `mode 'teach_back'` appears only in a schema comment.
 - Chat `role 'error'` is real but undocumented in the schema.
@@ -1193,6 +1182,68 @@ The existing flat editor keeps working unchanged (it only sends `orderIndex`, re
 | `PLANNER_MAX_OUTLINE_TOKENS` / `PLANNER_MAX_SECTIONS_PER_CALL` / `PLANNER_MAX_SOURCE_TOKENS_PER_CALL` | 120000 / 400 / 150000 | past any of them, plan per group of files |
 | `PLANNER_SYLLABUS_TOKENS` | 6000 | syllabus text given to the planner |
 | `GLOBAL_DAILY_LLM_BUDGET_USD` | 40 | ceiling on all users together per UTC day (0 = off) |
+
+## 10. Learning loop (learning v2, stage 3)
+
+Migration `20261110000000_learning_loop` (additive): `projects.exam_date`, `projects.daily_minutes` (default 45), `projects.exam_prompt_dismissed`, `topics.exam_relevant`, `topic_quizzes.kind` (default `standard`), `exam_submissions.review_applied_at`, and the table `practice_progress`. Exam submissions graded before the migration are marked as already applied.
+
+### 10.1 Exam date, daily time, time zone
+
+- `Project.examDate` (a calendar date), `dailyMinutes`, `examPromptDismissed`: set at course creation, in course settings (`PATCH /api/projects/[id]`) and by the overview card.
+- The server runs in UTC but the plan is in the student's days. The browser sets the cookie `margins_tz` (an IANA name) and refreshes once; server pages read it (`getTimeZone()`, falling back to UTC). API clients pass `?tz=`.
+- `Topic.examRelevant` is **set by the past-exams work** (topics whose concepts appear in past-exam text). This stage only reads it: the plan teaches those topics first when time is short, and the topics list shows an "On past exams" tag.
+
+### 10.2 The plan (`lib/learning/plan.ts`, pure)
+
+`buildPlan(input) -> Plan` has no database, model or clock of its own; `server/queries/plan.ts` (`getPlanData`) reads the rows and calls it. Days run from today to the exam date, or 14 days without one (at most 120).
+
+- Order within a day: mock exams (always placed, even when longer than the day), then reviews and first quizzes (due items; what does not fit moves to the next day, weakest first), then learn blocks.
+- Learn blocks: topics in course order but never before an unlearned prerequisite, `estimatedMinutes` each (35 when null; half for a topic with notes or examples done). A block may run 15% over the day rather than wait; one longer than a whole day is split into parts of at least 15 minutes ("Part 1 of 2").
+- First quiz: the day after a topic is learned (the day after its last part). Reviews: at `ReviewSchedule.dueAt` in the student's days, overdue ones today.
+- Mock exams: one the day after the last topic of a unit is learned (units with 3 or more topics, none if one already covered the unit); with an exam date two full mocks in the final week, the second at least 2 days before it (one when one was already taken in the final week; a note says when there is no room). The final 2 days (the day before, and the exam day) hold only reviews of the weakest topics.
+- Short time (exam date given, topics left that do not fit): first the unit mocks are dropped (a plain notice, not a warning); if topics still do not fit, past-exam topics go first, then course order, `short` is true with `shortMessage`, and `notScheduled` lists the rest with `reason: 'short'`. A topic that would only be half taught is not started. Without an exam date, what is beyond the 14 days is `notScheduled` with `reason: 'later'`.
+- Done: the plan lists what is left, so a finished item leaves it. Today's list also holds the items finished today (ticked, `done: true`, their time taken out of today): topics learned today (progress touched today and not by a quiz), quizzes and reviews taken today, mock exams submitted today.
+
+```ts
+Plan = {
+  status: 'ready'|'no_topics'|'exam_passed', today: 'YYYY-MM-DD', mode: 'exam'|'rolling',
+  examDate, daysToExam, dailyMinutes,
+  days: { date, isToday, isExamDay, isFinalReview, items: PlanItem[], minutes, doneMinutes }[],
+  short: boolean, shortMessage: string|null, unitMocksSkipped: boolean, mockNote: string|null,
+  notScheduled: { reason: 'short'|'later', topics: {id,name}[] } | null,
+  remaining: { topics, minutes }
+}
+PlanItem = { id, kind: 'learn'|'quiz'|'review'|'unit_mock'|'full_mock', date, title, topicId, unitId, topicIds[],
+             minutes, done, part: {number, of}|null, note: string|null }
+```
+
+Item links (`lib/learning/plan-copy.ts`): learn to the topic, quiz to its quiz view, review to `/review#review-<topicId>`, unit mock to `/exams/new?topics=<ids>`, full mock to `/exams/new?topics=all` (the form preselects them).
+
+### 10.3 Practice progress on the server
+
+`PracticeProgress`: one row per `(userId, contentId, problemIndex)` with `topicId, problemTitle, stepsSolved, stepsTotal, hintsUsed, solvedSteps[], revealedSteps[], hintedSteps[], completedAt, updatedAt`. `contentId` is the topic's `interactive_examples` row; `problemIndex` indexes the problems as the page parses them (`parsePracticeProblems`); a row whose title no longer matches is ignored (a rewrite starts clean).
+
+**`POST /api/topics/[topicId]/practice-progress`**
+- Body: `{ problemIndex, problemTitle, solvedSteps: int[], revealedSteps: int[], hintedSteps: int[], migrated?: boolean }` (step positions, 0-based). The body is the problem's whole state, so a smaller state is "Start over". `migrated: true` joins it with the stored row and records no signal.
+- 200: `{ completed, completedNow, score }`. A problem is completed when every step is solved or shown. The first time (per run through the problem) it records a `practice` LearningSignal with score = steps solved without a hint / all steps, recomputes mastery and upserts the ReviewSchedule (`wasCorrect = score >= 0.5`).
+- 409 `STALE_PRACTICE` when that problem is not in the current practice. 404 for a topic that is not theirs.
+**`GET /api/topics/[topicId]/practice-progress`**: `{ problems: { problemIndex, problemTitle, solvedSteps, revealedSteps, hintedSteps }[] }`.
+
+The browser keeps localStorage (`margins:practice:<topicId>`, now with `hinted`) as a cache. On opening a topic it loads the server's rows (they win for problems they cover), and uploads local-only problems once (`margins:practice-synced:<topicId>`; the first upload is `migrated`).
+
+### 10.4 Reviews
+
+When a topic is due, two actions (the Review page and the topic's quiz lobby):
+- **`POST /api/topics/[topicId]/retry-quiz`**: copies the questions wrong in the last two attempts (a later answer to the same question, by its text, decides; at most 10; no model call) into a `TopicQuiz` row with `kind: 'retry'` (reused when the same questions are already a retry set). 200 `{ quizSetId, questionCount }`; 404 when nothing was missed. It is taken like any set: `POST /quiz-attempts` with `quizSetId`, so it updates mastery and the schedule like a quiz. Attempts taken on the first quiz (no set id) are read against the oldest set once sets exist.
+- **`POST /api/topics/[topicId]/fresh-review`**: starts the regeneration job for `topic_quiz` with `question_count: 6`, `difficulty_level` from displayed mastery (< 0.4 easy, < 0.75 medium, else hard), `focus` = "Concepts you missed: ..." (the `concepts_tested` of the missed questions, at most 280 characters), and `prerequisite_topic_id` (the weakest prerequisite topic that exists) with `prerequisite_questions: 2`. Answers like regenerate-content (`{ jobId, status, ... }`). The page follows the job (`?job=<id>`).
+- `POST /api/topics/[topicId]/regenerate-content` accepts the two new preferences (`prerequisite_topic_id`, which must be another topic of the course, and `prerequisite_questions` 1..2). The AI service appends the prerequisite's primary excerpts (up to 6 chunks, about 2,500 tokens, marked `use="prerequisite"`) after the topic's own, asks for that many questions about it, and tags questions sourced only from them with `prerequisite_topic` (the topic's name).
+- The Review page (`/courses/[id]/review`) lists topics due by the end of today in the student's zone, each with the two buttons ("Retry what you missed" is hidden when nothing was missed), then "Coming up" and the voice sprint.
+
+### 10.5 Mastery, exam grading, decay
+
+- Weights and sources: section 4. `computeMasteryFromSignals` takes `practiceScores`; `MASTERY_HISTORY.practice` is 20.
+- **Exam grading updates review schedules.** The grading job still stores one exam signal per question (with the question's topic). The first time the graded result is seen, `applyGradedExam` recomputes each asked topic's mastery and calls `upsertReviewSchedule` (`wasCorrect` = the topic's mean exam score for that submission is at least 0.7). "Seen" means any read of the course shell (every course page) or the results page, so it needs no extra call. It is idempotent: `ExamSubmission.reviewAppliedAt` is claimed with a conditional update, a failure puts it back, and the grading job clears it when a regrade replaces the result, so the new grading is applied once more. (A cleaner equivalent of "the AI service triggers it": no second copy of the mastery math in Python, and no route that has to be called.)
+- **Decay at read time.** `displayMastery(mastery, { dueAt, intervalDays }, now)` returns `mastery * 0.5^(overdueDays / (2 * intervalDays))`, floored at `0.5 * mastery`; not overdue, no schedule or no mastery returns the input. It is applied in `getCourseShell`, `getNavIndex`, `listCourses`, `dueReviews` and the review queries, so the overview ring, topic tiles, sidebar, topics list, topic header and home all show the same value.
 
 ---
 

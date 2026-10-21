@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 import { DEMO_EMAIL, DEMO_PASSWORD, demoIds } from './helpers/seed-demo'
+import { addContent, createCourse, dayIn, makeDue, quizQuestions, setZoneCookie, signUpAndIn, ZONE } from './helpers/loop'
 
 // No page may scroll sideways on a phone. Every main page is loaded at 390 x 844 (the mock LLM's
 // demo course, seeded by global-setup.ts) and the document must be no wider than the window.
@@ -69,6 +70,7 @@ const PAGES: [string, string][] = [
   ['ask', `/courses/${course}/ask`],
   ['mock exams', `/courses/${course}/exams`],
   ['new mock exam', `/courses/${course}/exams/new`],
+  ['plan', `/courses/${course}/plan`],
   ['review', `/courses/${course}/review`],
   ['settings', `/courses/${course}/settings`],
 ]
@@ -101,6 +103,38 @@ test.describe('signed in', () => {
     const { exams } = await (await page.request.get(`/api/projects/${course}/exams`)).json()
     const { submissions } = await (await page.request.get(`/api/exams/${exams[0].id}/submissions`)).json()
     await expectNoSidewaysScroll(page, `/courses/${course}/exams/${exams[0].id}/results/${submissions[0].id}`)
+  })
+})
+
+// The plan and review pages with something on them: a short plan with its warning, the not-scheduled list
+// and a final week, and a review list with a due topic and both of its buttons.
+test.describe('learning loop pages', () => {
+  test.use({ timezoneId: ZONE })
+
+  test('a short plan, with its warning and the list of topics left out, fits the window', async ({ page, context }) => {
+    await setZoneCookie(context)
+    await signUpAndIn(page, 'overflow-plan')
+    const names = ['Introduction to probability and counting', 'Conditional probability and independence', 'Discrete random variables', 'Continuous random variables and densities', 'Joint distributions and covariance', 'Limit theorems and approximations']
+    const loop = await createCourse(page, 'A course with long topic names to test wrapping', names.map((name) => ({ name, minutes: 60 })), {
+      examDate: dayIn(ZONE, 12),
+      dailyMinutes: 30,
+    })
+    await expectNoSidewaysScroll(page, `/courses/${loop.courseId}/plan`)
+    await expect(page.getByRole('heading', { level: 2, name: /^Not scheduled/ })).toBeVisible()
+    await expectNoSidewaysScroll(page, `/courses/${loop.courseId}/settings`)
+  })
+
+  test('the review list with a due topic fits the window', async ({ page, context }) => {
+    await setZoneCookie(context)
+    const user = await signUpAndIn(page, 'overflow-review')
+    const loop = await createCourse(page, 'Review overflow', [{ name: 'A topic with a rather long name, to see how the buttons wrap on a phone' }])
+    const topic = Object.values(loop.topics)[0]
+    await addContent(topic, { topic_quiz: quizQuestions(4) })
+    await page.request.post(`/api/topics/${topic}/quiz-attempts`, { data: { answers: { '0': 'true', '1': 'false', '2': 'false', '3': 'true' } } })
+    await makeDue(topic, user.email)
+    await expectNoSidewaysScroll(page, `/courses/${loop.courseId}/review`)
+    await expect(page.getByRole('button', { name: /^Retry what you missed/ })).toBeVisible()
+    await expectNoSidewaysScroll(page, `/courses/${loop.courseId}/topics/${topic}?view=quiz`)
   })
 })
 
