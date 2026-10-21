@@ -73,11 +73,11 @@ test('a past exam gets a style profile and the new-exam form offers to match it'
   // The planner marks the topics the exam questions test (the mock leaves the last topic out).
   const flagged = () =>
     withPrisma((prisma) =>
-      prisma.$queryRaw<{ exam_relevant: boolean }[]>`SELECT exam_relevant FROM topics WHERE project_id = ${courseId} ORDER BY order_index`
+      prisma.topic.findMany({ where: { projectId: courseId }, orderBy: { orderIndex: 'asc' }, select: { examRelevant: true } })
     )
-  await expect.poll(async () => (await flagged()).some((row) => row.exam_relevant), { timeout: 60_000, intervals: [1000] }).toBe(true)
+  await expect.poll(async () => (await flagged()).some((row) => row.examRelevant), { timeout: 60_000, intervals: [1000] }).toBe(true)
   const flags = await flagged()
-  if (flags.length > 1) expect(flags[flags.length - 1].exam_relevant).toBe(false)
+  if (flags.length > 1) expect(flags[flags.length - 1].examRelevant).toBe(false)
   const map = await withPrisma(
     async (prisma) => (await prisma.material.findUnique({ where: { id: examId }, select: { examTopicMap: true } }))?.examTopicMap
   )

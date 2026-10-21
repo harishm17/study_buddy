@@ -613,7 +613,7 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
   - `MaterialChunk`: text, `vector(384)` embedding, generated `tsvector`, `sectionHierarchy`, `pageStart/End`, `chunkIndex`, `tokenCount`.
 - **Unit** (new): `id, projectId, title, summary?, orderIndex, weekLabel?, createdAt`; index `(projectId, orderIndex)`; deleting a unit sets its topics' `unitId` to null.
 - **TopicSource** (new): `id, topicId, materialId, pageStart?, pageEnd?, chunkIndexStart, chunkIndexEnd, role: primary|supporting`. The planner writes one `primary` row per planned section: a contiguous range of one file's chunks. Cascades with the topic and the material.
-- **Topic:** `name, description?, keywords[], orderIndex, sourceMaterialIds[], userConfirmed`, plus (new) `unitId?`, `objectives[]`, `prerequisiteIds[]`, `estimatedMinutes?`, and `examRelevant` (§11; the column belongs to the learning-loop migration).
+- **Topic:** `name, description?, keywords[], orderIndex, sourceMaterialIds[], userConfirmed`, plus (new) `unitId?`, `objectives[]`, `prerequisiteIds[]`, `estimatedMinutes?`, and `examRelevant` (the learning loop reads it; the past-exams jobs write it, §11.3).
   - There is **no `Topic.status` field**. The only state is `userConfirmed`, plus the project status.
   - `TopicChunkMapping(topicId, chunkId, relevanceScore, relevanceSource: keyword_match|semantic_search|llm_validated)`.
   - Flow: extract (an AI job creates topics with `userConfirmed=false`), review, then confirm. During review the student can rename, reorder (up/down via `orderIndex`), merge, delete, add manually (auto-confirmed) and re-extract. `topics/confirm` confirms all topics. Re-extract deletes unconfirmed leftovers but keeps confirmed topics.
@@ -1258,7 +1258,7 @@ When a topic is due, two actions (the Review page and the topic's quiz lobby):
 
 ## 11. Past exams (learning v2, stage 3)
 
-A file with role `exam` teaches the app how the student's exams are written and which topics they test. Migration `20261102000000_past_exam_style` adds `materials.style_profile jsonb` (nullable). The code also writes `topics.exam_relevant` (and, in `20261102000002_exam_question_topics`, `materials.exam_topic_map`); that column is added by the learning-loop migration (`Topic.examRelevant Boolean @default(false)`). While this branch stood alone, `20261102000001_topic_exam_relevant_tmp` added it with `IF NOT EXISTS`; drop that directory when the branches are combined.
+A file with role `exam` teaches the app how the student's exams are written and which topics they test. Migration `20261111000000_past_exam_style` adds `materials.style_profile jsonb` (nullable) and `20261111000001_exam_question_topics` adds `materials.exam_topic_map jsonb` (nullable). The code also writes `topics.exam_relevant`, the column the learning-loop migration `20261110000000_learning_loop` added.
 
 ### 11.1 The style profile (`Material.styleProfile`)
 
@@ -1294,7 +1294,7 @@ Built by the `profile_exam` job once a past exam is chunked: one model call (pur
 A topic is `examRelevant` when at least one question of the course's past exams tests it. One model call per course (purpose `exam_style`: the `MODEL_TOPICS` model at low effort) gets the text of the valid `exam` files and the topics (key, name, objectives) and returns, for each real question, a label, a paraphrase of at most 12 words and 0 to 3 topic keys. The flag is derived from those answers: true for every topic some question names, false for all others (every topic of the course is set).
 
 - **Input.** Chunks that are mostly numbers (formula sheets, tables) are left out, whole chunks only, up to about 30k tokens (120,000 characters) shared between the exam files. The prompt tells the model to ignore cover pages and instructions.
-- **Stored per exam file**: `Material.examTopicMap` (`materials.exam_topic_map`, migration `20261102000002_exam_question_topics`; null for every other file and cleared when the role changes away from `exam`):
+- **Stored per exam file**: `Material.examTopicMap` (`materials.exam_topic_map`, migration `20261111000001_exam_question_topics`; null for every other file and cleared when the role changes away from `exam`):
   ```ts
   { version: 1, input_hash: string,
     questions: { label: string /* "Problem 3", 40 chars max */,
