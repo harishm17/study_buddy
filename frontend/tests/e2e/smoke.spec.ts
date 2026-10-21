@@ -22,7 +22,8 @@ test('sign up, create a course, sign out, sign in, find it from home and the pal
   await page.getByRole('button', { name: 'Create course' }).click()
   await expect(page).toHaveURL(/\/courses\/[0-9a-f-]{36}$/)
   await expect(page.getByRole('heading', { level: 1, name: courseName })).toBeVisible()
-  await expect(page.getByText('Coming in the next build')).toBeVisible()
+  // A new course opens on the setup guide.
+  await expect(page.getByRole('heading', { level: 2, name: 'Add your materials' })).toBeVisible()
   const courseUrl = page.url()
 
   // Sign out through the account menu.
