@@ -51,3 +51,6 @@ htmlcov/
 # Retrieval eval downloads (OpenStax PDFs are not committed)
 evals/.cache/
 !evals/results/*.md
+
+# e2e stack logs and uploads (scripts/e2e-stack.sh)
+.e2e/

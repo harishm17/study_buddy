@@ -139,7 +139,7 @@ cd frontend && npm run lint && npm test && npm run build && npm run test:e2e
 cd ai-service && uv run pytest
 ```
 
-CI (`.github/workflows/ci.yml`) runs Prisma validation, lint, unit tests and a production build for the web app, and the pytest suite for the AI service.
+CI (`.github/workflows/ci.yml`) runs Prisma validation, lint, unit tests and a production build for the web app, the pytest suite for the AI service, and the Playwright specs against Postgres with pgvector, the AI service on the mock LLM and the production build (`scripts/e2e-stack.sh` starts the services; run it the same way locally with `DATABASE_URL` set to a migrated database).
 
 ## Deployment
 

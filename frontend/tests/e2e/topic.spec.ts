@@ -101,7 +101,9 @@ test('the study path: write, read, practise, take a quiz', async ({ page }) => {
   await page.getByRole('button', { name: 'Check', exact: true }).click()
   await expect(page.getByText('Correct', { exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('navigation', { name: 'Study path' }).getByRole('img', { name: 'Completed' })).toBeVisible()
+  await expect(
+    page.getByRole('navigation', { name: 'Study path' }).getByRole('link', { name: /Practice/ }).getByRole('img', { name: 'Completed' })
+  ).toBeVisible()
 
   // Examples: create and mark as done.
   await page.goto(`${base}?view=examples`)
