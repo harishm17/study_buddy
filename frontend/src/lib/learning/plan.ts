@@ -19,7 +19,8 @@ import { localDateParts } from './study-plan-time'
  *   - The last 2 days (the day before the exam and the exam day) hold only reviews of the weakest topics.
  *
  * When the exam is too close for everything to fit, the plan says so and chooses: the optional unit
- * mock exams are dropped, then topics that appear on past exams come first, then course order. Topics
+ * mock exams are dropped, then the earlier of the two full mock exams (one stays, 2 or more days before
+ * the exam), then topics that appear on past exams come first, then course order. Topics
  * that still do not fit are listed as not scheduled; nothing is dropped silently.
  */
 
@@ -138,6 +139,8 @@ export type Plan = {
   shortMessage: string | null
   /** The optional unit mock exams were left out to make room for topics. */
   unitMocksSkipped: boolean
+  /** Only one of the two full mock exams is planned, to leave time for learning. */
+  fullMocksReduced: boolean
   /** Topics that are not in the plan, with why. Null when everything is scheduled. */
   notScheduled: { reason: 'short' | 'later'; topics: { id: string; name: string }[] } | null
   /** Why fewer than two full mock exams were planned, or null. */
@@ -255,6 +258,8 @@ type SimOptions = {
   topics: PlanTopic[]
   order: PlanTopic[]
   unitMocks: boolean
+  /** Time is short: one full mock exam instead of two, to leave the time to learning. */
+  singleMock: boolean
   excluded: Set<string>
   doneMinutes: number
 }
@@ -263,7 +268,7 @@ const itemId = (kind: PlanItemKind, key: string, date: string, part?: number) =>
   `${kind}:${key}:${date}${part ? `:${part}` : ''}`
 
 function simulate(options: SimOptions): Simulation {
-  const { dates, examDay, input, topics, unitMocks, excluded, doneMinutes } = options
+  const { dates, examDay, input, topics, unitMocks, singleMock, excluded, doneMinutes } = options
   const daily = clampMinutes(input.dailyMinutes)
   const overrun = Math.max(5, Math.round(daily * OVERRUN_SHARE))
   const today = dates[0]
@@ -284,7 +289,15 @@ function simulate(options: SimOptions): Simulation {
     const needed = Math.max(0, 2 - Math.max(0, input.fullMocksDoneInFinalWeek))
     const second = examIndex - 2
     const first = Math.max(0, examIndex - 5)
-    if (needed >= 1 && second >= 0) {
+    if (singleMock) {
+      // The one mock: two days before the exam, or the latest day that still leaves a day before it.
+      const only = second >= 0 ? second : examIndex - 1
+      if (needed >= 1 && only >= 0) {
+        fullMockIndexes.push(only)
+        // A mock the day before the exam takes that day from the final review.
+        finalIndexes.delete(only)
+      }
+    } else if (needed >= 1 && second >= 0) {
       if (needed >= 2 && first < second) fullMockIndexes.push(first)
       fullMockIndexes.push(second)
     }
@@ -611,6 +624,7 @@ export function buildPlan(input: PlanInput): Plan {
     short: false,
     shortMessage: null,
     unitMocksSkipped: false,
+    fullMocksReduced: false,
     notScheduled: null,
     mockNote: null,
     remaining: { topics: 0, minutes: 0 },
@@ -629,7 +643,7 @@ export function buildPlan(input: PlanInput): Plan {
   const todo = topics.filter((topic) => !topic.learned)
   const remainingMinutes = todo.reduce((sum, topic) => sum + learnMinutesLeft(topic), 0)
 
-  const run = (config: { examFirst: boolean; unitMocks: boolean }): Simulation => {
+  const run = (config: { examFirst: boolean; unitMocks: boolean; singleMock?: boolean }): Simulation => {
     const excluded = new Set<string>()
     let result: Simulation
     // A topic that was only partly placed is taken out and the plan is laid out again, so the
@@ -642,6 +656,7 @@ export function buildPlan(input: PlanInput): Plan {
         topics,
         order: learnOrder(topics, { examFirst: config.examFirst }),
         unitMocks: config.unitMocks,
+        singleMock: config.singleMock ?? false,
         excluded,
         doneMinutes,
       })
@@ -651,22 +666,29 @@ export function buildPlan(input: PlanInput): Plan {
     return { ...result, unplaced: [...result.unplaced.filter((topic) => !excluded.has(topic.id)), ...topics.filter((t) => excluded.has(t.id))] }
   }
 
-  // First the plan in course order with every mock exam. If that leaves topics out and the exam
-  // date is inside the plan, drop the optional unit mock exams; if topics are still left out, the
-  // time is short, and past-exam topics go first.
+  // First the plan in course order with every mock exam. If that leaves topics out and the exam date
+  // is inside the plan, the time is tight and mock exams give way to learning, in this order: the
+  // optional unit mock exams, then the earlier of the two full mocks (one stays, at least 2 days
+  // before the exam). If topics are still left out, the time is short: past-exam topics go first.
   const eligibleUnitMocks = input.units.some(
     (unit) =>
       !input.unitMocksDone.includes(unit.id) &&
       topics.filter((topic) => topic.unitId === unit.id).length >= UNIT_MOCK_MIN_TOPICS
   )
+  const mocksWanted = Math.max(0, 2 - Math.max(0, input.fullMocksDoneInFinalWeek))
   let chosen = run({ examFirst: false, unitMocks: true })
   let short = false
   let unitMocksSkipped = false
+  let fullMocksReduced = false
   if (chosen.unplaced.length > 0 && examDay) {
     unitMocksSkipped = eligibleUnitMocks
     chosen = run({ examFirst: false, unitMocks: false })
     if (chosen.unplaced.length > 0) {
-      chosen = run({ examFirst: true, unitMocks: false })
+      fullMocksReduced = mocksWanted >= 2
+      chosen = run({ examFirst: false, unitMocks: false, singleMock: true })
+    }
+    if (chosen.unplaced.length > 0) {
+      chosen = run({ examFirst: true, unitMocks: false, singleMock: true })
       short = chosen.unplaced.length > 0
     }
   }
@@ -701,13 +723,16 @@ export function buildPlan(input: PlanInput): Plan {
       `Time is short. You have room to learn ${fits} of the ${plural(total, 'topic')} left before your exam ` +
       `(about ${hoursLabel(placedMinutes)} of the ${hoursLabel(remainingMinutes)} they need). ` +
       (anyRelevant ? 'Topics that appear on your past exams come first, then course order.' : 'They are in course order.') +
-      (unitMocksSkipped ? ' The mock exams after each unit are left out to make room.' : '')
+      (unitMocksSkipped ? ' The mock exams after each unit are left out to make room.' : '') +
+      (fullMocksReduced ? ' Only one full mock exam is planned, so there is more time to learn.' : '')
   }
 
   let mockNote: string | null = null
   if (examDate && daysToExam !== null) {
     const needed = Math.max(0, 2 - input.fullMocksDoneInFinalWeek)
-    if (needed > 0 && chosen.fullMockDays.length < needed) {
+    if (fullMocksReduced && chosen.fullMockDays.length === 1) {
+      mockNote = 'To leave time for learning, only one full mock exam is planned before your exam.'
+    } else if (needed > 0 && chosen.fullMockDays.length < needed) {
       mockNote =
         chosen.fullMockDays.length === 0
           ? 'Your exam is less than 2 days away, so there is no room for a full mock exam. Take one now if you can.'
@@ -721,6 +746,7 @@ export function buildPlan(input: PlanInput): Plan {
     short,
     shortMessage,
     unitMocksSkipped,
+    fullMocksReduced,
     mockNote,
     notScheduled: unplaced.length > 0 ? { reason: short ? 'short' : 'later', topics: unplaced } : null,
     remaining: { topics: todo.length, minutes: remainingMinutes },

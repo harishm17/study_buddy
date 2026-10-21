@@ -1201,7 +1201,7 @@ Migration `20261110000000_learning_loop` (additive): `projects.exam_date`, `proj
 - Learn blocks: topics in course order but never before an unlearned prerequisite, `estimatedMinutes` each (35 when null; half for a topic with notes or examples done). A block may run 15% over the day rather than wait; one longer than a whole day is split into parts of at least 15 minutes ("Part 1 of 2").
 - First quiz: the day after a topic is learned (the day after its last part). Reviews: at `ReviewSchedule.dueAt` in the student's days, overdue ones today.
 - Mock exams: one the day after the last topic of a unit is learned (units with 3 or more topics, none if one already covered the unit); with an exam date two full mocks in the final week, the second at least 2 days before it (one when one was already taken in the final week; a note says when there is no room). The final 2 days (the day before, and the exam day) hold only reviews of the weakest topics.
-- Short time (exam date given, topics left that do not fit): first the unit mocks are dropped (a plain notice, not a warning); if topics still do not fit, past-exam topics go first, then course order, `short` is true with `shortMessage`, and `notScheduled` lists the rest with `reason: 'short'`. A topic that would only be half taught is not started. Without an exam date, what is beyond the 14 days is `notScheduled` with `reason: 'later'`.
+- Short time (exam date given, topics left that do not fit), in this order: the unit mocks are dropped (a plain notice, not a warning); then the earlier of the two full mocks is dropped, keeping exactly one at least 2 days before the exam (the latest day that still leaves a day before it when the window is that small, which then is not a final-review day), `fullMocksReduced` is true and `mockNote` says so; if topics still do not fit, past-exam topics go first, then course order, `short` is true with `shortMessage`, and `notScheduled` lists the rest with `reason: 'short'`. Nothing changes when everything fits. A topic that would only be half taught is not started. Without an exam date, what is beyond the 14 days is `notScheduled` with `reason: 'later'`.
 - Done: the plan lists what is left, so a finished item leaves it. Today's list also holds the items finished today (ticked, `done: true`, their time taken out of today): topics learned today (progress touched today and not by a quiz), quizzes and reviews taken today, mock exams submitted today.
 
 ```ts
@@ -1209,7 +1209,7 @@ Plan = {
   status: 'ready'|'no_topics'|'exam_passed', today: 'YYYY-MM-DD', mode: 'exam'|'rolling',
   examDate, daysToExam, dailyMinutes,
   days: { date, isToday, isExamDay, isFinalReview, items: PlanItem[], minutes, doneMinutes }[],
-  short: boolean, shortMessage: string|null, unitMocksSkipped: boolean, mockNote: string|null,
+  short: boolean, shortMessage: string|null, unitMocksSkipped: boolean, fullMocksReduced: boolean, mockNote: string|null,
   notScheduled: { reason: 'short'|'later', topics: {id,name}[] } | null,
   remaining: { topics, minutes }
 }

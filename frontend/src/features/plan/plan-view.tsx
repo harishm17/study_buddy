@@ -213,7 +213,7 @@ export function PlanView({ courseId, plan }: { courseId: string; plan: Plan }) {
             The mock exams after each unit are left out so every topic fits before your exam.
           </InlineAlert>
         ) : null}
-        {plan.mockNote ? <InlineAlert tone="neutral">{plan.mockNote}</InlineAlert> : null}
+        {plan.mockNote && !(plan.short && plan.fullMocksReduced) ? <InlineAlert tone="neutral">{plan.mockNote}</InlineAlert> : null}
         {notScheduled ? (
           <section aria-labelledby="not-scheduled-heading" className="rounded-card border border-border bg-surface p-4">
             <h2 id="not-scheduled-heading" className="text-body-strong text-fg">

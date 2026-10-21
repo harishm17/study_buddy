@@ -1104,9 +1104,13 @@ Session (in place of the lobby; on mobile it uses the focus layout):
   to rest."
 - Above the weeks: the summary line (exam in N days / the next 14 days), then, as they apply: the
   short-time warning (InlineAlert warning, title "Time is short", plain words: how many topics fit,
-  that past-exam topics come first, that unit mocks were left out), a neutral notice when only the unit
-  mocks were dropped, a note when the exam is too close for two full mocks, and the **Not scheduled:
+  that past-exam topics come first, that unit mocks were left out and that only one full mock exam is
+  planned), a neutral notice when only the mocks were dropped to make everything fit, a note when the
+  exam is too close for two full mocks, and the **Not scheduled:
   N topics** card (heading, one sentence, topics as links). Nothing the plan leaves out is hidden.
+- When time is short the plan gives mock exams up before topics: the unit mocks first, then the earlier
+  of the two final-week mocks. One full mock stays, 2 days before the exam; with an exam tomorrow it is
+  today.
 - Long plans keep the first three weeks and the last two open and fold the weeks in between into a
   `details` ("Weeks in between"). Empty states: no topics (EmptyState with "Go to topics"), exam date
   passed (neutral InlineAlert with "Change the date"), all caught up (EmptyState with "New mock exam").

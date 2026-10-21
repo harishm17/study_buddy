@@ -281,8 +281,8 @@ test.describe('a course built to be edited', () => {
     await expect(body(page).getByText('Week 4', { exact: true })).toBeVisible()
 
     // A new topic goes into the unit picked next to the field (the last unit by default).
-    await page.getByLabel('Add a topic').fill('Shortest paths')
-    await page.getByLabel('Add a topic').press('Enter')
+    await page.getByLabel('Add a topic').locator('visible=true').fill('Shortest paths')
+    await page.getByLabel('Add a topic').locator('visible=true').press('Enter')
     await expect(rows(page, 'Graphs')).toHaveCount(1)
 
     // Rename the unit.
