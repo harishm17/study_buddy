@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { examSummary, examTitle, formatMinutes, formatScore, preselectTopics, QUESTION_MIXES } from './exam-options'
+import { examSummary, formatMinutes, formatScore, preselectTopics, QUESTION_MIXES } from './exam-options'
 
 const NOW = Date.parse('2026-10-20T12:00:00Z')
 
@@ -40,11 +40,6 @@ describe('question mixes', () => {
 })
 
 describe('labels', () => {
-  it('names generated exams by date and keeps custom names', () => {
-    assert.equal(examTitle('Sample Exam - 2026-10-20', '2026-10-20T12:00:00Z'), 'Sample exam, Oct 20')
-    assert.equal(examTitle('Midterm drill', '2026-10-20T12:00:00Z'), 'Midterm drill')
-  })
-
   it('summarises and formats', () => {
     assert.equal(examSummary({ questionCount: 20, durationMinutes: 60, difficulty: 'medium' }), '20 questions, 1 hr, medium')
     assert.equal(formatMinutes(90), '1 hr 30 min')

@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/prisma'
+import { examTitle } from '@/lib/exams/display'
 import { buildNextActionsForProject } from '@/lib/learning/planner'
 import { ACTIVE_JOB_STATUSES } from '@/lib/jobs/active-jobs'
 import {
@@ -333,7 +334,7 @@ export async function getCourseOverview(userId: string, courseId: string): Promi
         id: true,
         submittedAt: true,
         aiGrading: true,
-        sampleExam: { select: { id: true, name: true } },
+        sampleExam: { select: { id: true, name: true, createdAt: true } },
       },
     }),
   ])
@@ -360,7 +361,7 @@ export async function getCourseOverview(userId: string, courseId: string): Promi
       recentExams: submissions.map((submission) => ({
         submissionId: submission.id,
         examId: submission.sampleExam.id,
-        name: submission.sampleExam.name,
+        name: examTitle(submission.sampleExam.name, submission.sampleExam.createdAt),
         submittedAt: submission.submittedAt.toISOString(),
         score:
           isRecord(submission.aiGrading) && typeof submission.aiGrading.overall_score === 'number'

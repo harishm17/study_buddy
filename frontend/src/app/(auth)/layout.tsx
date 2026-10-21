@@ -4,8 +4,8 @@ import { Brand } from '@/components/shell/brand'
 
 /**
  * Two columns on desktop: a 480px form column, and a product screenshot on a quiet panel.
- * The screenshots (public/screens/notes-light.png and notes-dark.png) are swapped for the
- * real topic notes page by the design lead.
+ * The screenshots are the real topic notes page (public/screens/notes-light.webp and
+ * notes-dark.webp), taken from the showcase course.
  */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,7 +21,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div aria-hidden="true" className="hidden p-4 lg:block">
         <div className="relative h-full overflow-hidden rounded-card bg-surface-2">
           <Image
-            src="/screens/notes-light.png"
+            src="/screens/notes-light.webp"
             alt=""
             width={1600}
             height={1000}
@@ -30,7 +30,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             style={{ width: 1100, height: 'auto' }}
           />
           <Image
-            src="/screens/notes-dark.png"
+            src="/screens/notes-dark.webp"
             alt=""
             width={1600}
             height={1000}

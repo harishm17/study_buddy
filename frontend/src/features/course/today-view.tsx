@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ProgressRing } from '@/components/ui/progress-ring'
-import { formatDate } from '@/lib/format'
 import {
   masteryLabel,
   masteryLevel,
@@ -164,7 +163,6 @@ function RecentExams({ courseId, exams }: { courseId: string; exams: TodayData['
             <li key={exam.submissionId} className="flex min-h-12 items-center gap-3 py-2">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-body-strong text-fg">{exam.name}</p>
-                <p className="text-caption font-normal text-fg-3">{formatDate(exam.submittedAt)}</p>
               </div>
               <ScoreBadge score={exam.score} />
               <Button asChild size="sm" variant="secondary">

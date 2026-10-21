@@ -1,5 +1,4 @@
 /** The choices on the new mock exam form, and the rules that turn them into a request. */
-import { formatDate } from '@/lib/format'
 import { LEARNING_BELOW, STRONG_FROM } from '@/lib/mastery'
 
 export const QUESTION_COUNTS = [10, 20, 30, 40] as const
@@ -42,13 +41,6 @@ export function preselectTopics(topics: readonly TopicSignal[], now: number): st
 
 /** True when a topic's mastery is low enough to show the warning tone. */
 export const isLowMastery = (mastery: number | null): boolean => mastery !== null && mastery < LEARNING_BELOW
-
-const GENERATED_NAME = /^Sample Exam - \d{4}-\d{2}-\d{2}$/
-
-/** "Sample exam, Oct 20" for generated names; a custom name is kept as it is. */
-export function examTitle(name: string, createdAt: string | Date): string {
-  return GENERATED_NAME.test(name) ? `Sample exam, ${formatDate(createdAt)}` : name
-}
 
 const DIFFICULTY_LABELS: Record<string, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' }
 export const difficultyLabel = (value: string): string => DIFFICULTY_LABELS[value] ?? value
