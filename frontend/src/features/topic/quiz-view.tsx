@@ -43,20 +43,17 @@ export function QuizView({ courseId, topicId, sets, attempts, voiceHref, review,
   const router = useRouter()
   const { setKeysSuspended } = useTopic()
   const { running } = useGeneration('quiz')
-  // The newest regular set, unless one was asked for: a retry set made a moment ago is not the one to open next week.
-  const [setId, setSetId] = React.useState(
-    () => (initialSetId && sets.some((item) => item.id === initialSetId) ? initialSetId : (sets.find((item) => item.kind === 'standard') ?? sets[0]).id)
-  )
+  // The set asked for (?set=), else the student's own pick, else the newest regular set: a retry set
+  // made a moment ago is not the one to open next week. A pick made before another set was asked for is dropped.
+  const [pick, setPick] = React.useState<{ id: string; whenAsked: string | undefined } | null>(null)
+  const asked = initialSetId && sets.some((item) => item.id === initialSetId) ? initialSetId : undefined
+  const picked = pick && pick.whenAsked === initialSetId && sets.some((item) => item.id === pick.id) ? pick.id : undefined
+  const setId = picked ?? asked ?? (sets.find((item) => item.kind === 'standard') ?? sets[0]).id
   const activeSet = sets.find((item) => item.id === setId) ?? sets[0]
   const { session, save, clear } = useQuizSession(topicId, activeSet.id)
   const [grading, setGrading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [result, setResult] = React.useState<{ setId: string; value: QuizResult } | null>(null)
-
-  // Asked for a set from outside (the retry button on the lobby, or a link): show it.
-  React.useEffect(() => {
-    if (initialSetId && sets.some((item) => item.id === initialSetId)) setSetId(initialSetId)
-  }, [initialSetId, sets])
 
   const started = React.useRef(false)
   React.useEffect(() => {
@@ -65,13 +62,12 @@ export function QuizView({ courseId, topicId, sets, attempts, voiceHref, review,
       return
     }
     if (started.current) return
-    if (initialSetId && setId !== initialSetId) return
     started.current = true
     save({ answers: {}, index: 0 })
-    // The address goes back to plain ?view=quiz, so a reload does not start the set again.
-    router.replace(`/courses/${courseId}/topics/${topicId}?view=quiz`, { scroll: false })
+    // The address drops ?start=1, so a reload does not start the set again (the set stays chosen).
+    router.replace(`/courses/${courseId}/topics/${topicId}?view=quiz${initialSetId ? `&set=${initialSetId}` : ''}`, { scroll: false })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart, initialSetId, setId])
+  }, [autoStart])
 
   const taking = !!session && !grading && !result
   React.useEffect(() => {
@@ -173,7 +169,7 @@ export function QuizView({ courseId, topicId, sets, attempts, voiceHref, review,
       attempts={attempts}
       setId={activeSet.id}
       onSetChange={(id) => {
-        setSetId(id)
+        setPick({ id, whenAsked: initialSetId })
         setResult(null)
       }}
       onStart={start}

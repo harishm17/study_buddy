@@ -45,7 +45,8 @@ async function waitForLobby(page: Page) {
 test('sprint page: header, weakest topics line, lobby with minutes left', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
   await page.goto(`/courses/${ids.courseId}/review`)
-  await expect(page.getByRole('heading', { level: 1, name: 'Voice review' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Voice review' })).toBeVisible()
   await expect(page.getByText('Covers your 3 weakest topics: Recursion basics, Graph search and Sorting by comparison.')).toBeVisible()
   await waitForLobby(page)
   await expect(page.getByText(/min left today$/)).toBeVisible()

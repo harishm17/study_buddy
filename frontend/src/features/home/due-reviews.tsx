@@ -22,7 +22,7 @@ export function DueReviews({ items, total }: { items: DueReview[]; total: number
               <ProgressRing size={16} value={item.mastery} tone={masteryTone(level) === 'warning' ? 'warning' : 'accent'} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-4">
                 <Link
-                  href={`/courses/${item.courseId}/topics/${item.topicId}?view=quiz`}
+                  href={`/courses/${item.courseId}/review#review-${item.topicId}`}
                   className="min-w-0 truncate rounded-chip text-body-strong text-fg hover:underline sm:w-64 sm:flex-none"
                 >
                   {item.topicName}
@@ -32,7 +32,7 @@ export function DueReviews({ items, total }: { items: DueReview[]; total: number
               </div>
               <Button asChild size="sm" variant="secondary">
                 <Link
-                  href={`/courses/${item.courseId}/topics/${item.topicId}?view=quiz`}
+                  href={`/courses/${item.courseId}/review#review-${item.topicId}`}
                   aria-label={`Review ${item.topicName}`}
                 >
                   Review
