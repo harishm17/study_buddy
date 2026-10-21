@@ -42,7 +42,7 @@ function UpNext({
       <div>
         <div className="flex items-center justify-between gap-3">
           <h2 id="up-next-heading" className="text-small font-medium text-accent-soft-fg">
-            {first ? 'Up next' : 'Today'}
+            Up next
           </h2>
           <Link href={planHref} className="rounded-chip text-small text-fg-2 underline-offset-[3px] hover:text-fg hover:underline">
             See the plan

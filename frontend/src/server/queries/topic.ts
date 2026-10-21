@@ -221,7 +221,9 @@ export const getTopicPage = cache(async function getTopicPage(
       questions: toPublicQuestions(legacyQuestions),
     })
   }
-  if (legacyQuestions) fullSets.set('legacy', legacyQuestions)
+  // Attempts on the first quiz have no set id. Once sets exist that quiz is the oldest of them (the content row now holds the newest).
+  const firstQuiz = storedSets.length > 0 ? storedSets[0].questions : legacyQuestions
+  if (firstQuiz) fullSets.set('legacy', firstQuiz)
 
   const attempts: QuizAttemptData[] = attemptRows.map((attempt, position) => {
     const setId = attempt.quizSetId ?? 'legacy'

@@ -11,8 +11,9 @@ import { minutesLabel } from '@/lib/learning/plan-settings'
 import { cn } from '@/lib/utils'
 import { pluralize } from '@/lib/format'
 
-/** Weeks past this many are folded away so a long plan stays easy to scan. */
-const OPEN_WEEKS = 3
+/** A long plan keeps the first weeks and the last (final weeks before an exam) open and folds the middle. */
+const FIRST_WEEKS_OPEN = 3
+const LAST_WEEKS_OPEN = 2
 
 type Week = { start: string; days: PlanDay[] }
 
@@ -184,8 +185,10 @@ export function PlanView({ courseId, plan }: { courseId: string; plan: Plan }) {
 
   const weeks = groupWeeks(plan.days)
   const thisWeek = weekStart(plan.today)
-  const open = weeks.slice(0, OPEN_WEEKS)
-  const later = weeks.slice(OPEN_WEEKS)
+  const lastOpen = plan.mode === 'exam' ? LAST_WEEKS_OPEN : 0
+  const head = weeks.slice(0, FIRST_WEEKS_OPEN)
+  const folded = weeks.slice(FIRST_WEEKS_OPEN, Math.max(FIRST_WEEKS_OPEN, weeks.length - lastOpen))
+  const tail = weeks.slice(head.length + folded.length)
   const anyItems = plan.days.some((day) => day.items.length > 0)
   const notScheduled = plan.notScheduled
 
@@ -245,21 +248,24 @@ export function PlanView({ courseId, plan }: { courseId: string; plan: Plan }) {
         </EmptyState>
       ) : (
         <div className="mt-6 flex flex-col gap-10">
-          {open.map((week) => (
+          {head.map((week) => (
             <WeekSection key={week.start} courseId={courseId} week={week} current={week.start === thisWeek} />
           ))}
-          {later.length > 0 ? (
+          {folded.length > 0 ? (
             <details>
               <summary className="cursor-pointer rounded-chip text-heading text-fg">
-                Later weeks <span className="text-small font-normal text-fg-3">({pluralize(later.length, 'week')})</span>
+                Weeks in between <span className="text-small font-normal text-fg-3">({pluralize(folded.length, 'week')})</span>
               </summary>
               <div className="mt-6 flex flex-col gap-10">
-                {later.map((week) => (
+                {folded.map((week) => (
                   <WeekSection key={week.start} courseId={courseId} week={week} current={false} />
                 ))}
               </div>
             </details>
           ) : null}
+          {tail.map((week) => (
+            <WeekSection key={week.start} courseId={courseId} week={week} current={false} />
+          ))}
         </div>
       )}
     </Page>

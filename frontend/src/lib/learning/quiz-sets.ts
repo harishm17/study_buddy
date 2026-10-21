@@ -28,19 +28,28 @@ export async function loadQuizQuestions(
   return asQuestionList(set?.questions)
 }
 
-/** Every quiz set of a topic, keyed by set id; the legacy quiz is under the key `null`. */
+/**
+ * Every quiz set of a topic, keyed by set id. Attempts taken on the first quiz (stored before sets
+ * existed) have no set id, so that quiz is under the key `null`: it is the topic_content copy, until
+ * the topic gets a set row. Writing the first set row copies the first quiz into it (oldest), and the
+ * content row is then overwritten by the new set, so from then on `null` is the oldest set.
+ */
 export async function loadAllQuizQuestionSets(
   topicId: string
 ): Promise<Map<string | null, RawQuestion[]>> {
   const [sets, legacy] = await Promise.all([
-    prisma.topicQuiz.findMany({ where: { topicId }, select: { id: true, questions: true } }),
+    prisma.topicQuiz.findMany({ where: { topicId }, orderBy: { createdAt: 'asc' }, select: { id: true, questions: true } }),
     loadLegacyQuestions(topicId),
   ])
   const map = new Map<string | null, RawQuestion[]>()
-  if (legacy) map.set(null, legacy)
+  let oldest: RawQuestion[] | null = null
   for (const set of sets) {
     const questions = asQuestionList(set.questions)
-    if (questions) map.set(set.id, questions)
+    if (!questions) continue
+    map.set(set.id, questions)
+    oldest ??= questions
   }
+  const first = oldest ?? legacy
+  if (first) map.set(null, first)
   return map
 }

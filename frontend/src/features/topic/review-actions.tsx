@@ -55,8 +55,9 @@ export function ReviewActions({ courseId, topicId, missedCount, topicName, size 
         setBusy(null)
         return
       }
-      await apiFetch(`/api/topics/${topicId}/fresh-review`, { method: 'POST' })
-      router.push(quizHref)
+      const { jobId } = await apiFetch<{ jobId: string | null }>(`/api/topics/${topicId}/fresh-review`, { method: 'POST' })
+      // The topic page follows the job it is told about, even one that finishes before the page has loaded.
+      router.push(jobId ? `${quizHref}&job=${jobId}` : quizHref)
     } catch (caught) {
       setError(isApiError(caught) ? caught.message : 'Could not start the review. Try again.')
       setBusy(null)

@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from '@/components/ui/toaster'
 import { apiFetch, isApiError } from '@/lib/api/client'
 import { fillResetTime } from '@/lib/budget/copy'
@@ -273,6 +273,13 @@ export function TopicProvider({
     },
     [topicId, track, router]
   )
+
+  // A job the address names (?job=, from "Fresh review" on the review page) is followed from the start, so a
+  // set that was written before the page loaded still shows up.
+  const namedJob = useSearchParams().get('job')
+  React.useEffect(() => {
+    if (namedJob) track(namedJob, 'quiz', Date.now(), true)
+  }, [namedJob, track])
 
   const generateReview = React.useCallback<TopicContextValue['generateReview']>(async () => {
     const kind: ContentKind = 'quiz'
