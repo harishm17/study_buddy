@@ -1,11 +1,10 @@
 import Link from 'next/link'
-import { Plus } from '@phosphor-icons/react/dist/ssr'
 import { Card } from '@/components/ui/card'
 import { RelativeTime } from '@/components/ui/relative-time'
 import { countMasteryLevels, MASTERY_LABELS, type MasteryLevel } from '@/lib/mastery'
-import { pluralize } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { CourseListItem } from '@/server/queries/courses'
+import { activeStatusLine } from './status-line'
 
 const MAX_SQUARES = 40
 
@@ -38,10 +37,7 @@ export function MasteryStrip({ levels }: { levels: MasteryLevel[] }) {
 }
 
 export function CourseCard({ course }: { course: CourseListItem }) {
-  const status =
-    course.setup.mode === 'setup'
-      ? course.setup.label
-      : `${pluralize(course.topicCount, 'topic')}, ${course.strongCount} strong`
+  const status = course.setup.mode === 'setup' ? course.setup.label : activeStatusLine(course.levels)
   return (
     <Card interactive asChild className="flex h-full flex-col gap-3">
       <Link href={`/courses/${course.id}`}>
@@ -53,18 +49,6 @@ export function CourseCard({ course }: { course: CourseListItem }) {
         </p>
       </Link>
     </Card>
-  )
-}
-
-export function NewCourseTile() {
-  return (
-    <Link
-      href="/courses/new"
-      className="flex min-h-[148px] flex-col items-center justify-center gap-2 rounded-card border border-dashed border-border-strong text-fg-2 transition-[border-color,background-color,color] duration-120 hover:border-fg-3 hover:bg-surface hover:text-fg"
-    >
-      <Plus aria-hidden="true" className="size-5" />
-      <span className="text-body-strong">New course</span>
-    </Link>
   )
 }
 
@@ -80,9 +64,6 @@ export function CourseGrid({ courses }: { courses: CourseListItem[] }) {
             <CourseCard course={course} />
           </li>
         ))}
-        <li>
-          <NewCourseTile />
-        </li>
       </ul>
     </section>
   )
