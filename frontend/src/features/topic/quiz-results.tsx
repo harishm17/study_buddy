@@ -153,7 +153,7 @@ export function QuizResults({
       <ConfidencePrompt topicId={topicId} />
 
       <div className="mt-8 border-t border-border pt-5">
-        <Button variant="ghost" onClick={onClose}>
+        <Button variant="ghost" className="-ml-3.5" onClick={onClose}>
           Back to quiz
         </Button>
       </div>

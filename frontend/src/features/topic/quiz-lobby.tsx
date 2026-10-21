@@ -54,8 +54,10 @@ function Attempt({ attempt, set, showSet }: { attempt: QuizAttemptData; set: Qui
           aria-controls={panelId}
           onClick={() => setOpen((current) => !current)}
         >
-          Review
-          <CaretDown className={cn('ml-1 size-3.5 transition-transform duration-180', open && 'rotate-180')} />
+          <span className="inline-flex items-center gap-1">
+            Review
+            <CaretDown className={cn('size-3.5 transition-transform duration-180', open && 'rotate-180')} />
+          </span>
         </Button>
       </div>
       {open ? (

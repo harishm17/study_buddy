@@ -155,8 +155,10 @@ export function NotesView({ topicId, notes, completed, nextHref }: NotesViewProp
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="secondary" className="ml-auto min-[1200px]:hidden" icon={<ListBullets />}>
-                  Contents
-                  <CaretDown className="ml-0.5 size-3.5" />
+                  <span className="inline-flex items-center gap-1">
+                    Contents
+                    <CaretDown className="size-3.5" />
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="max-w-[calc(100vw-32px)]">

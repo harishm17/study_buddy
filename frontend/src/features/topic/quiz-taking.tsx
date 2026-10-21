@@ -140,8 +140,10 @@ export function QuizTaking({ questions, answers, index, error, onAnswer, onIndex
           </Button>
         ) : (
           <Button variant="primary" onClick={() => go(current + 1)}>
-            Next
-            <ArrowRight className="ml-1.5 size-4" />
+            <span className="inline-flex items-center gap-1.5">
+              Next
+              <ArrowRight className="size-4" />
+            </span>
           </Button>
         )}
       </div>

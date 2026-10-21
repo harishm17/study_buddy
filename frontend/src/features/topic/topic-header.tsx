@@ -186,6 +186,7 @@ function EditTopicDialog({
  * content, Ask in full, and rename.
  */
 export function TopicActions({ courseId, topicId, name }: { courseId: string; topicId: string; name: string }) {
+  const router = useRouter()
   const [regenerate, setRegenerate] = React.useState<ContentKind | null>(null)
   const [editing, setEditing] = React.useState(false)
   const askHref = `/courses/${courseId}/ask?topic=${topicId}`
@@ -195,9 +196,17 @@ export function TopicActions({ courseId, topicId, name }: { courseId: string; to
       <PageHeader
         actions={
           <>
-            <Button asChild variant="secondary" size="sm" icon={<ChatCircleText />}>
+            <Button asChild variant="secondary" size="sm" icon={<ChatCircleText />} className="max-sm:hidden">
               <Link href={askHref}>Ask about this</Link>
             </Button>
+            <IconButton
+              label="Ask about this"
+              icon={<ChatCircleText />}
+              variant="secondary"
+              size="sm"
+              className="sm:hidden"
+              onClick={() => router.push(askHref)}
+            />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <IconButton label="More actions" icon={<DotsThree weight="bold" />} size="sm" />
@@ -209,8 +218,8 @@ export function TopicActions({ courseId, topicId, name }: { courseId: string; to
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem icon={<ChatCircleText />} asChild>
-                  <Link href={askHref}>Open in Ask</Link>
+                <DropdownMenuItem icon={<ChatCircleText />} onSelect={() => router.push(askHref)}>
+                  Open in Ask
                 </DropdownMenuItem>
                 <DropdownMenuItem icon={<PencilSimple />} onSelect={() => setEditing(true)}>
                   Edit topic
