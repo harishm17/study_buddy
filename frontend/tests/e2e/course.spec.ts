@@ -174,7 +174,7 @@ test('Home has no dashed new course tile and never says 0 strong; the demo cours
   // The Today view of an active course.
   await page.getByRole('link', { name: /CS 161 Algorithms/ }).first().click()
   await expect(page.getByRole('region', { name: 'Up next' })).toBeVisible()
-  await expect(page.getByRole('region', { name: 'Course progress' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Course mastery' })).toBeVisible()
   await expect(page.getByRole('main').getByRole('heading', { level: 2, name: 'Topics' })).toBeVisible()
   await expect(page.getByRole('heading', { level: 2, name: 'Recent mock exams' })).toBeVisible()
 })

@@ -37,6 +37,7 @@ elements (`icon={<Plus />}`), which keeps every primitive usable from server com
 | `question-renderer.tsx` | `QuestionRenderer` | multiple choice, true/false, numerical, short answer |
 | `markdown.tsx` | `Markdown`, `MarkdownInline` | heavy: import through `lazy-markdown.tsx` |
 | `lazy-markdown.tsx` | `LazyMarkdown`, `LazyMarkdownInline` | next/dynamic wrappers |
+| `math-text.tsx` | `MathText` | every model-written string in running text: inline markdown and KaTeX, plain strings render at once |
 | `kbd.tsx` | `Kbd` | |
 | `spinner.tsx` | `Spinner` | |
 | `styles.ts` | shared class strings | floating surface, menu item |

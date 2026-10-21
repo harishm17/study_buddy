@@ -29,6 +29,7 @@ import sql from 'highlight.js/lib/languages/sql'
 import typescript from 'highlight.js/lib/languages/typescript'
 import { Check, Copy } from '@phosphor-icons/react/dist/ssr'
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
+import { protectMathText } from '@/lib/utils/math-text'
 import { createSlugger } from '@/lib/markdown-outline'
 import { cn } from '@/lib/utils'
 
@@ -158,7 +159,7 @@ type MarkdownProps = {
 }
 
 export function Markdown({ children, variant = 'reading', learning, renderCitation, className }: MarkdownProps) {
-  const source = learning ? formatLearningMarkdown(children) : children
+  const source = protectMathText(learning ? formatLearningMarkdown(children) : children)
   const components = React.useMemo(() => buildComponents(renderCitation), [renderCitation])
   return (
     <div className={cn('md', variant === 'reading' ? 'md-reading' : 'md-compact', className)}>
@@ -203,7 +204,7 @@ export function MarkdownInline({ children, className }: { children: string; clas
         disallowedElements={BLOCK_ELEMENTS}
         unwrapDisallowed
       >
-        {children}
+        {protectMathText(children)}
       </ReactMarkdown>
     </span>
   )

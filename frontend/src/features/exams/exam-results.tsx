@@ -179,6 +179,7 @@ export function GradedResults({ result, submittedLabel }: { result: Graded; subm
                 points={question.points}
                 pointsEarned={question.pointsEarned}
                 studentAnswer={question.studentAnswer}
+                studentAnswerIsOption={question.questionType === 'multiple_choice'}
                 correctAnswer={question.correctAnswer}
                 feedback={question.feedback}
                 topicName={question.topicName}

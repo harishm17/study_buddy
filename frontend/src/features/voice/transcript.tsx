@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { Lightbulb } from '@phosphor-icons/react/dist/ssr'
 import { Badge } from '@/components/ui/badge'
+import { MathText } from '@/components/ui/math-text'
 import { cn } from '@/lib/utils'
 import { evaluationBadge, type CoachEntry, type TranscriptEntry } from './session-state'
 
@@ -90,7 +91,11 @@ function CoachTurn({ entry }: { entry: CoachEntry }) {
         {entry.evaluation && badge ? (
           <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="voice-evaluation">
             <Badge tone={badge.tone}>{badge.label}</Badge>
-            {entry.evaluation.comment ? <span className="text-small text-fg-2">{entry.evaluation.comment}</span> : null}
+            {entry.evaluation.comment ? (
+              <span className="text-small text-fg-2">
+                <MathText>{entry.evaluation.comment}</MathText>
+              </span>
+            ) : null}
           </div>
         ) : null}
         {entry.hint ? (
@@ -98,7 +103,9 @@ function CoachTurn({ entry }: { entry: CoachEntry }) {
             <Badge tone="neutral" icon={<Lightbulb />}>
               Hint
             </Badge>
-            <span className="text-small text-fg-2">{entry.hint}</span>
+            <span className="text-small text-fg-2">
+              <MathText>{entry.hint}</MathText>
+            </span>
           </div>
         ) : null}
       </div>

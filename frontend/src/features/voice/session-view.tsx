@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { InlineAlert } from '@/components/ui/inline-alert'
 import { Input } from '@/components/ui/input'
+import { MathText } from '@/components/ui/math-text'
 import type { VoiceAlert } from './errors'
 import type { MicNotice, OrbState, SessionState } from './session-state'
 import { Transcript } from './transcript'
@@ -89,7 +90,9 @@ export function SessionView({ state, orb, controller, title, hasQuestions, recog
         <div className="flex flex-1 flex-col gap-6 pb-6 pt-5">
           {question ? (
             <div data-testid="voice-question">
-              <h2 className="text-heading text-fg">{question.text}</h2>
+              <h2 className="text-heading text-fg">
+                <MathText>{question.text}</MathText>
+              </h2>
               {question.options && question.options.length > 0 ? (
                 <ul className="mt-3 flex flex-col gap-1.5">
                   {question.options.map((option) => (
@@ -97,7 +100,9 @@ export function SessionView({ state, orb, controller, title, hasQuestions, recog
                       <Badge tone="neutral" className="shrink-0 justify-center">
                         {option.id}
                       </Badge>
-                      <span>{option.text}</span>
+                      <span>
+                        <MathText>{option.text}</MathText>
+                      </span>
                     </li>
                   ))}
                 </ul>

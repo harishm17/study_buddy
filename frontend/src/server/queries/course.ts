@@ -10,7 +10,7 @@ import {
 } from '@/lib/jobs/failure-message'
 import { describeNextAction, type DescribedAction } from '@/lib/next-action'
 import { maxUploadMb } from '@/lib/storage/upload-limits'
-import { masteryLevel, countMasteryLevels, type MasteryCounts } from '@/lib/mastery'
+import { courseMastery, masteryLevel, countMasteryLevels, type MasteryCounts } from '@/lib/mastery'
 import { getCourseShell, type CourseShell, type ShellTopic } from '@/server/queries/courses'
 
 /**
@@ -260,7 +260,7 @@ export type TodayData = {
   topicCount: number
   counts: MasteryCounts
   dueCount: number
-  /** Average mastery (0..1) of the topics that have any, or null with none. */
+  /** Course mastery (0..1): mean over all topics, not-started ones counting as 0. Null with no topics. */
   averageMastery: number | null
   tiles: TodayTopic[]
   upNext: DescribedAction[]
@@ -292,14 +292,11 @@ export const isDueToday = (dueAt: string | null): boolean => !!dueAt && new Date
 export function summarizeTopics(topics: ShellTopic[]) {
   const confirmed = topics.filter((topic) => topic.confirmed)
   const levels = confirmed.map((topic) => masteryLevel(topic.mastery))
-  const withData = confirmed.filter((topic) => topic.mastery !== null)
   return {
     topicCount: confirmed.length,
     counts: countMasteryLevels(levels),
     dueCount: confirmed.filter((topic) => isDueToday(topic.dueAt)).length,
-    averageMastery: withData.length
-      ? withData.reduce((sum, topic) => sum + (topic.mastery ?? 0), 0) / withData.length
-      : null,
+    averageMastery: courseMastery(confirmed.map((topic) => topic.mastery)),
   }
 }
 
