@@ -9,7 +9,7 @@ def test_health_endpoint():
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "healthy"
-    assert body["service"] == "studybuddy-ai"
+    assert body["service"] == "margins-ai"
 
 
 def test_root_endpoint():

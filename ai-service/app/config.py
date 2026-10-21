@@ -120,7 +120,7 @@ class Settings(BaseSettings):
     ENABLE_CLOUD_TASKS: bool = False
     CLOUD_TASKS_PROJECT_ID: str = ""  # falls back to GCS_PROJECT_ID
     CLOUD_TASKS_LOCATION: str = "us-central1"
-    CLOUD_TASKS_QUEUE: str = "studybuddy-jobs"
+    CLOUD_TASKS_QUEUE: str = "margins-jobs"
 
     # S3-compatible bucket (Railway Buckets, AWS S3, R2, MinIO) for `s3://` material paths.
     S3_ENDPOINT: str = ""

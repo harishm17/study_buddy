@@ -1,4 +1,4 @@
-name: StudyBuddy CI
+name: CI
 
 on:
   push:
@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: frontend
     env:
-      DATABASE_URL: postgresql://dev:devpass@localhost:5432/studybuddy
+      DATABASE_URL: postgresql://dev:devpass@localhost:5432/margins
       NEXTAUTH_SECRET: ci-secret
       NEXTAUTH_URL: http://localhost:3000
     steps:
@@ -39,7 +39,7 @@ jobs:
       run:
         working-directory: ai-service
     env:
-      DATABASE_URL: postgresql://dev:devpass@localhost:5432/studybuddy
+      DATABASE_URL: postgresql://dev:devpass@localhost:5432/margins
       ANTHROPIC_API_KEY: test-key
     steps:
       - uses: actions/checkout@v4
@@ -61,18 +61,18 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg16
         env:
-          POSTGRES_DB: studybuddy
+          POSTGRES_DB: margins
           POSTGRES_USER: dev
           POSTGRES_PASSWORD: devpass
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U dev -d studybuddy"
+          --health-cmd "pg_isready -U dev -d margins"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: postgresql://dev:devpass@localhost:5432/studybuddy
+      DATABASE_URL: postgresql://dev:devpass@localhost:5432/margins
       NEXTAUTH_SECRET: ci-secret-ci-secret-ci-secret-32chars
       NEXTAUTH_URL: http://localhost:3000
       PLAYWRIGHT_BASE_URL: http://localhost:3000
@@ -137,16 +137,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t studybuddy-frontend frontend
+      - run: docker build -t margins-frontend frontend
       - name: Image runs as a non-root user and serves the sign-in page
         run: |
-          test "$(docker run --rm --entrypoint id studybuddy-frontend -u)" != "0"
+          test "$(docker run --rm --entrypoint id margins-frontend -u)" != "0"
           # Railway's pre-deploy command runs `prisma migrate deploy` in this image.
-          docker run --rm --network none --entrypoint prisma studybuddy-frontend --version
+          docker run --rm --network none --entrypoint prisma margins-frontend --version
           docker run -d --name web -p 3000:3000 \
             -e DATABASE_URL=postgresql://u:p@127.0.0.1:1/db \
             -e NEXTAUTH_SECRET=ci-secret -e NEXTAUTH_URL=http://127.0.0.1:3000 \
-            studybuddy-frontend
+            margins-frontend
           for i in $(seq 1 30); do
             curl -fsS -o /dev/null http://127.0.0.1:3000/login && exit 0
             sleep 1
@@ -158,25 +158,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t studybuddy-ai ai-service
+      - run: docker build -t margins-ai ai-service
       - name: Image runs as a non-root user
         run: |
-          uid="$(docker run --rm --entrypoint id studybuddy-ai -u)"
+          uid="$(docker run --rm --entrypoint id margins-ai -u)"
           echo "uid=$uid"
           test "$uid" != "0"
       - name: Embedding model and tokenizer load offline as the app user
         run: |
-          docker run --rm --network none --entrypoint python studybuddy-ai -c \
+          docker run --rm --network none --entrypoint python margins-ai -c \
             "import os; from fastembed import TextEmbedding; m = TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir=os.environ['EMBEDDING_CACHE_DIR']); print(len(next(iter(m.embed(['hello'])))))"
-          docker run --rm --network none --entrypoint python studybuddy-ai -c \
+          docker run --rm --network none --entrypoint python margins-ai -c \
             "import tiktoken; print(len(tiktoken.get_encoding('cl100k_base').encode('hello world')))"
       - name: catdoc is available for legacy .doc uploads
-        run: docker run --rm --network none --entrypoint catdoc studybuddy-ai -V
+        run: docker run --rm --network none --entrypoint catdoc margins-ai -V
       - name: Image starts and answers health checks
         run: |
           docker run -d --name ai -p 8000:8000 \
             -e DATABASE_URL=postgresql://u:p@127.0.0.1:1/db -e ANTHROPIC_API_KEY=test-key \
-            studybuddy-ai
+            margins-ai
           for i in $(seq 1 30); do
             curl -fsS http://127.0.0.1:8000/health && exit 0
             sleep 1

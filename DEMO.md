@@ -8,7 +8,7 @@ Everything needed to run a live demo or record a video.
 
 | Field    | Value                  |
 |----------|------------------------|
-| Email    | demo@studybuddy.com    |
+| Email    | demo@studymargins.com |
 | Password | demo1234               |
 
 ---
@@ -67,7 +67,7 @@ docker compose up --build
 ### Scene 1 — Login
 1. Open `http://localhost:3000`
 2. Click **Log in**
-3. Enter `demo@studybuddy.com` / `demo1234`
+3. Enter `demo@studymargins.com` / `demo1234`
 4. Land on the dashboard — the seeded project is visible immediately
 
 ### Scene 2 — Project Overview

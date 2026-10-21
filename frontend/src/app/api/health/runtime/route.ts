@@ -113,18 +113,18 @@ export async function GET() {
     }
   } else {
     const primaryWritable = canWriteDir(localUploadsDir)
-    const fallbackWritable = canWriteDir('/tmp/studybuddy-uploads')
+    const fallbackWritable = canWriteDir('/tmp/margins-uploads')
     if (primaryWritable || fallbackWritable) {
       checks.push({
         name: 'local_storage_writable',
         status: 'pass',
-        message: `Local storage writable (${primaryWritable ? localUploadsDir : '/tmp/studybuddy-uploads'}).`,
+        message: `Local storage writable (${primaryWritable ? localUploadsDir : '/tmp/margins-uploads'}).`,
       })
     } else {
       checks.push({
         name: 'local_storage_writable',
         status: 'fail',
-        message: `Local storage is not writable in ${localUploadsDir} or /tmp/studybuddy-uploads.`,
+        message: `Local storage is not writable in ${localUploadsDir} or /tmp/margins-uploads.`,
       })
     }
   }

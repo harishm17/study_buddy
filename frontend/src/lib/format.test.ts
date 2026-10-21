@@ -82,6 +82,6 @@ test('names', () => {
   assert.equal(firstName('   '), null)
   assert.equal(initials('Harish Mahadevan'), 'HM')
   assert.equal(initials('harish'), 'HA')
-  assert.equal(initials(null, 'demo@studybuddy.dev'), 'DE')
+  assert.equal(initials(null, 'demo@margins.dev'), 'DE')
   assert.equal(initials(null, null), '?')
 })

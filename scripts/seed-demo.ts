@@ -23,10 +23,10 @@ async function main() {
 
   // ── User ──────────────────────────────────────────────────────
   const user = await prisma.user.upsert({
-    where: { email: 'demo@studybuddy.com' },
+    where: { email: 'demo@studymargins.com' },
     update: {},
     create: {
-      email: 'demo@studybuddy.com',
+      email: 'demo@studymargins.com',
       passwordHash: hashSync('demo1234', 12),
       name: 'Demo User',
     },
@@ -191,7 +191,7 @@ async function main() {
   }
 
   console.log('Done.\n')
-  console.log('  Login:   demo@studybuddy.com / demo1234')
+  console.log('  Login:   demo@studymargins.com / demo1234')
   console.log(`  Project: "${project.name}"\n`)
 }
 

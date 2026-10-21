@@ -42,7 +42,7 @@ def download(source: dict) -> Path:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(".part")
     print(f"downloading {source['url']}")
-    request = urllib.request.Request(source["url"], headers={"User-Agent": "studybuddy-retrieval-evals"})
+    request = urllib.request.Request(source["url"], headers={"User-Agent": "margins-retrieval-evals"})
     with urllib.request.urlopen(request, timeout=120) as response, partial.open("wb") as out:
         while block := response.read(1 << 20):
             out.write(block)

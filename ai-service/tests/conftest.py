@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 
 def pytest_configure():
-    os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost:5432/studybuddy")
+    os.environ.setdefault("DATABASE_URL", "postgresql://user:pass@localhost:5432/margins")
     # Always a fake key, even when ai-service/.env holds a real one: tests never call the API.
     os.environ["ANTHROPIC_API_KEY"] = "test-key"
     os.environ["LLM_PROVIDER"] = "anthropic"

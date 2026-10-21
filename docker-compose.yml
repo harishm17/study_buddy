@@ -2,9 +2,9 @@ services:
   # PostgreSQL database with pgvector
   postgres:
     image: ankane/pgvector:latest
-    container_name: studybuddy-postgres
+    container_name: margins-postgres
     environment:
-      POSTGRES_DB: studybuddy
+      POSTGRES_DB: margins
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: devpass
     ports:
@@ -21,7 +21,7 @@ services:
       exec docker-entrypoint.sh postgres
       "
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dev -d studybuddy"]
+      test: ["CMD-SHELL", "pg_isready -U dev -d margins"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +31,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: studybuddy-frontend
+    container_name: margins-frontend
     # Local docker volume writes for uploaded files require write access on /data/uploads.
     # Run frontend as root in compose to avoid EACCES on named volumes across host setups.
     user: "0:0"
@@ -39,14 +39,14 @@ services:
       - "3000:3000"
     environment:
       - PORT=3000
-      - DATABASE_URL=postgresql://dev:devpass@postgres:5432/studybuddy
+      - DATABASE_URL=postgresql://dev:devpass@postgres:5432/margins
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-dev-secret-change-in-production}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
       - AI_SERVICE_URL=http://ai-service:8000
       - AI_INTERNAL_TOKEN=${AI_INTERNAL_TOKEN:-dev-internal-token}
       - GCS_BUCKET=${GCS_BUCKET:-local-materials}
       - GCS_PROJECT_ID=${GCS_PROJECT_ID:-}
-      - CLOUD_TASKS_QUEUE=${CLOUD_TASKS_QUEUE:-studybuddy-jobs}
+      - CLOUD_TASKS_QUEUE=${CLOUD_TASKS_QUEUE:-margins-jobs}
       - CLOUD_TASKS_LOCATION=${CLOUD_TASKS_LOCATION:-us-central1}
       - ENABLE_GCS_STORAGE=${ENABLE_GCS_STORAGE:-false}
       - ALLOW_GCS_LOCAL_FALLBACK=${ALLOW_GCS_LOCAL_FALLBACK:-true}
@@ -67,11 +67,11 @@ services:
     build:
       context: ./ai-service
       dockerfile: Dockerfile
-    container_name: studybuddy-ai
+    container_name: margins-ai
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://dev:devpass@postgres:5432/studybuddy
+      - DATABASE_URL=postgresql://dev:devpass@postgres:5432/margins
       - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-5-5}

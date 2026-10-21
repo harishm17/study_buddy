@@ -17,9 +17,9 @@ import {
 let storageInstance: any = null
 const CLOUD_STORAGE_ENABLED = process.env.ENABLE_GCS_STORAGE === 'true'
 const ALLOW_LOCAL_FALLBACK = process.env.ALLOW_GCS_LOCAL_FALLBACK !== 'false'
-const BUCKET_NAME = process.env.GCS_BUCKET || 'studybuddy-materials'
+const BUCKET_NAME = process.env.GCS_BUCKET || 'margins-materials'
 const LOCAL_UPLOAD_BASE = process.env.LOCAL_UPLOADS_DIR || '/data/uploads'
-const LOCAL_UPLOAD_FALLBACK_BASE = '/tmp/studybuddy-uploads'
+const LOCAL_UPLOAD_FALLBACK_BASE = '/tmp/margins-uploads'
 
 /**
  * Stream a file to local disk. The first writable upload folder is chosen before any byte is

@@ -313,7 +313,7 @@ def _extract_doc(file_path: str) -> ExtractedDocument:
             "on this server. Please save the file as .docx or PDF and upload it again."
         )
 
-    work_dir = tempfile.mkdtemp(prefix="studybuddy-doc-")
+    work_dir = tempfile.mkdtemp(prefix="margins-doc-")
     try:
         # A private profile dir keeps parallel conversions from fighting over one lock.
         subprocess.run(

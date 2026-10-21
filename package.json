@@ -1,5 +1,5 @@
 {
-  "name": "studybuddy",
+  "name": "margins",
   "private": true,
   "description": "Railway infrastructure config (.railway/railway.ts); the apps live in frontend/ and ai-service/",
   "type": "module",

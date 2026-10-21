@@ -63,7 +63,7 @@ export async function uploadStreamToS3(
   const { pipeline } = await import('stream/promises')
   const { PutObjectCommand } = await import('@aws-sdk/client-s3')
 
-  const tempDir = fs.mkdtempSync(pathModule.join(os.tmpdir(), 'studybuddy-upload-'))
+  const tempDir = fs.mkdtempSync(pathModule.join(os.tmpdir(), 'margins-upload-'))
   const tempFile = pathModule.join(tempDir, 'upload')
   try {
     await pipeline([source, ...transforms, fs.createWriteStream(tempFile)])
