@@ -8,6 +8,9 @@
  *  - quiz attempts, learning signals and voice sessions and attempts
  *  - progress (checkmarks are OR-ed, the best quiz score is kept) and the review schedule
  *    (the target's own is kept when both have one)
+ *  - course structure: the source's sources (topic_sources) go to the target, objectives are
+ *    joined (at most 8), the estimated minutes add up, prerequisites are joined, and other topics
+ *    that had the source as a prerequisite now point at the target. The target keeps its unit.
  * The target keeps its own generated content, since it may now be out of date against the
  * merged chunks; regenerate it from the topic page if needed.
  */
@@ -17,6 +20,8 @@ import { z } from 'zod'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import { mergeKeywordLists } from '@/lib/topics/ordering'
+import { normalizeTopicOrder } from '@/lib/topics/normalize-order'
+import { reachesPrerequisite } from '@/lib/topics/units'
 import {
   ApiErrorCode,
   apiError,
@@ -145,6 +150,40 @@ export async function POST(
         }
       }
 
+      // Course structure: the sections the source was taught from, objectives, minutes.
+      await tx.topicSource.updateMany({ where: { topicId: source.id }, data: { topicId: target.id } })
+      const objectives = Array.from(new Set([...(target.objectives ?? []), ...(source.objectives ?? [])])).slice(0, 8)
+      const minutes =
+        target.estimatedMinutes !== null || source.estimatedMinutes !== null
+          ? Math.min((target.estimatedMinutes ?? 0) + (source.estimatedMinutes ?? 0), 180)
+          : null
+
+      // Prerequisites: the target takes the source's, and whoever depended on the source now
+      // depends on the target. A link that would make a loop is dropped.
+      const everyTopic = await tx.topic.findMany({
+        where: { projectId },
+        select: { id: true, prerequisiteIds: true },
+      })
+      const graph = new Map<string, string[]>()
+      for (const item of everyTopic) {
+        if (item.id === source.id) continue
+        const own = item.id === target.id ? [...(target.prerequisiteIds ?? []), ...(source.prerequisiteIds ?? [])] : item.prerequisiteIds
+        graph.set(item.id, Array.from(new Set(own.map((id) => (id === source.id ? target.id : id)))).filter((id) => id !== item.id && id !== source.id))
+      }
+      for (const [id, list] of graph) {
+        // Drop a link from `id` to a topic that already depends (through others) on `id`.
+        const kept = list.filter((other) => !reachesPrerequisite(graph, other, id))
+        if (kept.length !== list.length) graph.set(id, kept)
+      }
+      for (const item of everyTopic) {
+        if (item.id === source.id) continue
+        const next = graph.get(item.id) ?? []
+        const same = next.length === item.prerequisiteIds.length && next.every((id, index) => id === item.prerequisiteIds[index])
+        if (!same || item.id === target.id) {
+          await tx.topic.update({ where: { id: item.id }, data: { prerequisiteIds: next } })
+        }
+      }
+
       await tx.topic.update({
         where: { id: target.id },
         data: {
@@ -152,6 +191,8 @@ export async function POST(
           description: target.description?.trim() ? target.description : source.description,
           keywords: mergeKeywordLists(target.keywords, source.keywords),
           sourceMaterialIds: Array.from(new Set([...target.sourceMaterialIds, ...source.sourceMaterialIds])),
+          objectives,
+          estimatedMinutes: minutes,
           userConfirmed: target.userConfirmed && source.userConfirmed,
         },
       })
@@ -171,6 +212,8 @@ export async function POST(
           await tx.topic.update({ where: { id: topic.id }, data: { orderIndex: index } })
         }
       }
+      // A merge across units can leave a unit's topics apart; keep the units contiguous.
+      await normalizeTopicOrder(tx, projectId)
 
       return tx.topic.findUniqueOrThrow({ where: { id: target.id } })
     })

@@ -63,7 +63,13 @@ function ActiveStep({
   const nextRef = React.useRef<HTMLButtonElement>(null)
   const retryRef = React.useRef<HTMLButtonElement>(null)
 
-  const choices = step.answerType === 'multiple_choice' ? splitChoices(step.question) : null
+  // Options are stored with the step; content written before that has them in the question text.
+  const choices =
+    step.answerType !== 'multiple_choice'
+      ? null
+      : step.options.length >= 2
+        ? { stem: step.question, options: step.options }
+        : splitChoices(step.question)
   const locked = feedback === 'correct' || feedback === 'revealed'
 
   React.useEffect(() => {

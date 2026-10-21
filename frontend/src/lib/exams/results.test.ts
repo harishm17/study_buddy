@@ -118,3 +118,14 @@ test('readOverall reads the stored score', () => {
   assert.equal(readOverall({}), null)
   assert.equal(readOverall(null), null)
 })
+
+test('exam question results carry the file and pages each question is based on', () => {
+  const questions = [
+    { question_type: 'true_false', question_text: 'a', correct_answer: true, sources: [{ material_id: 'm1', filename: 'a.pdf', page_start: 2, page_end: 2 }] },
+    { question_type: 'true_false', question_text: 'b', correct_answer: true },
+  ]
+  const grading = { graded_questions: [{ question_index: 1, sources: [{ filename: 'b.pdf', page_start: 7 }] }] }
+  const results = buildQuestionResults(questions, grading, {})
+  assert.deepEqual(results[0].sources, [{ materialId: 'm1', filename: 'a.pdf', pageStart: 2, pageEnd: 2 }])
+  assert.deepEqual(results[1].sources, [{ materialId: null, filename: 'b.pdf', pageStart: 7, pageEnd: 7 }])
+})

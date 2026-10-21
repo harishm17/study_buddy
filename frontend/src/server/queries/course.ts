@@ -11,7 +11,9 @@ import {
 import { describeNextAction, type DescribedAction } from '@/lib/next-action'
 import { maxUploadMb } from '@/lib/storage/upload-limits'
 import { courseMastery, masteryLevel, countMasteryLevels, type MasteryCounts } from '@/lib/mastery'
-import { getCourseShell, type CourseShell, type ShellTopic } from '@/server/queries/courses'
+import { readRole, type MaterialRole } from '@/lib/materials/role'
+import { mergeSources, type SourceRef } from '@/lib/topics/sources'
+import { getCourseShell, type CourseShell, type ShellTopic, type ShellUnit } from '@/server/queries/courses'
 
 /**
  * Read models for the course pages: overview (setup guide and Today view), materials and
@@ -57,6 +59,8 @@ export type MaterialRow = {
   id: string
   filename: string
   category: string
+  /** What the file is for: content, syllabus, exam (past exam) or other. Editable (PATCH /api/materials/[id]). */
+  role: MaterialRole
   sizeBytes: number
   status: MaterialStatus
   /** The reason a file is not usable (validationNotes). */
@@ -86,6 +90,7 @@ export async function getMaterialsData(userId: string, courseId: string): Promis
         id: true,
         filename: true,
         category: true,
+        role: true,
         sizeBytes: true,
         validationStatus: true,
         validationNotes: true,
@@ -139,6 +144,7 @@ export async function getMaterialsData(userId: string, courseId: string): Promis
       id: material.id,
       filename: material.filename,
       category: material.category,
+      role: readRole(material.role),
       sizeBytes: Number(material.sizeBytes),
       status,
       notes: material.validationNotes,
@@ -406,6 +412,15 @@ export type TopicRow = {
   description: string | null
   keywords: string[]
   orderIndex: number
+  /** The unit it belongs to, or null (a flat course, or a topic added by hand). */
+  unitId: string | null
+  /** What the student can do after the topic: verb phrases that finish "By the end you can ...". */
+  objectives: string[]
+  /** Topics (ids, same course, earlier in the order) this one builds on. */
+  prerequisiteIds: string[]
+  estimatedMinutes: number | null
+  /** What the topic is taught from, one entry per file and page range, in document order. Empty for topics added by hand. */
+  sources: SourceRef[]
   confirmed: boolean
   mastery: number | null
   dueAt: string | null
@@ -416,6 +431,8 @@ export type TopicRow = {
 
 export type TopicsData = {
   courseName: string
+  /** In course order; empty for a flat course. */
+  units: ShellUnit[]
   topics: TopicRow[]
   /** At least one topic is not confirmed yet. */
   hasUnconfirmed: boolean
@@ -430,19 +447,33 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
   const course = await getCourseShell(userId, courseId)
   if (!course) return null
 
-  const [extra, materials, generation] = await Promise.all([
+  const [extra, sourceRows, materials, generation] = await Promise.all([
     prisma.topic.findMany({
       where: { projectId: courseId, project: { userId } },
       select: {
         id: true,
         keywords: true,
+        objectives: true,
+        prerequisiteIds: true,
+        estimatedMinutes: true,
         reviewSchedules: { where: { userId }, take: 1, select: { lastReviewedAt: true } },
       },
+    }),
+    prisma.topicSource.findMany({
+      where: { role: 'primary', topic: { projectId: courseId, project: { userId } } },
+      orderBy: [{ material: { uploadedAt: 'asc' } }, { materialId: 'asc' }, { chunkIndexStart: 'asc' }],
+      select: { topicId: true, materialId: true, pageStart: true, pageEnd: true, material: { select: { filename: true } } },
     }),
     getMaterialsData(userId, courseId),
     getGenerationState(userId, course),
   ])
   const extraById = new Map(extra.map((row) => [row.id, row]))
+  const sourcesByTopic = new Map<string, SourceRef[]>()
+  for (const row of sourceRows) {
+    const list = sourcesByTopic.get(row.topicId) ?? []
+    list.push({ materialId: row.materialId, filename: row.material.filename, pageStart: row.pageStart, pageEnd: row.pageEnd })
+    sourcesByTopic.set(row.topicId, list)
+  }
 
   const topics: TopicRow[] = course.topics.map((topic) => ({
     id: topic.id,
@@ -450,6 +481,11 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
     description: topic.description,
     keywords: extraById.get(topic.id)?.keywords ?? [],
     orderIndex: topic.orderIndex,
+    unitId: topic.unitId,
+    objectives: extraById.get(topic.id)?.objectives ?? [],
+    prerequisiteIds: extraById.get(topic.id)?.prerequisiteIds ?? [],
+    estimatedMinutes: extraById.get(topic.id)?.estimatedMinutes ?? null,
+    sources: mergeSources(sourcesByTopic.get(topic.id) ?? []),
     confirmed: topic.confirmed,
     mastery: topic.mastery,
     dueAt: topic.dueAt,
@@ -460,6 +496,7 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
 
   return {
     courseName: course.name,
+    units: course.units,
     topics,
     hasUnconfirmed: topics.some((topic) => !topic.confirmed),
     materialsReady: materials.readyCount,

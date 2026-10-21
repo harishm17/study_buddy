@@ -1,3 +1,4 @@
+import { parseSources } from '@/lib/topics/sources'
 import type {
   ExamplesContent,
   NotesContent,
@@ -81,6 +82,7 @@ export function parseSolvedExamples(contentData: unknown, updatedAt: string): Ex
       finalAnswer: Array.isArray(raw.final_answer) ? strings(raw.final_answer).map((line) => `- ${line}`).join('\n') : text(raw.final_answer).trim(),
       keyConcepts: strings(raw.key_concepts),
       difficulty,
+      sources: parseSources(raw.sources),
     })
   }
   return items.length ? { items, updatedAt } : null
@@ -99,8 +101,13 @@ export function parsePracticeProblems(contentData: unknown, updatedAt: string): 
         question: text(step.question).trim(),
         hint: text(step.hint).trim(),
         answerType: ANSWER_TYPES.find((type) => type === text(step.answer_type)) ?? 'text',
+        options: list(step.options)
+          .filter(isRecord)
+          .map((option) => ({ id: text(option.id).trim(), text: text(option.text).trim() }))
+          .filter((option) => option.id && option.text),
         correctAnswer: text(step.correct_answer).trim(),
         acceptableAnswers: strings(step.acceptable_answers),
+        tolerance: typeof step.tolerance === 'number' && Number.isFinite(step.tolerance) && step.tolerance >= 0 ? step.tolerance : null,
         explanation: text(step.explanation).trim(),
         feedbackCorrect: text(step.feedback_correct).trim(),
         feedbackIncorrect: text(step.feedback_incorrect).trim(),
@@ -114,6 +121,7 @@ export function parsePracticeProblems(contentData: unknown, updatedAt: string): 
       keyConcepts: strings(raw.key_concepts),
       difficulty: text(raw.difficulty).trim() || null,
       minutes: typeof raw.estimated_time_minutes === 'number' ? raw.estimated_time_minutes : null,
+      sources: parseSources(raw.sources),
     })
   }
   return items.length ? { items, updatedAt } : null

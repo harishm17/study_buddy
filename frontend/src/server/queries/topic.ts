@@ -4,6 +4,7 @@ import { pickGenerationFailures } from '@/lib/jobs/failure-message'
 import { asQuestionList, toPublicQuestions, type PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import { buildReview, type QuizReviewItem } from '@/lib/learning/quiz-review'
 import { masteryLevel, type MasteryLevel } from '@/lib/mastery'
+import { mergeSources, type SourceRef } from '@/lib/topics/sources'
 import { parseNotes, parsePracticeProblems, parseSolvedExamples } from '@/features/topic/content'
 import {
   CONTENT_TYPE_BY_KIND,
@@ -45,6 +46,19 @@ export type TopicFailure = { message: string; errorCode: string | null }
 
 export type TopicNeighbour = { id: string; name: string; hasNotes: boolean }
 
+/** Where a topic sits in the course, and what it covers: what the topic header shows. */
+export type TopicStructure = {
+  /** The unit it belongs to, or null (a flat course, or a topic added by hand). */
+  unit: { id: string; title: string; weekLabel: string | null } | null
+  /** Verb phrases that finish "By the end you can ...". Empty for topics added by hand. */
+  objectives: string[]
+  /** Topics this one builds on, in course order, with a name to link to. */
+  prerequisites: { id: string; name: string }[]
+  estimatedMinutes: number | null
+  /** The files the topic is taught from: one entry per file and page range, in document order. */
+  sources: SourceRef[]
+}
+
 export type TopicPageData = {
   course: { id: string; name: string }
   topic: {
@@ -57,6 +71,7 @@ export type TopicPageData = {
     /** Days until the review is due by the server's clock; zero or less means due now. */
     daysUntilDue: number | null
     progress: { notes: boolean; examples: boolean; quiz: boolean; quizScore: number | null }
+    structure: TopicStructure
   }
   previous: TopicNeighbour | null
   next: TopicNeighbour | null
@@ -104,7 +119,7 @@ export const getTopicPage = cache(async function getTopicPage(
   if (!course || index < 0) return null
   const shellTopic = course.topics[index]
 
-  const [contentRows, quizRows, attemptRows, jobRows] = await Promise.all([
+  const [contentRows, quizRows, attemptRows, jobRows, structureRow, sourceRows] = await Promise.all([
     prisma.topicContent.findMany({
       where: { topicId },
       select: { contentType: true, contentData: true, metadata: true, updatedAt: true },
@@ -126,7 +141,28 @@ export const getTopicPage = cache(async function getTopicPage(
       take: 20,
       select: { id: true, targetKey: true, status: true, errorCode: true, errorMessage: true },
     }),
+    prisma.topic.findUnique({
+      where: { id: topicId },
+      select: { objectives: true, prerequisiteIds: true, estimatedMinutes: true },
+    }),
+    prisma.topicSource.findMany({
+      where: { topicId, role: 'primary' },
+      orderBy: [{ material: { uploadedAt: 'asc' } }, { materialId: 'asc' }, { chunkIndexStart: 'asc' }],
+      select: { materialId: true, pageStart: true, pageEnd: true, material: { select: { filename: true } } },
+    }),
   ])
+
+  const unit = shellTopic.unitId ? (course.units.find((item) => item.id === shellTopic.unitId) ?? null) : null
+  const topicNames = new Map(course.topics.map((item) => [item.id, item.name]))
+  const structure: TopicStructure = {
+    unit: unit ? { id: unit.id, title: unit.title, weekLabel: unit.weekLabel } : null,
+    objectives: structureRow?.objectives ?? [],
+    prerequisites: (structureRow?.prerequisiteIds ?? []).flatMap((id) => (topicNames.has(id) ? [{ id, name: topicNames.get(id) as string }] : [])),
+    estimatedMinutes: structureRow?.estimatedMinutes ?? null,
+    sources: mergeSources(
+      sourceRows.map((row) => ({ materialId: row.materialId, filename: row.material.filename, pageStart: row.pageStart, pageEnd: row.pageEnd }))
+    ),
+  }
 
   const byType = new Map(contentRows.map((row) => [row.contentType, row]))
   const iso = (date: Date) => date.toISOString()
@@ -219,6 +255,7 @@ export const getTopicPage = cache(async function getTopicPage(
       dueAt: shellTopic.dueAt,
       daysUntilDue: shellTopic.dueAt ? (Date.parse(shellTopic.dueAt) - Date.now()) / 86_400_000 : null,
       progress: shellTopic.progress,
+      structure,
     },
     previous: index > 0 ? neighbour(course.topics[index - 1]) : null,
     next: index < course.topics.length - 1 ? neighbour(course.topics[index + 1]) : null,

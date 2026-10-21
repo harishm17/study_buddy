@@ -754,8 +754,8 @@ async def plan_course(project_id: str) -> PlanJob:
     )
     if not chunk_rows:
         raise NoPlannableMaterialError(
-            "No file in this course is marked as course content with readable text. "
-            "Mark at least one file as course content (not a syllabus or a past exam)."
+            "No material in this course is marked as course content with readable text. "
+            "Mark at least one as course content (not a syllabus or a past exam)."
         )
     all_sections = build_outline([dict(row) for row in chunk_rows])
     syllabus = await _syllabus_text(project_id)

@@ -1,3 +1,4 @@
+import { parseSources, type SourceRef } from '@/lib/topics/sources'
 import { reviewAnswer } from './quiz-questions'
 import type { GradedQuestion } from '@/lib/ai-service/grading'
 
@@ -19,6 +20,8 @@ export type QuizReviewItem = {
   correctAnswer: string
   explanation: string
   feedback: string | null
+  /** Where in the files the question is based on, for "From <file>, p. N". Empty for older quizzes. */
+  sources: SourceRef[]
 }
 
 type RawQuestion = Record<string, unknown>
@@ -67,6 +70,7 @@ export function buildReview(questions: RawQuestion[], results: unknown): QuizRev
       correctAnswer: reviewAnswer(question),
       explanation: typeof question.explanation === 'string' ? question.explanation : '',
       feedback: result.feedback ?? null,
+      sources: parseSources(question.sources),
     }
   })
 }

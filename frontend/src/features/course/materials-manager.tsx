@@ -43,7 +43,7 @@ import {
   problemMessage,
 } from './summary'
 
-type Category = 'lecture_notes' | 'sample_exams' | 'book_chapters'
+type Category = 'lecture_notes' | 'sample_exams' | 'book_chapters' | 'syllabus'
 
 const CATEGORY_OPTIONS = (Object.keys(CATEGORY_LABELS) as Category[]).map((value) => ({
   value,
