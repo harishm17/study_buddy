@@ -198,7 +198,7 @@ class TestFailureHandling:
         [
             (PermanentJobError("bad input", "INVALID_INPUT"), 400, "INVALID_INPUT", False),
             (LLMAuthError("no key"), 400, "LLM_AUTH_FAILED", False),
-            (LLMRateLimitError("slow down"), 500, "LLM_RATE_LIMITED", True),
+            (LLMRateLimitError("slow down"), 503, "LLM_RATE_LIMITED", True),
             (HTTPException(status_code=404, detail="Topic not found"), 400, "TEST_FAILED", False),
             (RuntimeError("database went away"), 500, "TEST_FAILED", True),
         ],

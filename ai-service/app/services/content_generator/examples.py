@@ -45,7 +45,8 @@ class ExamplesGenerator:
         example_type: ExampleType,
         count: int = 3,
         difficulty_level: str = "medium",
-        focus: Optional[str] = None
+        focus: Optional[str] = None,
+        cache_excerpts: bool = False,
     ) -> Dict:
         """
         Generate examples for a topic.
@@ -57,6 +58,8 @@ class ExamplesGenerator:
             example_type: Type of examples (solved or interactive)
             count: Number of examples to generate (default: 3)
             difficulty_level: easy, medium, or hard
+            cache_excerpts: True for more examples of a type that already exists, so the
+                excerpt block is cached
 
         Returns:
             Dict with generated examples and metadata
@@ -67,11 +70,11 @@ class ExamplesGenerator:
 
         if example_type == ExampleType.SOLVED:
             examples = await self._generate_solved_examples(
-                topic_name, topic_description, chunks, count, difficulty_level, focus
+                topic_name, topic_description, chunks, count, difficulty_level, focus, cache_excerpts
             )
         else:
             examples = await self._generate_interactive_examples(
-                topic_name, topic_description, chunks, count, difficulty_level, focus
+                topic_name, topic_description, chunks, count, difficulty_level, focus, cache_excerpts
             )
 
         return {
@@ -88,7 +91,8 @@ class ExamplesGenerator:
         chunks: List[Dict],
         count: int,
         difficulty_level: str,
-        focus: Optional[str] = None
+        focus: Optional[str] = None,
+        cache_excerpts: bool = False,
     ) -> List[Dict]:
         """Fully solved examples with step-by-step solutions."""
         guidance = SOLVED_GUIDANCE.get(difficulty_level, SOLVED_GUIDANCE['medium'])
@@ -103,7 +107,7 @@ Difficulty: {difficulty_level}. {guidance}
 - Set difficulty to "{difficulty_level}"."""
 
         result = await self.llm.generate_structured(
-            content_messages(topic_name, topic_description, chunks, instructions),
+            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts),
             SolvedExampleSet,
             max_tokens=16000,
             purpose="solved_examples",
@@ -120,7 +124,8 @@ Difficulty: {difficulty_level}. {guidance}
         chunks: List[Dict],
         count: int,
         difficulty_level: str,
-        focus: Optional[str] = None
+        focus: Optional[str] = None,
+        cache_excerpts: bool = False,
     ) -> List[Dict]:
         """Problems the student solves one step at a time."""
         guidance = INTERACTIVE_GUIDANCE.get(difficulty_level, INTERACTIVE_GUIDANCE['medium'])
@@ -135,7 +140,7 @@ Difficulty: {difficulty_level}. {guidance}
 - Set difficulty to "{difficulty_level}"."""
 
         result = await self.llm.generate_structured(
-            content_messages(topic_name, topic_description, chunks, instructions),
+            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts),
             InteractiveExampleSet,
             max_tokens=16000,
             purpose="interactive_examples",

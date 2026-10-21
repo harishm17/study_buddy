@@ -1,9 +1,11 @@
 """Source excerpts and prompt framing shared by every content generator.
 
 Every generator for a topic sends the same system prompt and the same excerpt block, in
-the same order, and the excerpt block is marked cacheable. Structured outputs add the
-output schema to the prompt, so the cache is shared between calls with the same schema:
-another quiz set, exam questions after a quiz, more examples, a regenerated set.
+the same order. Nothing is cached the first time a content type is generated: a cache write
+costs 1.25x the input price and nothing would read it. A regeneration of the same type for the
+same topic (more examples, more practice, a new quiz set, a review set) marks the excerpt block
+cacheable (cache_excerpts=True). The structured-output schema is part of the prompt prefix, so
+only calls with the same schema share an entry, which is why different content types never do.
 """
 from typing import Dict, List
 
@@ -100,14 +102,15 @@ def content_messages(
     topic_description: str,
     chunks: List[Dict],
     instructions: str,
+    cache_excerpts: bool = False,
 ) -> List[LLMMessage]:
-    """System prompt, cached excerpt block, then the task-specific instructions."""
+    """System prompt, the excerpt block (cacheable when asked), then the task instructions."""
     return [
         LLMMessage(role="system", content=CONTENT_SYSTEM_PROMPT),
         LLMMessage(
             role="user",
             content=format_source_excerpts(topic_name, topic_description, chunks),
-            cache=True,
+            cache=cache_excerpts,
         ),
         LLMMessage(role="user", content=instructions),
     ]

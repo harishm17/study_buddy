@@ -54,7 +54,8 @@ class QuizGenerator:
         question_count: int = 10,
         question_types: Optional[List[QuestionType]] = None,
         difficulty_level: str = "medium",
-        focus: Optional[str] = None
+        focus: Optional[str] = None,
+        cache_excerpts: bool = False,
     ) -> Dict:
         """
         Generate a quiz for a topic.
@@ -66,6 +67,8 @@ class QuizGenerator:
             question_count: Number of questions (default: 10)
             question_types: List of question types to include (default: all)
             difficulty_level: easy, medium, or hard
+            cache_excerpts: True for another set on a topic that already has a quiz, so the
+                excerpt block is cached
 
         Returns:
             Dict with quiz questions and metadata
@@ -84,7 +87,8 @@ class QuizGenerator:
             question_count=question_count,
             question_types=question_types,
             difficulty_level=difficulty_level,
-            focus=focus
+            focus=focus,
+            cache_excerpts=cache_excerpts,
         )
 
         return {
@@ -103,7 +107,8 @@ class QuizGenerator:
         question_count: int,
         question_types: List[QuestionType],
         difficulty_level: str,
-        focus: Optional[str] = None
+        focus: Optional[str] = None,
+        cache_excerpts: bool = False,
     ) -> List[Dict]:
         """Generate and validate quiz questions."""
         guidance = DIFFICULTY_GUIDANCE.get(difficulty_level, DIFFICULTY_GUIDANCE['medium'])
@@ -119,7 +124,7 @@ Each question tests a specific concept from the excerpts.
 Set difficulty to "{difficulty_level}" and list the concepts each question tests."""
 
         result = await self.llm.generate_structured(
-            content_messages(topic_name, topic_description, chunks, instructions),
+            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts),
             QuestionSet,
             max_tokens=16000,
             purpose="topic_quiz",
