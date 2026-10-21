@@ -122,7 +122,7 @@ async def _primary_chunks(topic_id: str) -> tuple[List[Dict[str, Any]], int]:
     used = 0
     dropped = 0
     budget = settings.TOPIC_SOURCE_TOKEN_BUDGET
-    for source in sources:
+    for position, source in enumerate(sources):
         section = [
             chunk
             for chunk in by_material.get(source["material_id"], [])
@@ -131,8 +131,9 @@ async def _primary_chunks(topic_id: str) -> tuple[List[Dict[str, Any]], int]:
         ]
         size = sum(_tokens(chunk) for chunk in section)
         if kept and used + size > budget:
-            dropped += 1
-            continue
+            # Drop from the end: this section and every one after it.
+            dropped += len(sources) - position
+            break
         if not kept and size > budget:
             # One section bigger than the whole budget: keep its start.
             clipped: List[Dict[str, Any]] = []

@@ -269,6 +269,7 @@ class QuestionSet(BaseModel):
                     correct_answer=correct,
                     explanation=f"{correct} restates the main idea. (mock output)",
                     points=2,
+                    source_excerpts=[1],
                 )
             )
         for n in range(1, per_type + 1):
@@ -278,6 +279,7 @@ class QuestionSet(BaseModel):
                     question_text=f"Statement {n}: the topic builds on earlier material. (mock)",
                     correct_answer=n % 2 == 1,
                     explanation="See the course notes. (mock output)",
+                    source_excerpts=[1],
                 )
             )
         for n in range(1, per_type + 1):
@@ -289,6 +291,7 @@ class QuestionSet(BaseModel):
                     key_points=[f"Names principle {n}", "Links the components"],
                     explanation="A full answer names the principle and how the parts relate.",
                     points=3,
+                    source_excerpts=[1],
                 )
             )
         for n in range(1, per_type + 1):
@@ -300,6 +303,7 @@ class QuestionSet(BaseModel):
                     tolerance=0,
                     explanation=f"{n + 1} x 7 = {(n + 1) * 7}. (mock output)",
                     points=2,
+                    source_excerpts=[1],
                 )
             )
         return cls(questions=questions)
@@ -356,6 +360,7 @@ class SolvedExampleSet(BaseModel):
                     ],
                     final_answer="- c follows from the rule (mock)",
                     key_concepts=["Main rule"],
+                    source_excerpts=[1],
                 )
             ]
         )
@@ -543,6 +548,7 @@ class InteractiveExampleSet(BaseModel):
                         )
                     ],
                     key_concepts=["Addition"],
+                    source_excerpts=[1],
                 )
             ]
         )

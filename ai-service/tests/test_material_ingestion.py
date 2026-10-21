@@ -15,8 +15,9 @@ from app.config import settings
 from app.models.jobs import JobPayload
 from app.services.document_processor import storage
 from app.services.document_processor.storage import StorageError, local_copy
-from app.services.document_processor.validator import validate_material
+from app.services.document_processor.validator import material_role, validate_material
 from app.services.llm import LLMFactory
+from app.services.llm.base import LLMError
 from app.services.llm.schemas import MaterialCheck
 from tests.db_helpers import get_job, seed_job, seed_material, seed_project, seed_user
 from tests.document_fixtures import PdfBuilder, sentences
@@ -324,6 +325,75 @@ class TestValidateJob:
         assert chunk_jobs[0]["project_id"] == s.project_id
         assert chunk_jobs[0]["target_key"] == f"chunk:{s.material_id}"
         assert [d[0] for d in dispatched] == [chunk_jobs[0]["id"]]
+
+
+class TestMaterialRole:
+    """A material's role (content, syllabus, exam, other) comes from the category the student
+    chose for a syllabus or past exam, otherwise from what the validator says the file is."""
+
+    @pytest.mark.parametrize(
+        "category, kind, role",
+        [
+            ("lecture_notes", "content", "content"),
+            ("lecture_notes", "syllabus", "syllabus"),
+            ("book_chapters", "exam", "exam"),
+            ("lecture_notes", "other", "other"),
+            ("lecture_notes", None, "content"),
+            ("lecture_notes", "nonsense", "content"),
+            ("sample_exams", "content", "exam"),
+            ("sample_exams", "syllabus", "exam"),
+            ("syllabus", "content", "syllabus"),
+            ("syllabus", "exam", "syllabus"),
+        ],
+    )
+    def test_the_rule(self, category, kind, role):
+        assert material_role(category, kind) == role
+
+    async def validate(self, db, production_without_gcs, monkeypatch, category, kind):
+        class Provider:
+            async def generate_structured(self, messages, schema, **kwargs):
+                self.prompt = messages[0].content
+                return MaterialCheck(is_valid=True, notes="ok", kind=kind)
+
+        provider = Provider()
+        monkeypatch.setattr(LLMFactory, "get_provider", classmethod(lambda cls: provider))
+        gcs_path = put_upload(production_without_gcs, "ok.pdf", text_pdf(3))
+        s = await Setup.create(db, "validate_material", gcs_path, "ok.pdf")
+        await db.execute("UPDATE materials SET category = $2 WHERE id = $1", s.material_id, category)
+        await jobs.validate_material_job(s.payload)
+        return await s.material(), provider
+
+    async def test_the_validators_kind_sets_the_role(self, db, production_without_gcs, monkeypatch, dispatched):
+        material, provider = await self.validate(db, production_without_gcs, monkeypatch, "lecture_notes", "syllabus")
+        assert material["role"] == "syllabus" and material["validation_status"] == "valid"
+        assert "Set kind to what the file is" in provider.prompt
+
+    async def test_a_sample_exams_upload_is_an_exam_whatever_the_validator_says(
+        self, db, production_without_gcs, monkeypatch, dispatched
+    ):
+        material, _ = await self.validate(db, production_without_gcs, monkeypatch, "sample_exams", "content")
+        assert material["role"] == "exam"
+
+    async def test_a_syllabus_upload_is_a_syllabus(self, db, production_without_gcs, monkeypatch, dispatched):
+        material, _ = await self.validate(db, production_without_gcs, monkeypatch, "syllabus", "content")
+        assert material["role"] == "syllabus"
+
+    async def test_content_stays_content(self, db, production_without_gcs, monkeypatch, dispatched):
+        material, _ = await self.validate(db, production_without_gcs, monkeypatch, "lecture_notes", "content")
+        assert material["role"] == "content"
+
+    async def test_without_a_model_the_role_is_content(self, db, production_without_gcs, monkeypatch, dispatched):
+        class Down:
+            async def generate_structured(self, *args, **kwargs):
+                raise LLMError("no key")
+
+        monkeypatch.setattr(LLMFactory, "get_provider", classmethod(lambda cls: Down()))
+        gcs_path = put_upload(production_without_gcs, "ok.pdf", text_pdf(3))
+        s = await Setup.create(db, "validate_material", gcs_path, "ok.pdf")
+
+        await jobs.validate_material_job(s.payload)
+
+        assert (await s.material())["role"] == "content"
 
 
 class TestChunkJob:

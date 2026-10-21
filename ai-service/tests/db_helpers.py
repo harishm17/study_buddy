@@ -102,12 +102,12 @@ def literal(vector):
     return "[" + ",".join(repr(v) for v in vector) + "]"
 
 
-async def add_chunk(db, material_id, index, text, vector=None, heading=None):
+async def add_chunk(db, material_id, index, text, vector=None, heading=None, page=None, tokens=None):
     chunk_id = new_id()
     await db.execute(
-        "INSERT INTO material_chunks (id, material_id, chunk_text, chunk_embedding, section_hierarchy, chunk_index) "
-        "VALUES ($1, $2, $3, $4::vector, $5, $6)",
-        chunk_id, material_id, text, literal(vector) if vector else None, heading, index,
+        "INSERT INTO material_chunks (id, material_id, chunk_text, chunk_embedding, section_hierarchy, chunk_index, "
+        "page_start, page_end, token_count) VALUES ($1, $2, $3, $4::vector, $5, $6, $7, $7, $8)",
+        chunk_id, material_id, text, literal(vector) if vector else None, heading, index, page, tokens,
     )
     return chunk_id
 

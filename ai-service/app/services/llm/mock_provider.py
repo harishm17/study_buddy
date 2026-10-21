@@ -31,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 MOCK_NOTES = """# Study notes (mock)
 
+## Overview
+This is placeholder text: the sections below follow the lesson format the real notes use.
+
 ## What you'll learn
 - Tell what the mock provider does and does not do.
 - Find where to switch to a real model.

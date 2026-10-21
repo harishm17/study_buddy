@@ -352,6 +352,7 @@ def validate_plan(
 
     # 3. Sections nobody named: the neighbour's topic in the same file.
     all_topics = [topic for unit in units for topic in unit.topics]
+    model_topics = list(all_topics)
     by_material: Dict[str, List[Section]] = {}
     for section in sections:
         by_material.setdefault(section.material_id, []).append(section)
@@ -374,8 +375,8 @@ def validate_plan(
                 who = owner.get(material_sections[index - 1].id)
             if who is None:
                 who = next((owner[s.id] for s in material_sections[index + 1 :] if s.id in owner), None)
-            if who is None and len(all_topics) == 1 and not existing_topic_keys:
-                who = all_topics[0]
+            if who is None and len(model_topics) == 1 and not existing_topic_keys:
+                who = model_topics[0]
             if who is None:
                 # Nothing in this file is owned: it becomes a topic of its own.
                 if fallback_unit is None:
