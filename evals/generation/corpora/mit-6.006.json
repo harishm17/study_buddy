@@ -1,0 +1,61 @@
+{
+  "id": "mit-6.006",
+  "title": "MIT 6.006 Introduction to Algorithms (Spring 2020)",
+  "description": "A computer science course: three lecture note PDFs (hashing, binary heaps, dynamic programming) and one quiz PDF.",
+  "attribution": "Erik Demaine, Jason Ku and Justin Solomon, 6.006 Introduction to Algorithms, Spring 2020. MIT OpenCourseWare, https://ocw.mit.edu. License: CC BY-NC-SA 4.0.",
+  "license": {
+    "name": "CC BY-NC-SA 4.0",
+    "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  "project_name": "Introduction to Algorithms (6.006)",
+  "documents": [
+    {
+      "id": "lec04-hashing",
+      "filename": "mit6_006s20_lec4.pdf",
+      "category": "lecture_notes",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/ce9e94705b914598ce78a00a70a1f734_MIT6_006S20_lec4.pdf",
+      "sha256": "cbc9a669f00c7554520c667853f4bc95f041348fea7ce76fd8a37246c94dc564",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "lec08-binary-heaps",
+      "filename": "mit6_006s20_lec8.pdf",
+      "category": "lecture_notes",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/40d4851e550507ca14dc778b9b2266cc_MIT6_006S20_lec8.pdf",
+      "sha256": "e9a6cdd3ec699a757c4d2c0973cef38dfa3a2aa5da0404dcfdf910197cb92fa3",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "lec16-dynamic-programming",
+      "filename": "mit6_006s20_lec16.pdf",
+      "category": "lecture_notes",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/28461a74f81101874a13d9679a40584d_MIT6_006S20_lec16.pdf",
+      "sha256": "cda406f918364a6f8d713a18e0ac8773975ebdb23b54a22612ae11f014092fbe",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "quiz1",
+      "filename": "mit6_006s20_q1.pdf",
+      "category": "sample_exams",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-spring-2020/f7623e48013c44b82d0f208d50c0eac7_MIT6_006S20_q1.pdf",
+      "sha256": "471032a16408319ebfa8a7f97669bcfd41cc95ea313502253329fff6563f274f",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    }
+  ]
+}

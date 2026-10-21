@@ -1,0 +1,97 @@
+{
+  "id": "mit-18.05",
+  "title": "MIT 18.05 Introduction to Probability and Statistics (Spring 2022)",
+  "description": "Math-heavy course with a syllabus and calendar printed from OCW pages, four class reading PDFs and one past exam. The same seven files as the live audit of studymargins.com.",
+  "attribution": "Jeremy Orloff and Jonathan Bloom, 18.05 Introduction to Probability and Statistics, Spring 2022. MIT OpenCourseWare, https://ocw.mit.edu. License: CC BY-NC-SA 4.0.",
+  "license": {
+    "name": "CC BY-NC-SA 4.0",
+    "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+  },
+  "project_name": "Probability and Statistics (18.05)",
+  "documents": [
+    {
+      "id": "syllabus",
+      "filename": "mit18_05_s22_syllabus.pdf",
+      "category": "lecture_notes",
+      "kind": "print_html",
+      "url": "https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/pages/syllabus/",
+      "text_sha256": "e0ef44f3b2d3d311f1d8c4113d5284c176669985316c301fc5e5b25c6fe2ad0e",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "calendar",
+      "filename": "mit18_05_s22_calendar.pdf",
+      "category": "lecture_notes",
+      "kind": "print_html",
+      "url": "https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/pages/calendar/",
+      "text_sha256": "0f15975c3a54d5d7dc8fa6be4e6a696b9a0192df0f0922e947f1ed16707dc0e3",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "class01-prep-b",
+      "filename": "mit18_05_s22_class01-prep-b.pdf",
+      "category": "book_chapters",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/mit18_05_s22_class01-prep-b.pdf",
+      "sha256": "7cd4115029af2cbc8e53863f470620a1a667fef30b321643b3fd3e72c608885b",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "class03-prep",
+      "filename": "mit18_05_s22_class03-prep.pdf",
+      "category": "book_chapters",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/mit18_05_s22_class03-prep.pdf",
+      "sha256": "9fea220ae52b01460cdf6f31602cc66d4eef3afde818c50f0ba200266b31c042",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "class04-prep-a",
+      "filename": "mit18_05_s22_class04-prep-a.pdf",
+      "category": "book_chapters",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/mit18_05_s22_class04-prep-a.pdf",
+      "sha256": "ff2a10e7ef1c0f5ef300ed8f73864d365ca5adcdf9775d1c4a6f356ee7687b5d",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "class11-prep",
+      "filename": "mit18_05_s22_class11-prep.pdf",
+      "category": "book_chapters",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/mit18_05_s22_class11-prep.pdf",
+      "sha256": "e57d4510ef2fc02efcb9a1cfb92323dfc1c0930f7abb6042af6a8b0f253ae771",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    },
+    {
+      "id": "exam01",
+      "filename": "mit18_05_s22_exam01.pdf",
+      "category": "sample_exams",
+      "kind": "pdf",
+      "url": "https://ocw.mit.edu/courses/18-05-introduction-to-probability-and-statistics-spring-2022/mit18_05_s22_exam01.pdf",
+      "sha256": "a613da7596bc236cc996826a4c0034c432643cb6a02ba3077c28a92d27d511ab",
+      "license": {
+        "name": "CC BY-NC-SA 4.0",
+        "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      }
+    }
+  ]
+}
