@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { CaretLeft, CaretRight, ChatCircleText, DotsThree, PencilSimple } from '@phosphor-icons/react/dist/ssr'
 import { PageHeader } from '@/components/shell/slots'
@@ -26,6 +26,10 @@ import { KIND_COPY } from './copy'
 import { RegenerateDialog } from './generation-ui'
 import { useTopicView } from './use-topic-view'
 import { CONTENT_KINDS, type ContentKind } from './types'
+
+// The chat client loads the first time the sheet is asked for, so it is not in the topic page's first load.
+const loadAskSheet = () => import('@/features/ask/ask-sheet').then((m) => m.AskSheet)
+const AskSheet = dynamic(loadAskSheet)
 
 export type TopicNeighbourLink = { id: string; name: string }
 
@@ -181,14 +185,20 @@ function EditTopicDialog({
 }
 
 /**
- * The top bar's actions for a topic: "Ask about this" (a link to the Ask page scoped to the
- * topic until the side sheet is wired in) and an overflow menu with regenerate for each kind of
- * content, Ask in full, and rename.
+ * The top bar's actions for a topic: "Ask about this" (opens the Ask sheet scoped to the topic)
+ * and an overflow menu with regenerate for each kind of content, Ask in full, and rename.
  */
 export function TopicActions({ courseId, topicId, name }: { courseId: string; topicId: string; name: string }) {
   const router = useRouter()
   const [regenerate, setRegenerate] = React.useState<ContentKind | null>(null)
   const [editing, setEditing] = React.useState(false)
+  // The sheet mounts on first use and stays mounted, so the conversation survives closing it.
+  const [askOpen, setAskOpen] = React.useState(false)
+  const [askMounted, setAskMounted] = React.useState(false)
+  const openAsk = () => {
+    setAskMounted(true)
+    setAskOpen(true)
+  }
   const askHref = `/courses/${courseId}/ask?topic=${topicId}`
 
   return (
@@ -196,8 +206,16 @@ export function TopicActions({ courseId, topicId, name }: { courseId: string; to
       <PageHeader
         actions={
           <>
-            <Button asChild variant="secondary" size="sm" icon={<ChatCircleText />} className="max-sm:hidden">
-              <Link href={askHref}>Ask about this</Link>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<ChatCircleText />}
+              className="max-sm:hidden"
+              onClick={openAsk}
+              onPointerEnter={() => void loadAskSheet()}
+              onFocus={() => void loadAskSheet()}
+            >
+              Ask about this
             </Button>
             <IconButton
               label="Ask about this"
@@ -205,7 +223,7 @@ export function TopicActions({ courseId, topicId, name }: { courseId: string; to
               variant="secondary"
               size="sm"
               className="sm:hidden"
-              onClick={() => router.push(askHref)}
+              onClick={openAsk}
             />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -238,6 +256,9 @@ export function TopicActions({ courseId, topicId, name }: { courseId: string; to
             if (!open) setRegenerate(null)
           }}
         />
+      ) : null}
+      {askMounted ? (
+        <AskSheet courseId={courseId} topicId={topicId} topicName={name} open={askOpen} onOpenChange={setAskOpen} />
       ) : null}
       <EditTopicDialog topicId={topicId} name={name} open={editing} onOpenChange={setEditing} />
     </>

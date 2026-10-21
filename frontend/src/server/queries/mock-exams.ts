@@ -14,7 +14,7 @@ import {
   type WeakTopic,
 } from '@/lib/exams/results'
 import { toPublicQuestions, type PublicQuizQuestion } from '@/lib/learning/quiz-questions'
-import { examTitle } from '@/features/exams/exam-options'
+import { examTitle } from '@/lib/exams/display'
 
 /** Everything here is filtered by the user id; an id that is not theirs is simply not found. */
 

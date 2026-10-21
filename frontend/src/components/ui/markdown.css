@@ -307,16 +307,24 @@
   color: var(--fg);
 }
 
-/* Math: display equations are centred, spaced, and scroll rather than overflow. */
+/* Math: display equations are centred, spaced, and scroll sideways rather than overflow. Inline
+   math is left alone. The auto margins centre a short equation; a wide one starts at the left
+   edge and scrolls. */
 .md .katex-display {
+  display: block;
   margin: 1em 0;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 2px 0;
+  text-align: center;
 }
 .md .katex {
   font-size: 1.05em;
 }
 .md .katex-display > .katex {
-  max-width: 100%;
+  display: block;
+  width: max-content;
+  max-width: none;
+  margin-inline: auto;
+  text-align: center;
 }
