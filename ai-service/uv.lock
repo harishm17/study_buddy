@@ -2210,7 +2210,7 @@ wheels = [
 ]
 
 [[package]]
-name = "studybuddy-ai-service"
+name = "margins-ai-service"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

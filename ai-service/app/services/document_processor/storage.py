@@ -21,7 +21,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-FALLBACK_UPLOADS_DIR = "/tmp/studybuddy-uploads"
+FALLBACK_UPLOADS_DIR = "/tmp/margins-uploads"
 
 
 class StorageError(RuntimeError):
@@ -50,7 +50,7 @@ def _local_candidates(blob_path: str) -> List[str]:
 
 def _download_from_gcs(bucket_name: str, blob_path: str) -> Tuple[str, str]:
     """Download one blob into a fresh temp dir; returns (file path, temp dir)."""
-    temp_dir = tempfile.mkdtemp(prefix="studybuddy-")
+    temp_dir = tempfile.mkdtemp(prefix="margins-")
     try:
         from google.cloud import storage as gcs_storage
 
@@ -87,7 +87,7 @@ def _s3_client():
 
 def _download_from_s3(bucket_name: str, key: str) -> Tuple[str, str]:
     """Download one object into a fresh temp dir; returns (file path, temp dir)."""
-    temp_dir = tempfile.mkdtemp(prefix="studybuddy-")
+    temp_dir = tempfile.mkdtemp(prefix="margins-")
     try:
         suffix = os.path.splitext(key)[1]
         local_path = os.path.join(temp_dir, f"material{suffix}")

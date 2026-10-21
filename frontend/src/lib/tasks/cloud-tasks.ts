@@ -21,9 +21,9 @@ try {
   console.warn('Cloud Tasks not available, using direct HTTP calls')
 }
 
-const PROJECT_ID = process.env.GCS_PROJECT_ID || 'studybuddy-dev'
+const PROJECT_ID = process.env.GCS_PROJECT_ID || 'margins-dev'
 const LOCATION = process.env.CLOUD_TASKS_LOCATION || 'us-central1'
-const QUEUE = process.env.CLOUD_TASKS_QUEUE || 'studybuddy-jobs'
+const QUEUE = process.env.CLOUD_TASKS_QUEUE || 'margins-jobs'
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000'
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
   const parsed = Number.parseInt(String(value || ''), 10)

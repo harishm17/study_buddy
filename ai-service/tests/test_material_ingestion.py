@@ -51,7 +51,7 @@ def put_upload(uploads: Path, name: str, builder: PdfBuilder) -> str:
     target = uploads / "user" / "project" / name
     target.parent.mkdir(parents=True, exist_ok=True)
     builder.save(target)
-    return f"gs://studybuddy-materials/user/project/{name}"
+    return f"gs://margins-materials/user/project/{name}"
 
 
 def text_pdf(pages: int = 3) -> PdfBuilder:
@@ -106,7 +106,7 @@ class TestStorage:
         def fake_download(bucket_name, blob_path):
             import tempfile
 
-            temp_dir = tempfile.mkdtemp(prefix="studybuddy-")
+            temp_dir = tempfile.mkdtemp(prefix="margins-")
             temp_dirs.append(temp_dir)
             path = os.path.join(temp_dir, "material.pdf")
             text_pdf(1).save(Path(path))
@@ -116,14 +116,14 @@ class TestStorage:
 
         async with local_copy("gs://bucket/user/project/remote.pdf") as path:
             assert Path(path).is_file()
-            assert "studybuddy_remote.pdf" not in path
+            assert "margins_remote.pdf" not in path
         assert temp_dirs and not os.path.exists(temp_dirs[0])
 
     async def test_downloaded_copy_is_removed_when_the_body_fails(self, monkeypatch):
         monkeypatch.setattr(settings, "GCS_BUCKET", "bucket")
         import tempfile
 
-        temp_dir = tempfile.mkdtemp(prefix="studybuddy-")
+        temp_dir = tempfile.mkdtemp(prefix="margins-")
         monkeypatch.setattr(storage, "_download_from_gcs", lambda b, p: (temp_dir + "/f", temp_dir))
 
         with pytest.raises(RuntimeError):

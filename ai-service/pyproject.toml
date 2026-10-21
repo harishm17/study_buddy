@@ -1,5 +1,5 @@
 [project]
-name = "studybuddy-ai-service"
+name = "margins-ai-service"
 version = "0.1.0"
 description = "AI microservice for StudyBuddy platform"
 requires-python = ">=3.13"

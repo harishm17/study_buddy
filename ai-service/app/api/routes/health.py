@@ -12,7 +12,7 @@ async def health_check():
     """Health check endpoint."""
     return {
         "status": "healthy",
-        "service": "studybuddy-ai",
+        "service": "margins-ai",
         "environment": settings.ENVIRONMENT,
         "llm_provider": settings.LLM_PROVIDER,
         "voice_enabled": settings.voice_enabled,
@@ -96,7 +96,7 @@ async def dependency_health_check():
 
     return {
         "status": status,
-        "service": "studybuddy-ai",
+        "service": "margins-ai",
         "environment": settings.ENVIRONMENT,
         "checks": checks,
     }

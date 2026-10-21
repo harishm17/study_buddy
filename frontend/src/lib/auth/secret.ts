@@ -1,4 +1,4 @@
-const DEV_FALLBACK_SECRET = 'studybuddy-dev-insecure-secret'
+const DEV_FALLBACK_SECRET = 'margins-dev-insecure-secret'
 
 /**
  * The secret that signs session cookies.
