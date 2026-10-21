@@ -77,7 +77,9 @@ export function ReviewList({ entries }: { entries: ReviewEntry[] }) {
 
               <Detail label="Your answer">
                 {given ? (
-                  <span className="whitespace-pre-wrap break-words">{given}</span>
+                  <span className="whitespace-pre-wrap break-words">
+                    {shortAnswer ? given : <LazyMarkdownInline>{given}</LazyMarkdownInline>}
+                  </span>
                 ) : (
                   <span className="text-fg-3">No answer</span>
                 )}
@@ -87,7 +89,13 @@ export function ReviewList({ entries }: { entries: ReviewEntry[] }) {
                 <>
                   {review.correctAnswer ? (
                     <Detail label={shortAnswer ? 'Sample answer' : 'Correct answer'}>
-                      <span className="whitespace-pre-wrap break-words">{formatKey(question, review.correctAnswer)}</span>
+                      <span className="whitespace-pre-wrap break-words">
+                        {shortAnswer ? (
+                          formatKey(question, review.correctAnswer)
+                        ) : (
+                          <LazyMarkdownInline>{formatKey(question, review.correctAnswer)}</LazyMarkdownInline>
+                        )}
+                      </span>
                     </Detail>
                   ) : null}
                   {review.feedback ? <Detail label="Feedback">{review.feedback}</Detail> : null}

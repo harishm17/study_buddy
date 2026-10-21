@@ -49,7 +49,7 @@ export function NavActions() {
 export function HeroActions() {
   const signedIn = useSignedIn()
   return (
-    <div className="mt-8 flex gap-3">
+    <div className="mt-8 flex flex-wrap gap-3">
       {signedIn ? (
         <Button asChild variant="primary" size="lg">
           <Link href="/home">Open {BRAND_NAME}</Link>
@@ -65,5 +65,15 @@ export function HeroActions() {
         </>
       )}
     </div>
+  )
+}
+
+/** The closing call to action: Get started, or Open Margins when signed in. */
+export function FinalCta() {
+  const signedIn = useSignedIn()
+  return (
+    <Button asChild variant="primary" size="lg">
+      <Link href={signedIn ? '/home' : '/signup'}>{signedIn ? `Open ${BRAND_NAME}` : 'Get started'}</Link>
+    </Button>
   )
 }
