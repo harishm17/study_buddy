@@ -38,10 +38,12 @@ type ItemProps = React.ComponentProps<typeof MenuPrimitive.Item> & {
   icon?: React.ReactNode
   /** Shortcut hint, right aligned. */
   kbd?: string
+  /** Anything after the label, e.g. a check mark. */
+  trailing?: React.ReactNode
   destructive?: boolean
 }
 
-export function DropdownMenuItem({ className, icon, kbd, destructive, children, ...props }: ItemProps) {
+export function DropdownMenuItem({ className, icon, kbd, trailing, destructive, children, ...props }: ItemProps) {
   return (
     <MenuPrimitive.Item
       className={cn(
@@ -53,6 +55,7 @@ export function DropdownMenuItem({ className, icon, kbd, destructive, children, 
     >
       {icon ? <span className="inline-flex [&>svg]:size-4 [&>svg]:text-fg-3">{icon}</span> : null}
       <span className="min-w-0 flex-1 truncate">{children}</span>
+      {trailing}
       {kbd ? <span className="ml-4 text-caption font-normal text-fg-3">{kbd}</span> : null}
     </MenuPrimitive.Item>
   )

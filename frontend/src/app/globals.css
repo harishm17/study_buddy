@@ -3,6 +3,10 @@
 /* Dark mode is a class on <html> (next-themes). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* The desktop sidebar collapsed to its 64px rail. The state lives on <html data-sidebar>, set
+   by a script before first paint, so there is no flash of the wide sidebar. */
+@custom-variant rail ([data-sidebar='collapsed'] .sidebar-desktop &);
+
 /* ---------------------------------------------------------------------------------------
    Design tokens (docs/design/DESIGN.md section 3). Components use the semantic names only.
    Neutrals are a cool grey at hue 255; the one accent is fern at hue 168.
@@ -19,7 +23,7 @@
   --border-strong: oklch(0.85 0.006 255);
   --fg: oklch(0.22 0.012 255);
   --fg-2: oklch(0.43 0.012 255);
-  --fg-3: oklch(0.56 0.01 255);
+  --fg-3: oklch(0.54 0.01 255);
 
   --accent: oklch(0.52 0.11 168);
   --accent-hover: oklch(0.47 0.11 168);

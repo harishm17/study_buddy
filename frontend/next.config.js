@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // The dev overlay badge sits on top of the sidebar account row.
+  devIndicators: false,
   experimental: {
     serverActions: {
       bodySizeLimit: '10mb',

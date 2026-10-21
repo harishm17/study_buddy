@@ -94,7 +94,7 @@ export function SheetContent({
               label="Close"
               icon={<X />}
               size="sm"
-              tooltipSide="left"
+              noTooltip
               className="absolute right-3 top-3"
             />
           </DialogPrimitive.Close>

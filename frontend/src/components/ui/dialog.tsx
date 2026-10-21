@@ -59,7 +59,7 @@ export function DialogContent({
               label="Close"
               icon={<X />}
               size="sm"
-              tooltipSide="left"
+              noTooltip
               className="absolute right-3.5 top-3.5"
             />
           </DialogPrimitive.Close>

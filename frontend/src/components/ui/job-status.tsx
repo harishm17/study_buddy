@@ -53,16 +53,20 @@ type JobStatusProps = {
   className?: string
 }
 
+const subscribeToClock = (callback: () => void) => {
+  const timer = setInterval(callback, 1000)
+  return () => clearInterval(timer)
+}
+
+/** Seconds since `since`, ticking once a second while `running`. Null on the server. */
 function useElapsed(since: JobStatusProps['since'], running: boolean): number | null {
-  const [now, setNow] = React.useState<number | null>(null)
-  React.useEffect(() => {
-    if (!running || since === null || since === undefined) return
-    setNow(Date.now())
-    const timer = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(timer)
-  }, [running, since])
-  if (!running || since === null || since === undefined || now === null) return null
-  return Math.max(0, (now - new Date(since).getTime()) / 1000)
+  const second = React.useSyncExternalStore(
+    running ? subscribeToClock : () => () => {},
+    () => Math.floor(Date.now() / 1000),
+    () => null
+  )
+  if (!running || since === null || since === undefined || second === null) return null
+  return Math.max(0, second - new Date(since).getTime() / 1000)
 }
 
 /** The one way to show a background job. Announces changes politely. */
