@@ -7,7 +7,13 @@ from typing import List, Dict, Optional
 from datetime import UTC, datetime
 from enum import Enum
 
-from app.services.content_generator.context import NoSourceMaterialError, content_messages, fetch_topic_chunks, focus_line
+from app.services.content_generator.context import (
+    NoSourceMaterialError,
+    attach_sources,
+    content_messages,
+    fetch_topic_context,
+    focus_line,
+)
 from app.services.llm.base import LLMOutputError
 from app.services.llm.factory import LLMFactory
 from app.services.llm.schemas import InteractiveExampleSet, SolvedExampleSet
@@ -64,18 +70,23 @@ class ExamplesGenerator:
         Returns:
             Dict with generated examples and metadata
         """
-        chunks = await fetch_topic_chunks(topic_id)
+        context = await fetch_topic_context(topic_id)
+        chunks = context.chunks
         if not chunks:
             raise NoSourceMaterialError(f"No source material is mapped to topic {topic_id}")
 
         if example_type == ExampleType.SOLVED:
             examples = await self._generate_solved_examples(
-                topic_name, topic_description, chunks, count, difficulty_level, focus, cache_excerpts
+                topic_name, topic_description, chunks, count, difficulty_level, focus, cache_excerpts,
+                context.course_map,
             )
         else:
             examples = await self._generate_interactive_examples(
-                topic_name, topic_description, chunks, count, difficulty_level, focus, cache_excerpts
+                topic_name, topic_description, chunks, count, difficulty_level, focus, cache_excerpts,
+                context.course_map,
             )
+        # Each item says which excerpts it is based on; store the file and pages instead.
+        attach_sources(examples, chunks)
 
         return {
             'examples': examples,
@@ -93,6 +104,7 @@ class ExamplesGenerator:
         difficulty_level: str,
         focus: Optional[str] = None,
         cache_excerpts: bool = False,
+        course_map: str = "",
     ) -> List[Dict]:
         """Fully solved examples with step-by-step solutions."""
         guidance = SOLVED_GUIDANCE.get(difficulty_level, SOLVED_GUIDANCE['medium'])
@@ -104,15 +116,16 @@ Difficulty: {difficulty_level}. {guidance}
 - Give complete step-by-step solutions. Each step has a one-line description, the work (math or reasoning), and why the step is taken.
 - Name the key principle or formula used in each step.
 - Keep final_answer short: 2-5 markdown bullets.
-- Set difficulty to "{difficulty_level}"."""
+- Set difficulty to "{difficulty_level}".
+- List in source_excerpts the index of every excerpt an example is based on."""
 
         result = await self.llm.generate_structured(
-            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts),
+            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts, course_map),
             SolvedExampleSet,
             max_tokens=16000,
             purpose="solved_examples",
         )
-        examples = [example.model_dump() for example in result.examples if example.usable()]
+        examples = [stored for example in result.examples if (stored := example.stored()) is not None]
         if not examples:
             raise LLMOutputError("No usable solved examples were generated")
         return examples[:count]
@@ -126,6 +139,7 @@ Difficulty: {difficulty_level}. {guidance}
         difficulty_level: str,
         focus: Optional[str] = None,
         cache_excerpts: bool = False,
+        course_map: str = "",
     ) -> List[Dict]:
         """Problems the student solves one step at a time."""
         guidance = INTERACTIVE_GUIDANCE.get(difficulty_level, INTERACTIVE_GUIDANCE['medium'])
@@ -136,16 +150,18 @@ Difficulty: {difficulty_level}. {guidance}
 - Each step asks the student one short question, offers a hint that does not give the answer away, and has the correct answer plus other acceptable forms of it.
 - Each step builds on the one before.
 - Give an explanation, feedback for a correct answer, and guidance for a wrong one.
-- answer_type is numeric, text or multiple_choice.
-- Set difficulty to "{difficulty_level}"."""
+- Answer types. Anything whose answer is a number (a count, a probability, a fraction, the result of arithmetic) is answer_type numeric: correct_answer is the number as a plain decimal or fraction, with no units or words, and tolerance is the accepted absolute difference (for example 0.005 for a probability to 3 decimals; 0 only for exact integers). Use multiple_choice when the student picks from options: put 2 to 5 options (ids A, B, C...) in `options`, never in the question text, and give the option id as correct_answer. Use text only for a short canonical word, term or expression (for example "independent" or "(1-p)^k p"); write it in one standard form. acceptable_answers lists other forms of the same answer, one form per entry; never put several answers in one entry.
+- In explanations and feedback, refer to options by their content, never by letter. The options are shuffled after you write them.
+- Set difficulty to "{difficulty_level}".
+- List in source_excerpts the index of every excerpt a problem is based on."""
 
         result = await self.llm.generate_structured(
-            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts),
+            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts, course_map),
             InteractiveExampleSet,
             max_tokens=16000,
             purpose="interactive_examples",
         )
-        examples = [example.model_dump() for example in result.examples if example.usable()]
+        examples = [stored for example in result.examples if (stored := example.stored()) is not None]
         if not examples:
             raise LLMOutputError("No usable practice problems were generated")
         return examples[:count]

@@ -402,6 +402,7 @@ class TestDailyBudget:
 
     async def test_zero_turns_the_budget_off(self, db, user_id, monkeypatch):
         monkeypatch.setattr(settings, "DAILY_LLM_BUDGET_USD", 0)
+        monkeypatch.setattr(settings, "GLOBAL_DAILY_LLM_BUDGET_USD", 0)
         await seed_usage(db, user_id, 500)
         job_id, calls, handler = await self.run_llm_job(db, user_id)
 

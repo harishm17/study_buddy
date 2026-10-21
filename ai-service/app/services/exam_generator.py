@@ -11,8 +11,20 @@ from typing import Dict, List
 from datetime import UTC, datetime
 
 from app.db.connection import execute_query
-from app.services.content_generator.context import NoSourceMaterialError, content_messages, fetch_topic_chunks
-from app.services.content_generator.quiz import DIFFICULTY_GUIDANCE, QUESTION_FORMAT_RULES, minimum_usable
+from app.services.content_generator.context import (
+    NoSourceMaterialError,
+    attach_sources,
+    content_messages,
+    do_not_reuse_block,
+    existing_content_digest,
+    fetch_topic_context,
+)
+from app.services.content_generator.quiz import (
+    APPLICATION_RULES,
+    DIFFICULTY_GUIDANCE,
+    QUESTION_FORMAT_RULES,
+    minimum_usable,
+)
 from app.services.llm.base import LLMError, LLMOutputError
 from app.services.llm.factory import LLMFactory
 from app.services.llm.schemas import QuestionSet
@@ -161,7 +173,8 @@ class ExamGenerator:
         difficulty: str,
     ) -> List[Dict]:
         """Questions for one topic, in the planned type mix."""
-        chunks = await fetch_topic_chunks(topic["id"])
+        context = await fetch_topic_context(topic["id"])
+        chunks = context.chunks
         if not chunks:
             raise NoSourceMaterialError(f"No source material is mapped to topic {topic['name']}")
 
@@ -172,13 +185,15 @@ class ExamGenerator:
 
 Use exactly this mix: {mix}.
 Difficulty: {difficulty}. {guidance}
-Each question tests a different concept from the excerpts.
 
+{APPLICATION_RULES}
+{do_not_reuse_block(await existing_content_digest(topic["id"]))}
 {QUESTION_FORMAT_RULES}
 Set difficulty to "{difficulty}"."""
 
         result = await self.llm.generate_structured(
-            content_messages(topic['name'], topic.get('description') or '', chunks, instructions),
+            content_messages(topic['name'], topic.get('description') or '', chunks, instructions,
+                             course_map=context.course_map),
             QuestionSet,
             max_tokens=16000,
             purpose="exam_questions",
@@ -194,4 +209,5 @@ Set difficulty to "{difficulty}"."""
             question['topic_id'] = topic['id']
             question['topic_name'] = topic['name']
             questions.append(question)
+        attach_sources(questions, chunks)
         return questions

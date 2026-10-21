@@ -55,8 +55,10 @@ class TestResolveModel:
             monkeypatch.setattr(settings, name, Settings.model_fields[name].default)
         for purpose in ("section_notes", "solved_examples", "interactive_examples", "topic_quiz", "exam_questions"):
             assert resolve_model(purpose) == ModelChoice("claude-opus-5-5", "medium"), purpose
-        for purpose in ("grade_short_answer", "extract_topics", "validate_material"):
+        for purpose in ("grade_short_answer", "validate_material", "order_units"):
             assert resolve_model(purpose) == ModelChoice("claude-haiku-5-5", "low"), purpose
+        # One planning call per course, and structure decides every later lesson: the notes model.
+        assert resolve_model("extract_topics") == ModelChoice("claude-opus-5-5", "low")
         # Chat and voice have always run at low effort.
         assert resolve_model("chat") == ModelChoice("claude-opus-5-5", "low")
         assert resolve_model("voice") == ModelChoice("claude-haiku-5-5", "low")

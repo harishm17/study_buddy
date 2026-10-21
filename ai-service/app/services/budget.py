@@ -1,12 +1,19 @@
-"""The per-user daily LLM budget, shared by background jobs and chat.
+"""The daily LLM budgets, shared by background jobs, chat and voice: one per user and one for
+everyone together.
 
 Spend is read from the `llm_usage_events` ledger, which is append-only: a row is written when a
 job attempt or a chat answer has cost something, and nothing deletes it when the job, thread or
 project it came from is deleted (only deleting the user does). So removing things cannot lower
 the day's total. A "day" is the current UTC day. The check runs before a call starts, so one
 call can end a little over the cap.
+
+Sign-up is open and the API key is shared, so on top of the per-user cap there is a global one
+(GLOBAL_DAILY_LLM_BUDGET_USD) over the same ledger: once every user together has spent it, no
+call starts for anyone until midnight UTC. Students see the same allowance message for both
+(their screens never show dollar amounts); the figures are only in logs and job errors.
 """
 import logging
+import time
 import uuid
 from typing import Optional
 
@@ -71,8 +78,63 @@ async def spent_today_usd(user_id: str) -> float:
     return float(row["spent"]) if row else 0.0
 
 
+async def global_spent_today_usd() -> float:
+    """What every user's jobs, chat answers and voice turns have cost since midnight UTC."""
+    row = await execute_one(
+        f"""
+        SELECT COALESCE(SUM(cost_usd), 0)::float8 AS spent
+        FROM llm_usage_events
+        WHERE created_at >= date_trunc('day', {UTC_NOW})
+        """
+    )
+    return float(row["spent"]) if row else 0.0
+
+
+# The global cap blocks every call for the rest of the day, so it is logged, but at most once a
+# minute (with how many calls it stopped) rather than on each of them.
+_GLOBAL_LOG_INTERVAL_SECONDS = 60.0
+_global_log = {"at": None, "blocked": 0}
+
+
+def _log_global_trip(spent: float, budget: float) -> None:
+    _global_log["blocked"] += 1
+    now = time.monotonic()
+    last = _global_log["at"]
+    if last is not None and now - last < _GLOBAL_LOG_INTERVAL_SECONDS:
+        return
+    logger.warning(
+        "GLOBAL daily LLM budget reached: $%.2f of $%.2f spent today (UTC) by all users; "
+        "%s call(s) refused since the last report. Calls resume after midnight UTC or when "
+        "GLOBAL_DAILY_LLM_BUDGET_USD is raised.",
+        spent, budget, _global_log["blocked"],
+    )
+    _global_log["at"] = now
+    _global_log["blocked"] = 0
+
+
 async def over_budget_message(user_id: str) -> Optional[str]:
-    """None while the user may start another LLM call; otherwise what to tell them."""
+    """None while the user may start another LLM call; otherwise what to tell them.
+
+    Two caps apply: the user's own (DAILY_LLM_BUDGET_USD) and the one for all users together
+    (GLOBAL_DAILY_LLM_BUDGET_USD). Either one set to 0 is off.
+    """
+    message = await _over_user_budget(user_id)
+    if message:
+        return message
+    global_budget = settings.GLOBAL_DAILY_LLM_BUDGET_USD
+    if global_budget <= 0:
+        return None
+    global_spent = await global_spent_today_usd()
+    if global_spent < global_budget:
+        return None
+    _log_global_trip(global_spent, global_budget)
+    return (
+        f"Daily AI usage limit reached for the whole service (${global_spent:.2f} of "
+        f"${global_budget:.2f} used today, UTC). It is available again after midnight UTC."
+    )
+
+
+async def _over_user_budget(user_id: str) -> Optional[str]:
     budget = settings.DAILY_LLM_BUDGET_USD
     if budget <= 0:
         return None

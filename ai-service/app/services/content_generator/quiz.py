@@ -7,7 +7,15 @@ from typing import List, Dict, Optional
 from datetime import UTC, datetime
 from enum import Enum
 
-from app.services.content_generator.context import NoSourceMaterialError, content_messages, fetch_topic_chunks, focus_line
+from app.services.content_generator.context import (
+    NoSourceMaterialError,
+    attach_sources,
+    content_messages,
+    do_not_reuse_block,
+    existing_content_digest,
+    fetch_topic_context,
+    focus_line,
+)
 from app.services.llm.base import LLMOutputError
 from app.services.llm.factory import LLMFactory
 from app.services.llm.schemas import QuestionSet
@@ -32,7 +40,13 @@ QUESTION_FORMAT_RULES = """Question rules:
 - numerical: correct_answer is a plain number; give the unit and an absolute tolerance.
 - true_false: correct_answer is a boolean; the explanation says why.
 - Every question has an explanation of the correct answer and points from 1 to 5 by complexity.
-- In explanations, refer to options by their content, never by letter. The options are shuffled after you write them."""
+- In explanations, refer to options by their content, never by letter. The options are shuffled after you write them.
+- List in source_excerpts the index of every excerpt a question is based on."""
+
+APPLICATION_RULES = """Question design:
+- At least half of the questions must apply a concept to a new situation (a fresh scenario, new numbers, a case the course materials do not show) rather than recall a definition or repeat an example.
+- Use numbers, names and scenarios that differ from the worked examples in the excerpts and in the lesson. A student who memorised the examples must not be able to answer by recall.
+- Each question tests a different concept from the excerpts."""
 
 
 def minimum_usable(requested: int) -> int:
@@ -76,9 +90,11 @@ class QuizGenerator:
         if question_types is None:
             question_types = list(QuestionType)
 
-        chunks = await fetch_topic_chunks(topic_id)
+        context = await fetch_topic_context(topic_id)
+        chunks = context.chunks
         if not chunks:
             raise NoSourceMaterialError(f"No source material is mapped to topic {topic_id}")
+        seen = do_not_reuse_block(await existing_content_digest(topic_id))
 
         questions = await self._generate_questions(
             topic_name=topic_name,
@@ -89,7 +105,10 @@ class QuizGenerator:
             difficulty_level=difficulty_level,
             focus=focus,
             cache_excerpts=cache_excerpts,
+            course_map=context.course_map,
+            already_seen=seen,
         )
+        attach_sources(questions, chunks)
 
         return {
             'questions': questions,
@@ -109,6 +128,8 @@ class QuizGenerator:
         difficulty_level: str,
         focus: Optional[str] = None,
         cache_excerpts: bool = False,
+        course_map: str = "",
+        already_seen: str = "",
     ) -> List[Dict]:
         """Generate and validate quiz questions."""
         guidance = DIFFICULTY_GUIDANCE.get(difficulty_level, DIFFICULTY_GUIDANCE['medium'])
@@ -118,13 +139,14 @@ class QuizGenerator:
 {focus_line(focus)}
 Difficulty: {difficulty_level}. {guidance}
 Use only these question types, spread across them: {types_str}.
-Each question tests a specific concept from the excerpts.
 
+{APPLICATION_RULES}
+{already_seen}
 {QUESTION_FORMAT_RULES}
 Set difficulty to "{difficulty_level}" and list the concepts each question tests."""
 
         result = await self.llm.generate_structured(
-            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts),
+            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts, course_map),
             QuestionSet,
             max_tokens=16000,
             purpose="topic_quiz",

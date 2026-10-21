@@ -10,7 +10,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from app.services.llm import LLMFactory
 from app.services.llm.base import LLMError, LLMMessage
-from app.services.llm.schemas import MaterialCheck
+from app.services.llm.schemas import MATERIAL_KINDS, MaterialCheck
 from app.config import settings
 from app.services.document_processor.extractors import (
     ExtractedDocument,
@@ -35,6 +35,18 @@ class ValidationResult(BaseModel):
     notes: str
     page_count: Optional[int] = None
     has_text: bool = False
+    # What the file is, from the validator's reading of it: content|syllabus|exam|other.
+    kind: str = "content"
+
+
+def material_role(category: str, kind: Optional[str]) -> str:
+    """The role a material gets: the student's category when it is `syllabus` or `sample_exams`,
+    otherwise what the validator says the file is (content when it did not say)."""
+    if category == "syllabus":
+        return "syllabus"
+    if category == "sample_exams":
+        return "exam"
+    return kind if kind in MATERIAL_KINDS else "content"
 
 
 def _page_list(pages: List[int]) -> str:
@@ -89,7 +101,7 @@ async def validate_material(
         material_id: Material ID
         gcs_path: Storage path of the uploaded file (gs://bucket/path or a local path)
         filename: Original filename
-        category: Material category (lecture_notes, sample_exams, book_chapters)
+        category: Material category (lecture_notes, sample_exams, book_chapters, syllabus)
 
     Returns:
         ValidationResult with status and notes
@@ -159,7 +171,9 @@ Sample Content (first 500 words):
 Set is_valid to true for anything a student could reasonably study from: lecture notes, slides, textbook chapters, papers, problem sets, past exams, documentation, standards or legal texts, and so on. A category that does not match exactly is fine.
 Set is_valid to false only when the file clearly is not study material (a receipt, an invoice, spam, a personal letter) or the text is unreadable (garbled characters, almost no text).
 Give a one or two sentence note explaining the decision.
+Set kind to what the file is, whatever the category says: content (lecture notes, slides, a textbook chapter, a paper, a problem set or documentation to learn from), syllabus (a course syllabus, schedule or calendar), exam (a past exam, midterm, final or quiz paper) or other.
 """
+    kind = "content"
     try:
         llm = LLMFactory.get_provider()
         check = await llm.generate_structured(
@@ -170,6 +184,7 @@ Give a one or two sentence note explaining the decision.
         )
         is_valid = check.is_valid
         notes = check.notes or "No validation notes provided"
+        kind = check.kind
     except LLMError as llm_error:
         # Fallback path: keep pipeline functional if LLM credentials are missing
         # or upstream API auth is unavailable.
@@ -185,4 +200,5 @@ Give a one or two sentence note explaining the decision.
         notes=notes + page_note,
         page_count=page_count,
         has_text=has_text,
+        kind=kind,
     )

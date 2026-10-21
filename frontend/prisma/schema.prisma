@@ -67,6 +67,7 @@ model Project {
   learningSignals LearningSignal[]
   reviewSchedules ReviewSchedule[]
   chatThreads    ChatThread[]
+  units          Unit[]
 
   @@index([userId])
   @@index([status])
@@ -80,7 +81,7 @@ model Project {
 model Material {
   id               String    @id @default(uuid())
   projectId        String    @map("project_id")
-  category         String // lecture_notes|sample_exams|book_chapters
+  category         String // lecture_notes|sample_exams|book_chapters|syllabus
   filename         String
   gcsPath          String    @map("gcs_path")
   sizeBytes        BigInt    @map("size_bytes")
@@ -89,10 +90,16 @@ model Material {
   metadata         Json?
   uploadedAt       DateTime  @default(now()) @map("uploaded_at")
   validatedAt      DateTime? @map("validated_at")
+  // What the file is for: content|syllabus|exam|other. Set at validation (the student's category
+  // wins for syllabus and sample_exams, otherwise the validator's "kind") and editable by the
+  // student. Syllabus and exam files are never topic sources and are left out of topic mapping
+  // and generation retrieval.
+  role             String    @default("content")
 
   // Relations
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   materialChunks MaterialChunk[]
+  topicSources   TopicSource[]
 
   @@index([projectId])
   @@index([category])
@@ -149,8 +156,18 @@ model Topic {
   userConfirmed      Boolean  @default(false) @map("user_confirmed")
   createdAt          DateTime @default(now()) @map("created_at")
 
+  // Course structure. unitId is null for topics added by hand and for courses planned before
+  // units existed. objectives are verb phrases that finish "By the end you can ...".
+  // prerequisiteIds are topics of the same project that come earlier in the course.
+  unitId             String?  @map("unit_id")
+  objectives         String[]
+  prerequisiteIds    String[] @map("prerequisite_ids")
+  estimatedMinutes   Int?     @map("estimated_minutes")
+
   // Relations
   project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  unit               Unit?               @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  sources            TopicSource[]
   topicChunkMappings TopicChunkMapping[]
   content            TopicContent[]
   topicQuizzes       TopicQuiz[]
@@ -162,7 +179,56 @@ model Topic {
   reviewSchedules    ReviewSchedule[]
 
   @@index([projectId, orderIndex])
+  @@index([unitId])
   @@map("topics")
+}
+
+// ============================================
+// Units (a week, a chapter or a lecture group: topics are grouped under them)
+// ============================================
+
+model Unit {
+  id         String   @id @default(uuid())
+  projectId  String   @map("project_id")
+  title      String
+  summary    String?
+  orderIndex Int      @map("order_index")
+  // "Week 3" or "Class 11" when the syllabus or calendar says so.
+  weekLabel  String?  @map("week_label")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  topics  Topic[]
+
+  @@index([projectId, orderIndex])
+  @@map("units")
+}
+
+// ============================================
+// Topic Sources (the material a topic is taught from)
+// ============================================
+
+// One row per planned section: a contiguous range of one file's chunks. A topic is taught
+// from its primary rows, in document order. `supporting` is reserved for stored supporting
+// spans; today supporting excerpts are found by search at generation time.
+model TopicSource {
+  id              String  @id @default(uuid())
+  topicId         String  @map("topic_id")
+  materialId      String  @map("material_id")
+  pageStart       Int?    @map("page_start")
+  pageEnd         Int?    @map("page_end")
+  chunkIndexStart Int     @map("chunk_index_start")
+  chunkIndexEnd   Int     @map("chunk_index_end")
+  role            String  @default("primary") // primary|supporting
+
+  // Relations
+  topic    Topic    @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([materialId])
+  @@map("topic_sources")
 }
 
 // ============================================
@@ -597,5 +663,6 @@ model LlmUsageEvent {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
+  @@index([createdAt])
   @@map("llm_usage_events")
 }

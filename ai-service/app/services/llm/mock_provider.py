@@ -31,24 +31,34 @@ logger = logging.getLogger(__name__)
 
 MOCK_NOTES = """# Study notes (mock)
 
-## Overview
+## What you'll learn
+- Tell what the mock provider does and does not do.
+- Find where to switch to a real model.
+
+## The idea
 LLM_PROVIDER is set to `mock`, so these notes were not written by a model. They stand in
 for real notes so that the rest of the app can be exercised without an API key or any cost.
 
-## Key Concepts
+## Key concepts
 - Upload, validation, chunking, embedding and retrieval ran for real on your files.
-- Topic extraction, quizzes, exams and grading return fixed placeholder output.
+- The course plan, quizzes, exams and grading return placeholder output.
 - Every job still goes through the real job runner, so retries, leases and usage tracking work.
 
-## How It Works
+## Worked example
 The mock provider returns a fixed example for each output schema and this text for notes.
 It records zero token usage, so the daily budget is never reached.
 
-## Common Pitfalls
+## Check yourself
+```check
+Q: Which setting turns the mock provider on?
+A: Set `LLM_PROVIDER=mock`.
+```
+
+## Common pitfalls
 - Placeholder questions are the same for every topic.
 - Short answers are always graded zero.
 
-## Exam-Ready Recap
+## Summary
 - Set `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` to generate real content.
 - Run `scripts/reembed_chunks.py` after changing the embedding model.
 """
@@ -188,6 +198,11 @@ class MockProvider(LLMProvider):
         async with llm_slot():
             await self._simulate_call()
         record_usage(LLMUsage(model=self.model_for(purpose), purpose=purpose))
+        # A schema whose valid output depends on the request (the course planner must place the
+        # sections it was given) builds its example from the prompt.
+        example_for = getattr(schema, "example_for", None)
+        if example_for is not None:
+            return example_for("\n".join(message.content for message in messages))
         return example()
 
     async def stream_cited_answer(

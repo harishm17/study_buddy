@@ -7,18 +7,15 @@ do the work and return a `JobOutcome`.
 import asyncio
 import logging
 import json
-import re
 from fastapi import APIRouter, HTTPException
 from app.models.jobs import JobPayload, MaterialValidationInput, ContentGenerationInput, ExamGenerationInput
-from app.services.document_processor.validator import validate_material
+from app.services.document_processor.validator import material_role, validate_material
 from app.services.document_processor.chunker import chunk_document, NoContentError
 from app.services.document_processor.storage import local_copy
 from app.services.embeddings.generator import embedding_text, generate_embeddings
-from app.services.topic_extractor import extract_topics_from_materials
-from app.services.embeddings.search import hybrid_search_chunks
-from app.services.embeddings.topic_mapping import replace_topic_mappings
+from app.services.course_planner import NoPlannableMaterialError, plan_course, write_plan
 from app.services.content_generator import NotesGenerator, ExamplesGenerator, QuizGenerator
-from app.services.content_generator.context import TOPIC_CHUNK_LIMIT, NoSourceMaterialError
+from app.services.content_generator.context import NoSourceMaterialError
 from app.services.content_generator.examples import ExampleType
 from app.services.content_generator.quiz import QuestionType
 from app.services.exam_generator import ExamGenerator
@@ -49,10 +46,6 @@ router = APIRouter()
 
 # Kept under its old name for callers and tests.
 _classify_failure = classify_failure
-
-
-def _normalize_topic_name(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
 
 
 def _json_value(value):
@@ -100,16 +93,20 @@ async def validate_material_job(payload: JobPayload, job: JobContext) -> JobOutc
         category=material["category"],
     )
 
+    # The role is decided here, once: the student's category for a syllabus or past exam, else
+    # what the validator says the file is. The student can change it afterwards.
     await execute_update(
         f"""
         UPDATE materials
         SET validation_status = $1,
             validation_notes = $2,
+            role = $3,
             validated_at = {UTC_NOW}
-        WHERE id = $3
+        WHERE id = $4
         """,
         validation_result.status,
         validation_result.notes,
+        material_role(material["category"], validation_result.kind),
         input_data.materialId,
     )
 
@@ -333,124 +330,36 @@ async def chunk_material_job(payload: JobPayload, job: JobContext) -> JobOutcome
     uses_llm=True,
 )
 async def extract_topics_job(payload: JobPayload, job: JobContext) -> JobOutcome:
-    """Extract topics from project materials and map them to chunks."""
+    """Plan the course: units, topics and the sections each topic is taught from.
+
+    The model call(s) run first and write nothing; the plan is then stored in one transaction
+    (see app/services/course_planner.py). Before the topics are confirmed this plans the whole
+    course; afterwards it places only the sections of files that are new, and confirmed topics
+    are never renamed or deleted.
+    """
     project_id = payload.data.get("projectId")
     if not project_id:
         raise PermanentJobError("projectId required", "INVALID_INPUT")
 
-    topics = await extract_topics_from_materials(project_id)
-    if not topics:
+    try:
+        plan_job = await plan_course(project_id)
+    except NoPlannableMaterialError as exc:
+        raise PermanentJobError(str(exc), exc.code) from exc
+
+    if plan_job.mode == "full" and not plan_job.plan.topics():
         raise HTTPException(status_code=404, detail="No topics extracted")
 
-    # Every search (and the embedding it needs) runs before the transaction opens, so the
-    # transaction connection never waits on a second pool connection.
-    chunks_per_topic = [
-        await hybrid_search_chunks(
-            project_id,
-            topic.name,
-            topic.description,
-            topic.keywords,
-            limit=TOPIC_CHUNK_LIMIT,
-        )
-        for topic in topics
-    ]
+    written = await write_plan(plan_job)
+    total = await execute_one("SELECT count(*)::int AS n FROM topics WHERE project_id = $1", project_id)
+    topics_total = total["n"] if total else written["topics"]
 
-    async def insert_topics_transaction(conn):
-        existing_topics = await conn.fetch(
-            """
-            SELECT id, name
-            FROM topics
-            WHERE project_id = $1
-            ORDER BY created_at ASC
-            """,
-            project_id,
-        )
-        existing_by_name = {
-            _normalize_topic_name(row["name"]): row
-            for row in existing_topics
-            if _normalize_topic_name(row["name"])
-        }
-
-        topic_count = 0
-        kept_topic_ids: list[str] = []
-        for idx, (topic, relevant_chunks) in enumerate(zip(topics, chunks_per_topic)):
-            topic_keywords = [keyword.strip() for keyword in (topic.keywords or []) if keyword and keyword.strip()]
-            if not topic_keywords:
-                topic_keywords = [topic.name.lower()]
-
-            existing_topic = existing_by_name.get(_normalize_topic_name(topic.name))
-
-            if existing_topic:
-                topic_id = existing_topic["id"]
-                await conn.execute(
-                    """
-                    UPDATE topics
-                    SET description = $1,
-                        keywords = $2,
-                        order_index = $3,
-                        source_material_ids = COALESCE(source_material_ids, '{}'::text[])
-                    WHERE id = $4
-                    """,
-                    topic.description,
-                    topic_keywords,
-                    idx,
-                    topic_id,
-                )
-            else:
-                topic_record = await conn.fetchrow(
-                    """
-                    INSERT INTO topics
-                    (id, project_id, name, description, keywords, order_index, source_material_ids, user_confirmed)
-                    VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, FALSE)
-                    RETURNING id
-                    """,
-                    project_id,
-                    topic.name,
-                    topic.description,
-                    topic_keywords,
-                    idx,
-                    [],
-                )
-                topic_id = topic_record['id']
-                existing_by_name[_normalize_topic_name(topic.name)] = {"id": topic_id, "name": topic.name}
-
-            kept_topic_ids.append(topic_id)
-
-            # Replace existing mappings so each extraction run reflects newest chunk ranking.
-            await replace_topic_mappings(conn, topic_id, relevant_chunks)
-
-            topic_count += 1
-
-        # Remove stale, unconfirmed topics from previous extraction runs.
-        # This keeps the review list focused and prevents duplicate topic drift.
-        if kept_topic_ids:
-            await conn.execute(
-                """
-                DELETE FROM topics
-                WHERE project_id = $1
-                  AND user_confirmed = FALSE
-                  AND id <> ALL($2::text[])
-                """,
-                project_id,
-                kept_topic_ids,
-            )
-
-        await conn.execute(
-            """
-            UPDATE projects
-            SET status = 'topics_pending'
-            WHERE id = $1
-            """,
-            project_id,
-        )
-        return topic_count
-
-    topics_created = await execute_in_transaction(insert_topics_transaction)
-
-    logger.info(f"Completed topic extraction: {topics_created} topics created")
+    logger.info(
+        "Completed course planning (%s): %s new topics in %s units, %s sources, %s confirmed topics kept",
+        plan_job.mode, written["topics"], written["units"], written["sources"], written["kept_confirmed"],
+    )
     return JobOutcome(
-        result={"topics_extracted": topics_created},
-        response={"topicsCount": topics_created},
+        result={"topics_extracted": topics_total, "new_topics": written["topics"], "mode": plan_job.mode},
+        response={"topicsCount": topics_total},
     )
 
 
