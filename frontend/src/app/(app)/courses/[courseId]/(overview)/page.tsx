@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation'
-import { ComingSoon } from '@/features/courses/coming-soon'
+import { SetupGuide } from '@/features/course/setup-guide'
+import { TodayView } from '@/features/course/today-view'
+import { getCourseOverview } from '@/server/queries/course'
 import { getCourseShell } from '@/server/queries/courses'
 import { requireUser } from '@/server/session'
 
@@ -11,7 +13,12 @@ export async function generateMetadata({ params }: { params: Promise<{ courseId:
 
 export default async function CourseOverviewPage({ params }: { params: Promise<{ courseId: string }> }) {
   const user = await requireUser()
-  const course = await getCourseShell(user.id, (await params).courseId)
-  if (!course) notFound()
-  return <ComingSoon title={course.name} description={course.description ?? undefined} />
+  const { courseId } = await params
+  const overview = await getCourseOverview(user.id, courseId)
+  if (!overview) notFound()
+
+  if (overview.mode === 'setup') {
+    return <SetupGuide courseId={courseId} name={overview.course.name} setup={overview.setup} />
+  }
+  return <TodayView course={overview.course} today={overview.today} />
 }
