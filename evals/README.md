@@ -1,6 +1,6 @@
 # Evals
 
-This folder holds the evaluations for StudyBuddy. Right now there is one: a **retrieval eval** that measures how well the app maps a topic to the chunks of the course material that explain it. It is free to run (no paid API calls) and takes under a minute.
+This folder holds the evaluations for Margins. Right now there is one: a **retrieval eval** that measures how well the app maps a topic to the chunks of the course material that explain it. It is free to run (no paid API calls) and takes under a minute.
 
 There is no generation-quality eval yet. See [Generation quality](#generation-quality-not-built-yet).
 

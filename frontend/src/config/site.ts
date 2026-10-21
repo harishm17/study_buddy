@@ -3,7 +3,7 @@ import { BRAND_NAME } from './brand'
 /** The canonical origin: the apex domain. www redirects here (next.config.js). */
 export const SITE_URL = 'https://studymargins.com'
 export const SITE_HOST = 'studymargins.com'
-export const GITHUB_URL = 'https://github.com/harishm17/study_buddy'
+export const GITHUB_URL = 'https://github.com/harishm17/margins'
 export const CONTACT_EMAIL = 'hello@studymargins.com'
 
 export const DEFAULT_TITLE = `${BRAND_NAME}: study from your own course files`
