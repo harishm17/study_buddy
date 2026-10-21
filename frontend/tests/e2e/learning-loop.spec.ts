@@ -38,20 +38,20 @@ test.describe('plan', () => {
     // No date yet: a rolling two weeks, and the page says how to plan up to an exam.
     await page.goto(`/courses/${course.courseId}/plan`)
     await expect(page.getByRole('heading', { level: 1, name: 'Plan' })).toBeVisible()
-    await expect(page.getByText(/The next 14 days, planned for 45 minutes a day/)).toBeVisible()
+    await expect(page.getByText(/The next 14 days, planned for 45 minutes a day/).locator('visible=true')).toBeVisible()
 
     await page.goto(`/courses/${course.courseId}/settings`)
-    await page.getByLabel('Exam date').fill(dayIn(ZONE, 21))
+    await page.getByLabel('Exam date').locator('visible=true').fill(dayIn(ZONE, 21))
     await page.getByRole('button', { name: 'Save changes' }).click()
-    await expect(page.getByText('Course saved')).toBeVisible()
+    await expect(page.getByText('Course saved').locator('visible=true')).toBeVisible()
 
     await page.goto(`/courses/${course.courseId}/plan`)
-    await expect(page.getByText(/Your exam is in 21 days/)).toBeVisible()
+    await expect(page.getByText(/Your exam is in 21 days/).locator('visible=true')).toBeVisible()
 
     // Today is highlighted and holds the first learn block, linked to its topic.
     const today = page.locator('[aria-current="date"]')
     await expect(today).toHaveCount(1)
-    await expect(today.getByText('Today', { exact: true })).toBeVisible()
+    await expect(today.getByText('Today', { exact: true }).locator('visible=true')).toBeVisible()
     await expect(today.getByRole('link', { name: 'Learn Sorting', exact: true })).toHaveAttribute(
       'href',
       `/courses/${course.courseId}/topics/${course.topics.Sorting}`
@@ -63,8 +63,8 @@ test.describe('plan', () => {
     // Unit B has one topic, so no unit mock; two full mocks sit in the final week.
     await expect(page.getByRole('link', { name: 'Mock exam: Unit B', exact: true })).toHaveCount(0)
     await expect(page.getByRole('link', { name: 'Full mock exam', exact: true })).toHaveCount(2)
-    await expect(page.getByText('Exam day', { exact: true })).toBeVisible()
-    await expect(page.getByText('Final review', { exact: true })).toBeVisible()
+    await expect(page.getByText('Exam day', { exact: true }).locator('visible=true')).toBeVisible()
+    await expect(page.getByText('Final review', { exact: true }).locator('visible=true')).toBeVisible()
     await expect(page.getByRole('heading', { name: /Time is short/ })).toHaveCount(0)
 
     // The plan is in the course nav, and the mock links open the form with the topics chosen.
@@ -132,7 +132,7 @@ test.describe('plan', () => {
     const card = page.getByRole('region', { name: 'When is your exam?' })
     await expect(card).toBeVisible()
 
-    await card.getByLabel('Exam date').fill(dayIn(ZONE, 30))
+    await card.getByLabel('Exam date').locator('visible=true').fill(dayIn(ZONE, 30))
     await card.getByRole('button', { name: 'Save date' }).click()
     await expect(page.getByRole('region', { name: 'When is your exam?' })).toHaveCount(0)
     await page.reload()
@@ -155,8 +155,8 @@ test.describe('plan', () => {
     await setZoneCookie(context)
     await signUpAndIn(page, 'create')
     await page.goto('/courses/new')
-    await page.getByLabel('Course name').fill('Dated course')
-    await page.getByLabel('Exam date').fill(dayIn(ZONE, 40))
+    await page.getByLabel('Course name').locator('visible=true').fill('Dated course')
+    await page.getByLabel('Exam date').locator('visible=true').fill(dayIn(ZONE, 40))
     await page.getByRole('combobox', { name: 'Time to study each day' }).click()
     await page.getByRole('option', { name: '1 hour 30 minutes' }).click()
     await page.getByRole('button', { name: 'Create course' }).click()
@@ -167,7 +167,7 @@ test.describe('plan', () => {
     expect(row.dailyMinutes).toBe(90)
 
     await page.goto(`/courses/${courseId}/settings`)
-    await expect(page.getByLabel('Exam date')).toHaveValue(dayIn(ZONE, 40))
+    await expect(page.getByLabel('Exam date').locator('visible=true')).toHaveValue(dayIn(ZONE, 40))
     await expect(page.getByRole('combobox', { name: 'Time to study each day' })).toContainText('1 hour 30 minutes')
   })
 })
@@ -188,8 +188,8 @@ test.describe('practice progress', () => {
     await page.goto(squares)
     await answer(page).fill('4')
     await page.getByRole('button', { name: 'Check', exact: true }).click()
-    await expect(page.getByText('Correct', { exact: true })).toBeVisible()
-    await expect(page.getByText('1 of 2 solved')).toBeVisible()
+    await expect(page.getByText('Correct', { exact: true }).locator('visible=true')).toBeVisible()
+    await expect(page.getByText('1 of 2 solved').locator('visible=true')).toBeVisible()
     await expect
       .poll(async () => (await (await page.request.get(`/api/topics/${course.topics.Squares}/practice-progress`)).json()).problems[0]?.solvedSteps)
       .toEqual([0])
@@ -199,15 +199,15 @@ test.describe('practice progress', () => {
     const phone = await other.newPage()
     await signIn(phone, user.email, user.password)
     await phone.goto(squares)
-    await expect(phone.getByText('1 of 2 solved')).toBeVisible()
+    await expect(phone.getByText('1 of 2 solved').locator('visible=true')).toBeVisible()
     // It resumes at the second step, takes a hint, finishes.
     await phone.getByRole('button', { name: 'Hint' }).click()
     await answer(phone).fill('9')
     await phone.getByRole('button', { name: 'Check', exact: true }).click()
-    await expect(phone.getByText('Correct', { exact: true })).toBeVisible()
-    await expect(phone.getByText('2 of 2 solved')).toBeVisible()
+    await expect(phone.getByText('Correct', { exact: true }).locator('visible=true')).toBeVisible()
+    await expect(phone.getByText('2 of 2 solved').locator('visible=true')).toBeVisible()
     await phone.getByRole('button', { name: 'Finish' }).click()
-    await expect(phone.getByText('Problem complete')).toBeVisible()
+    await expect(phone.getByText('Problem complete').locator('visible=true')).toBeVisible()
 
     // A finished problem is a practice signal: 1 step of 2 solved without a hint is 0.5.
     await expect
@@ -220,20 +220,20 @@ test.describe('practice progress', () => {
     const schedule = await withPrisma((prisma) => prisma.reviewSchedule.findFirst({ where: { topicId: course.topics.Squares } }))
     expect(schedule?.mastery).toBeCloseTo(0.5, 5)
     await phone.reload()
-    await expect(phone.getByText('Getting there').first()).toBeVisible()
+    await expect(phone.getByText('Getting there').locator('visible=true').first()).toBeVisible()
     await other.close()
 
     // Device one again, after a reload with its own cache cleared: still done.
     await page.evaluate(() => localStorage.clear())
     await page.reload()
-    await expect(page.getByText('2 of 2 solved')).toBeVisible()
+    await expect(page.getByText('2 of 2 solved').locator('visible=true')).toBeVisible()
     await expect(
       page.getByRole('navigation', { name: 'Study path' }).getByRole('link', { name: /Practice/ }).getByRole('img', { name: 'Completed' })
     ).toBeVisible()
 
     // Starting over is stored too.
     await page.getByRole('button', { name: 'Start over' }).click()
-    await expect(page.getByText('0 of 2 solved')).toBeVisible()
+    await expect(page.getByText('0 of 2 solved').locator('visible=true')).toBeVisible()
     await expect
       .poll(async () => (await (await page.request.get(`/api/topics/${course.topics.Squares}/practice-progress`)).json()).problems[0]?.solvedSteps)
       .toEqual([])
@@ -256,7 +256,7 @@ test.describe('practice progress', () => {
     const old = await context.newPage()
     await signIn(old, user.email, user.password)
     await old.goto(`/courses/${course.courseId}/topics/${course.topics.Cubes}?view=practice`)
-    await expect(old.getByText('Problem complete')).toBeVisible()
+    await expect(old.getByText('Problem complete').locator('visible=true')).toBeVisible()
     await expect
       .poll(async () => (await (await page.request.get(`/api/topics/${course.topics.Cubes}/practice-progress`)).json()).problems[0]?.solvedSteps)
       .toEqual([0, 1])
@@ -318,14 +318,14 @@ test.describe('reviews', () => {
     await page.goto(`/courses/${courseId}/review`)
     const sets = await withPrisma((prisma) => prisma.topicQuiz.count({ where: { topicId: graph } }))
     await page.locator(`#review-${graph}:visible`).getByRole('button', { name: 'Retry what you missed for Graph traversal' }).click()
-    await expect(page.getByText('Question 1 of 2')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByText('Question 1 of 2').locator('visible=true')).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole('heading', { name: 'Statement 2 about graphs holds.' })).toBeVisible()
     expect(await withPrisma((prisma) => prisma.topicQuiz.count({ where: { topicId: graph } }))).toBe(sets + 1)
     // The address drops ?start=1, so a reload keeps the answers instead of starting over.
     await expect(page).not.toHaveURL(/start=1/)
     await page.keyboard.press('t')
     await page.reload()
-    await expect(page.getByText('Question 1 of 2')).toBeVisible()
+    await expect(page.getByText('Question 1 of 2').locator('visible=true')).toBeVisible()
     await expect(page.getByRole('radio', { name: /True/ })).toBeChecked()
     await page.getByRole('button', { name: 'Next', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Statement 3 about graphs holds.' })).toBeVisible()
@@ -426,10 +426,10 @@ test.describe('graded exams', () => {
     expect(after.dueAt.getTime()).toBe(dueBefore)
 
     // The topic page shows the new mastery, and the weak topic is due for review soon.
-    await page.goto(`/courses/${course.courseId}/topics/${strong}`)
-    await expect(page.getByText(/Strong\s+(99|100)%/).first()).toBeVisible()
-    await page.goto(`/courses/${course.courseId}/topics/${weak}`)
-    await expect(page.getByText(/Learning\s+0%/).first()).toBeVisible()
+    await page.goto(`/courses/${course.courseId}/topics/${strong}?view=notes`)
+    await expect(page.getByText(/Strong\s+(99|100)%/).locator('visible=true').first()).toBeVisible()
+    await page.goto(`/courses/${course.courseId}/topics/${weak}?view=notes`)
+    await expect(page.getByText(/Learning\s+0%/).locator('visible=true').first()).toBeVisible()
     void user
   })
 })

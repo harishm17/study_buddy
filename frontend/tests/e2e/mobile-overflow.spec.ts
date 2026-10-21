@@ -91,7 +91,7 @@ test.describe('signed in', () => {
     const toggle = page.getByRole('button', { name: /By the end you can/ })
     await expect(toggle).toHaveAttribute('aria-expanded', 'false')
     await toggle.click()
-    await expect(page.getByText('trace merge sort and quicksort on a small array')).toBeVisible()
+    await expect(page.getByText('trace merge sort and quicksort on a small array').locator('visible=true')).toBeVisible()
     const { scrollWidth, innerWidth } = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       innerWidth: window.innerWidth,
