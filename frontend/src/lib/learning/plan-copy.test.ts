@@ -16,6 +16,7 @@ const item = (over: Partial<PlanItem>): PlanItem => ({
   done: false,
   part: null,
   note: null,
+  projected: false,
   ...over,
 })
 
@@ -30,6 +31,18 @@ test('each kind of item links to its action', () => {
   assert.equal(planItemHref(item({ kind: 'full_mock', topicId: null, topicIds: ['a'] }), 'c1'), '/courses/c1/exams/new?topics=all')
 })
 
+test('mixed practice and projected reviews link to their actions', () => {
+  const mixed = item({ kind: 'mixed', topicId: null, topicIds: ['a', 'b'], title: 'Mixed practice: A and B', minutes: 30 })
+  assert.equal(planItemHref(mixed, 'c1'), '/courses/c1/exams/new?topics=a,b')
+  const described = describePlanItem(mixed, 'c1')
+  assert.equal(described.verb, 'Create')
+  assert.match(described.reason, /mixed together/)
+  const projected = item({ kind: 'review', projected: true })
+  assert.equal(planItemHref(projected, 'c1'), '/courses/c1/topics/t1?view=quiz')
+  assert.match(describePlanItem(projected, 'c1').reason, /spaced review/)
+  assert.equal(nextActionsFromPlan(planFor([topic('a', { orderIndex: 0 })])).length, 1)
+})
+
 test('items are described in plain words with a button and a time', () => {
   const learn = describePlanItem(item({ part: { number: 1, of: 2 }, minutes: 45 }), 'c1')
   assert.equal(learn.verb, 'Start')
@@ -40,7 +53,7 @@ test('items are described in plain words with a button and a time', () => {
   assert.equal(describePlanItem(item({ kind: 'quiz' }), 'c1').verb, 'Take quiz')
   assert.equal(describePlanItem(item({ kind: 'review', note: 'Overdue by 2 days' }), 'c1').reason, 'Overdue by 2 days')
   assert.equal(describePlanItem(item({ kind: 'review' }), 'c1').reason, 'Due for review.')
-  for (const kind of ['learn', 'quiz', 'review', 'unit_mock', 'full_mock'] as const) {
+  for (const kind of ['learn', 'quiz', 'review', 'mixed', 'unit_mock', 'full_mock'] as const) {
     const described = describePlanItem(item({ kind }), 'c1')
     assert.doesNotMatch(`${described.title} ${described.reason} ${described.verb}`, /generate|\$|undefined|null/i, kind)
   }

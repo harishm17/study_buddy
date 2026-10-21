@@ -30,7 +30,11 @@ export function planItemHref(item: PlanItem, courseId: string): string {
     case 'quiz':
       return item.topicId ? `${base}/topics/${item.topicId}?view=quiz` : `${base}/topics`
     case 'review':
+      // A projected review has no review date yet, so it is not on the Review list: it is a quiz on the topic.
+      if (item.projected && item.topicId) return `${base}/topics/${item.topicId}?view=quiz`
       return item.topicId ? `${base}/review#review-${item.topicId}` : `${base}/review`
+    case 'mixed':
+      return item.topicIds.length > 0 ? `${base}/exams/new?topics=${item.topicIds.join(',')}` : `${base}/exams/new`
     case 'unit_mock':
       return item.topicIds.length > 0 ? `${base}/exams/new?topics=${item.topicIds.join(',')}` : `${base}/exams/new`
     case 'full_mock':
@@ -61,9 +65,11 @@ export function describePlanItem(item: PlanItem, courseId: string): DescribedPla
     case 'review':
       return {
         ...common,
-        reason: item.note ?? 'Due for review.',
+        reason: item.note ?? (item.projected ? 'A spaced review, timed to keep it fresh.' : 'Due for review.'),
         verb: 'Review',
       }
+    case 'mixed':
+      return { ...common, reason: 'Questions from a few topics mixed together, to find what is still shaky.', verb: 'Create' }
     case 'unit_mock':
       return { ...common, reason: 'Timed questions on the whole unit, now that you have learned it.', verb: 'Create' }
     case 'full_mock':

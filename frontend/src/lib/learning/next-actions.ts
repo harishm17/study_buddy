@@ -27,6 +27,7 @@ const TYPE_BY_KIND: Record<PlanItem['kind'], NextAction['type']> = {
   learn: 'study_topic',
   quiz: 'take_quiz',
   review: 'review_topic',
+  mixed: 'take_exam',
   unit_mock: 'take_exam',
   full_mock: 'take_exam',
 }

@@ -1108,6 +1108,13 @@ Session (in place of the lobby; on mobile it uses the focus layout):
   planned), a neutral notice when only the mocks were dropped to make everything fit, a note when the
   exam is too close for two full mocks, and the **Not scheduled:
   N topics** card (heading, one sentence, topics as links). Nothing the plan leaves out is hidden.
+- After learning the days fill with revision, so the run to the exam is not empty: **Review** items on
+  a spaced ladder (a week after the first quiz, then two weeks, always one before the final review days;
+  these read the same as any review, with the line "A spaced review, timed to keep it fresh." and open
+  the topic's quiz), and **Mixed practice: A, B and C** items (15 to 30 minutes, up to the daily time,
+  2 or 3 topics, weakest and past-exam topics first; "Create" opens the new mock exam form with those
+  topics ticked). The 7th day of each run is left free to rest. The first full mock is the day after
+  everything is learned when 7 or more days remain.
 - When time is short the plan gives mock exams up before topics: the unit mocks first, then the earlier
   of the two final-week mocks. One full mock stays, 2 days before the exam; with an exam tomorrow it is
   today.
