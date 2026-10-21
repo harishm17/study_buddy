@@ -90,7 +90,7 @@ test('text mode: start, first question, answer, evaluation, end, summary', async
   await waitForLobby(page)
 })
 
-test('text mode: Hint and Skip send a turn, the controls match the style', async ({ page }) => {
+test('text mode: Just talk has no Hint or Skip and the coach replies', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
   await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
   await waitForLobby(page)

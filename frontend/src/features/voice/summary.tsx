@@ -58,7 +58,7 @@ export function Summary({ summary, reason, alert, back, onRestart }: SummaryProp
               label={summary.score === null ? undefined : `${Math.round(summary.score * 100)}%`}
               aria-label={summary.score === null ? 'Not graded' : `${Math.round(summary.score * 100)} percent correct`}
             />
-            <dl className="grid grid-cols-2 gap-x-8 gap-y-3">
+            <dl className="flex flex-wrap gap-x-8 gap-y-3">
               <Stat label="Questions answered" value={summary.answered} testId="voice-stat-answered" />
               <Stat label="Correct" value={summary.correct} testId="voice-stat-correct" />
               {summary.partly > 0 ? <Stat label="Partly right" value={summary.partly} /> : null}
@@ -68,7 +68,7 @@ export function Summary({ summary, reason, alert, back, onRestart }: SummaryProp
 
         {quiz ? (
           <div className="mt-6 border-t border-border pt-4">
-            <h3 className="text-subheading text-fg">Worth another look</h3>
+            <h3 className="text-subheading text-fg">Questions to revisit</h3>
             {summary.revisit.length > 0 ? (
               <ul className="mt-2 flex flex-col gap-2" data-testid="voice-revisit">
                 {summary.revisit.slice(0, 6).map((question) => (

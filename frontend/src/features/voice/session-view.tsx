@@ -76,7 +76,7 @@ export function SessionView({ state, orb, controller, title, hasQuestions, recog
       data-testid="voice-session"
       className="max-md:fixed max-md:inset-0 max-md:z-modal max-md:overflow-y-auto max-md:bg-canvas"
     >
-      <div className="mx-auto flex w-full max-w-[720px] flex-col px-4 max-md:min-h-full md:px-0">
+      <div className="flex w-full max-w-[720px] flex-col px-4 max-md:min-h-full md:px-0">
         <header className="flex items-center justify-between gap-4 border-b border-border max-md:h-14 max-md:shrink-0 md:border-b-0 md:pb-2">
           <p className="tabular min-w-0 truncate text-small text-fg-2" data-testid="voice-progress">
             {question ? `Question ${question.index} of ${question.total}` : title}
@@ -114,7 +114,7 @@ export function SessionView({ state, orb, controller, title, hasQuestions, recog
 
           <Transcript entries={entries} interim={interim} />
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 max-md:sticky max-md:bottom-0 max-md:mt-auto max-md:bg-canvas max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:pt-3">
             {textMode ? (
               <form onSubmit={send} className="flex gap-2">
                 <Input
