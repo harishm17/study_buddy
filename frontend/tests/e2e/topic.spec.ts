@@ -44,6 +44,13 @@ async function createCourse(page: Page) {
       { timeout: 120_000 }
     )
     .toBe('valid')
+  // Topic finding starts by itself once the file is chunked and ends by marking the course
+  // "topics pending". Let it finish first, or it would undo the confirmation below.
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/projects/${courseId}/topics`)).json()).topics.length, {
+      timeout: 120_000,
+    })
+    .toBeGreaterThan(0)
   const ids: string[] = []
   for (const name of TOPICS) {
     const topic = await page.request.post(`/api/projects/${courseId}/topics`, {

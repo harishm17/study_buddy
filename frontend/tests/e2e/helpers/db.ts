@@ -1,7 +1,12 @@
 import { PrismaClient } from '@prisma/client'
 
-/** The database the dev stack under test uses; set DATABASE_URL to the stack's database. */
-export const e2eDatabaseUrl = () => process.env.DATABASE_URL ?? 'postgresql://postgres@127.0.0.1:5544/sb_design'
+/** The database the stack under test uses. DATABASE_URL must be set: no default, so a spec can never
+ * write into somebody else's database by accident. */
+export const e2eDatabaseUrl = () => {
+  const url = process.env.DATABASE_URL
+  if (!url) throw new Error('Set DATABASE_URL to the database of the stack under test')
+  return url
+}
 
 /** Runs `run` with a Prisma client on the stack's database, and disconnects afterwards. */
 export async function withPrisma<T>(run: (prisma: PrismaClient) => Promise<T>): Promise<T> {
