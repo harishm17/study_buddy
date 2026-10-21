@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/components/ui/toaster'
 import { apiFetch, isApiError } from '@/lib/api/client'
+import { fillResetTime } from '@/lib/budget/copy'
 import { describeJobFailure, parseContentTarget } from '@/lib/jobs/failure-message'
 import { fetchActiveJobs, type NormalizedJob } from '@/lib/jobs/poll-job'
 import { useJobPolling } from '@/features/jobs/use-job-polling'
@@ -64,6 +65,7 @@ export function useGeneration(kind: ContentKind) {
 
 function toNotice(error: unknown): GenerationNotice {
   if (isApiError(error)) {
+    // error.message is already filled in by apiFetch.
     if (error.code === 'LLM_DAILY_BUDGET') return { message: error.message, tone: 'warning' }
     if (error.status === 503) return { message: PREFLIGHT_MESSAGE, tone: 'danger' }
     return { message: error.message, tone: 'danger' }
@@ -72,7 +74,7 @@ function toNotice(error: unknown): GenerationNotice {
 }
 
 const failureNotice = (job: NormalizedJob): GenerationNotice => ({
-  message: describeJobFailure(job.errorCode, job.errorMessage),
+  message: fillResetTime(describeJobFailure(job.errorCode, job.errorMessage)),
   tone: job.errorCode === 'LLM_DAILY_BUDGET' ? 'warning' : 'danger',
 })
 

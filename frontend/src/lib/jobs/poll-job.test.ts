@@ -110,7 +110,9 @@ describe('pollJobUntilDone', () => {
 
     assert.equal(result.state, 'failed')
     assert.equal(result.error, 'Daily limit')
-    assert.equal(pollFailureMessage(result, 'fallback'), 'Daily limit')
+    const message = pollFailureMessage(result, 'fallback')
+    assert.match(message, /^You've used today's AI allowance\. It resets (tomorrow )?at /)
+    assert.doesNotMatch(message, /Daily limit|\$/)
   })
 
   it('keeps raw errors of other failures out of the user message', async () => {

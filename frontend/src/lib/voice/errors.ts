@@ -1,10 +1,12 @@
+import { ALLOWANCE_TEMPLATE, fillResetTime } from '@/lib/budget/copy'
+
 /** Friendly text for the error codes a voice turn can fail with. Safe to show to the student. */
 
 export type VoiceErrorInfo = { message: string; retryable: boolean; status: number }
 
 const KNOWN: Record<string, VoiceErrorInfo> = {
   LLM_DAILY_BUDGET: {
-    message: "You've reached today's AI usage limit. It resets at midnight UTC.",
+    message: ALLOWANCE_TEMPLATE,
     retryable: false,
     status: 429,
   },
@@ -59,5 +61,7 @@ const FALLBACK: VoiceErrorInfo = { message: 'Something went wrong with the coach
  * service sends can carry internal detail, so it is logged by the server and never shown.
  */
 export function voiceErrorMessage(code: string): VoiceErrorInfo {
-  return KNOWN[code] ?? FALLBACK
+  const info = KNOWN[code] ?? FALLBACK
+  // See chatErrorMessage: the reset time is filled in by the browser.
+  return typeof window === 'undefined' ? info : { ...info, message: fillResetTime(info.message) }
 }

@@ -10,6 +10,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toaster'
 import { useActiveJobs } from '@/features/jobs/use-active-jobs'
 import { apiFetch, isApiError } from '@/lib/api/client'
+import { useResetTime } from '@/lib/budget/use-reset-time'
 import { cn } from '@/lib/utils'
 import type { GenerationState } from '@/server/queries/course'
 
@@ -132,6 +133,7 @@ function FailureRow({
 }) {
   const router = useRouter()
   const [pending, setPending] = React.useState(false)
+  const message = useResetTime(failure.message)
 
   async function retry() {
     setPending(true)
@@ -152,7 +154,7 @@ function FailureRow({
   return (
     <li className="flex items-start gap-2.5 py-2.5">
       <WarningCircle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-danger" />
-      <p className="min-w-0 flex-1 text-small text-fg-2">{failure.message}</p>
+      <p className="min-w-0 flex-1 text-small text-fg-2">{message}</p>
       <Button size="sm" variant="secondary" onClick={retry} loading={pending}>
         Try again
       </Button>

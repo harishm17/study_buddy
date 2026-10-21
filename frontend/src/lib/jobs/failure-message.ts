@@ -1,8 +1,10 @@
 /**
- * What to tell a student when a job failed. Job error messages are written for logs, so only
- * the budget message (written for the student) is passed on as is; everything else gets text
- * chosen by error code.
+ * What to tell a student when a job failed. Job error messages are written for logs and can carry
+ * figures (the daily budget message does), so none of them is shown: every code gets text chosen
+ * here. The budget text has the reset time as a token the browser fills in (see lib/budget/copy).
  */
+
+import { ALLOWANCE_TEMPLATE } from '@/lib/budget/copy'
 
 export const CONTENT_TYPE_LABELS: Record<string, string> = {
   section_notes: 'Section notes',
@@ -35,11 +37,9 @@ export const FALLBACK_FAILURE_MESSAGE = 'Generation failed. Try again.'
 
 export function describeJobFailure(
   errorCode: string | null | undefined,
-  errorMessage?: string | null
+  _errorMessage?: string | null
 ): string {
-  if (errorCode === 'LLM_DAILY_BUDGET') {
-    return errorMessage || 'You have reached today\'s AI generation limit. Try again tomorrow.'
-  }
+  if (errorCode === 'LLM_DAILY_BUDGET') return ALLOWANCE_TEMPLATE
   return (errorCode && MESSAGES[errorCode]) || FALLBACK_FAILURE_MESSAGE
 }
 

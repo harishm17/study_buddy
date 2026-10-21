@@ -9,6 +9,8 @@
  * screen only ever shows `error.message`.
  */
 
+import { fillResetTime } from '@/lib/budget/copy'
+
 export type ApiErrorInit = {
   status: number
   code: string
@@ -100,7 +102,9 @@ export function parseApiError(status: number, body: unknown, headers?: Pick<Head
   return new ApiError({
     status,
     code: code ?? codeFromStatus(status),
-    message: message ?? defaultMessage(status),
+    // A message from the server may have the daily-allowance reset time as a token (the server
+    // does not know the student's time zone); the browser fills it in.
+    message: fillResetTime(message ?? defaultMessage(status)),
     details,
     body,
     retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,

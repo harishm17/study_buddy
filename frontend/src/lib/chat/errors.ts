@@ -1,10 +1,12 @@
+import { ALLOWANCE_TEMPLATE, fillResetTime } from '@/lib/budget/copy'
+
 /** Friendly text for the error codes the chat can fail with. */
 
 export type ChatErrorInfo = { message: string; retryable: boolean; status: number }
 
 const KNOWN: Record<string, ChatErrorInfo> = {
   LLM_DAILY_BUDGET: {
-    message: "You've reached today's AI usage limit. It resets at midnight UTC.",
+    message: ALLOWANCE_TEMPLATE,
     retryable: false,
     status: 429,
   },
@@ -49,8 +51,12 @@ const FALLBACK: ChatErrorInfo = { message: 'Something went wrong while answering
 
 /**
  * The message to show for `code`. An unknown code gets a generic message: the text the AI
- * service sends can carry internal detail, so it is logged by the server and never shown.
+ * service sends can carry internal detail (the budget message carries dollar figures), so it is
+ * logged by the server and never shown.
  */
 export function chatErrorMessage(code: string): ChatErrorInfo {
-  return KNOWN[code] ?? FALLBACK
+  const info = KNOWN[code] ?? FALLBACK
+  // The budget message has the reset time as a token. In the browser it becomes the student's
+  // local time; a server leaves it, and the browser fills it in when the message arrives.
+  return typeof window === 'undefined' ? info : { ...info, message: fillResetTime(info.message) }
 }

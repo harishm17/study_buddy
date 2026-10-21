@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { InlineAlert } from '@/components/ui/inline-alert'
 import { JobStatus } from '@/components/ui/job-status'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useResetTime } from '@/lib/budget/use-reset-time'
 import { KIND_COPY } from './copy'
 import { GenerateForm } from './generate-form'
 import type { GenerateMode } from './generate-preferences'
@@ -102,6 +103,7 @@ function FailureAlert({
   onRetry?: () => void
   retrying?: boolean
 }) {
+  const text = useResetTime(message)
   return (
     <InlineAlert
       tone={tone}
@@ -114,7 +116,7 @@ function FailureAlert({
         ) : undefined
       }
     >
-      {message}
+      {text}
     </InlineAlert>
   )
 }

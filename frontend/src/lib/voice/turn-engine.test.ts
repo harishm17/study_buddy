@@ -212,7 +212,7 @@ describe('runTurn', () => {
     assert.deepEqual(outcome.error, { code: 'LLM_DAILY_BUDGET', retryable: false })
     assert.equal(h.emitted.length, 1)
     const event = h.emitted[0]
-    assert.ok(event.type === 'error' && event.message.includes('midnight UTC'))
+    assert.ok(event.type === 'error' && event.message.includes('allowance'))
     // The text the AI service sent is not shown.
     assert.ok(event.type === 'error' && !event.message.includes('over budget'))
   })

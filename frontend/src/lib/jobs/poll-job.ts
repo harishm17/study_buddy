@@ -11,6 +11,8 @@
  * so the logic runs under plain Node in tests. The React hook is in hooks/useJobPolling.ts.
  */
 
+import { allowanceMessage } from '@/lib/budget/copy'
+
 export type NormalizedJobState = 'queued' | 'processing' | 'completed' | 'failed'
 
 export type NormalizedJob = {
@@ -209,15 +211,14 @@ export async function pollJobUntilDone(jobId: string, options: PollOptions = {})
 }
 
 /**
- * The message to show for a poll that did not complete. The daily-budget refusal and the
- * timeout carry text written for the user; anything else gets the caller's fallback, so raw
- * server errors stay out of the page.
+ * The message to show for a poll that did not complete. The daily-budget refusal (with the reset
+ * time in the student's time zone, never the job's own message with its figures) and the timeout
+ * carry text written for the user; anything else gets the caller's fallback, so raw server errors
+ * stay out of the page.
  */
 export function pollFailureMessage(result: PollResult, fallback: string): string {
   if (result.state === 'timeout') return TIMEOUT_MESSAGE
-  if (result.job?.errorCode === 'LLM_DAILY_BUDGET' && result.job.errorMessage) {
-    return result.job.errorMessage
-  }
+  if (result.job?.errorCode === 'LLM_DAILY_BUDGET') return allowanceMessage()
   return fallback
 }
 
