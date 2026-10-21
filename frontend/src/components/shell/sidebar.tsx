@@ -162,7 +162,7 @@ function TopicList({ course, activeTopicId }: { course: NavCourse; activeTopicId
                 className={cn('size-3 shrink-0 text-fg-3 transition-transform duration-180', !open && '-rotate-90')}
               />
               <span className="min-w-0 flex-1 truncate">
-                {unit.weekLabel ? <span className="mr-1.5 font-normal text-fg-3">{unit.weekLabel}</span> : null}
+                {unit.weekLabel ? <span className="sr-only">{unit.weekLabel}: </span> : null}
                 {unit.title}
               </span>
               <MasteryIndicator mastery={unitMasteryOf(group.topics)} variant="ring" />

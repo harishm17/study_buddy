@@ -1,6 +1,6 @@
 {
  "description": "Random variables as payoff functions, with the pmf and the cdf.",
- "notes": "# Discrete Random Variables\n\n## Overview\n\nThis topic builds new vocabulary on top of **sample spaces** and **probability functions**. The three key terms are:\n\n1. **Random variable**: a numerical value attached to each outcome of an experiment.\n2. **Probability mass function (pmf)**: how likely each value is.\n3. **Cumulative distribution function (cdf)**: how much probability has accumulated up to each value.\n\nThe learning goals are to:\n- know the definition of a discrete random variable;\n- describe pmfs and cdfs with tables and formulas;\n- recognise the Bernoulli, binomial and geometric distributions;\n- construct new random variables from old ones, for example by adding them.\n\n## Key Concepts\n\n### Random variables as payoff functions\n\nThe motivating idea is a **game**. Roll a die twice and record $(i, j)$. The sample space is\n\n$$\\Omega = \\{(i,j) \\mid i, j = 1,\\dots,6\\}, \\qquad P(i,j) = \\tfrac{1}{36}.$$\n\nSuppose you win \\$500 if the sum is 7 and lose \\$100 otherwise. This payoff is a function of the outcome:\n\n$$X(i,j) = \\begin{cases} 500 & \\text{if } i+j = 7 \\\\ -100 & \\text{if } i + j \\neq 7 \\end{cases}$$\n\nA different game uses a different payoff, such as $Y(i,j) = ij - 10$:\n- rolling $(6,2)$ wins \\$2;\n- rolling $(2,3)$ gives $-\\$4$, a loss of \\$4.\n\nWhich game is the better bet? That question has to wait until expectation is covered.\n\n**Definition.** Let $\\Omega$ be a sample space. A **discrete random variable** is a function\n$$X : \\Omega \\to \\mathbb{R}$$\nthat takes a discrete set of values.\n\nThe name has two parts:\n- It is **random** because its value depends on the random outcome of an experiment.\n- It is a **variable** because we treat it like an ordinary variable: we can add it to others, square it, and so on.\n\n### A wide set\n\nStart with ten animals:\n\n$$S = \\{\\text{Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}$$\n\nIn a sentence the same set, $S = \\{\\text{Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}$, is too wide for a phone and has to scroll rather than widen the page.\n",
+ "notes": "# Discrete Random Variables\n\n## Overview\n\nThis topic builds new vocabulary on top of **sample spaces** and **probability functions**. The three key terms are:\n\n1. **Random variable**: a numerical value attached to each outcome of an experiment.\n2. **Probability mass function (pmf)**: how likely each value is.\n3. **Cumulative distribution function (cdf)**: how much probability has accumulated up to each value.\n\nThe learning goals are to:\n- know the definition of a discrete random variable;\n- describe pmfs and cdfs with tables and formulas;\n- recognise the Bernoulli, binomial and geometric distributions;\n- construct new random variables from old ones, for example by adding them.\n\n## Key Concepts\n\n### Random variables as payoff functions\n\nThe motivating idea is a **game**. Roll a die twice and record $(i, j)$. The sample space is\n\n$$\\Omega = \\{(i,j) \\mid i, j = 1,\\dots,6\\}, \\qquad P(i,j) = \\tfrac{1}{36}.$$\n\nSuppose you win \\$500 if the sum is 7 and lose \\$100 otherwise. This payoff is a function of the outcome:\n\n$$X(i,j) = \\begin{cases} 500 & \\text{if } i+j = 7 \\\\ -100 & \\text{if } i + j \\neq 7 \\end{cases}$$\n\nA different game uses a different payoff, such as $Y(i,j) = ij - 10$:\n- rolling $(6,2)$ wins \\$2;\n- rolling $(2,3)$ gives $-\\$4$, a loss of \\$4.\n\nWhich game is the better bet? That question has to wait until expectation is covered.\n\n**Definition.** Let $\\Omega$ be a sample space. A **discrete random variable** is a function\n$$X : \\Omega \\to \\mathbb{R}$$\nthat takes a discrete set of values.\n\nThe name has two parts:\n- It is **random** because its value depends on the random outcome of an experiment.\n- It is a **variable** because we treat it like an ordinary variable: we can add it to others, square it, and so on.\n\n### A wide set\n\nStart with ten animals:\n\n$$S = \\{\\text{Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}$$\n\nIn a sentence the same set, $S = \\{\\text{Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}$, is too wide for a phone and has to scroll rather than widen the page.\n\n\n## Check yourself\n\n```check\nQ: A fair die is rolled once. What is $P(X = 4)$ if $X$ is the number shown? Give a fraction.\nA: Each of the six faces is equally likely, so $P(X = 4) = \\tfrac16$.\n```\n\n```check\nQ: Why is $X$ called a *random variable* and not just a number?\nThink about what happens when you repeat the experiment.\nA: Its value depends on the outcome of a random experiment, so it can change from one run to the next.\n\nOnly its distribution, the list of values with their probabilities, stays the same.\n```\n",
  "examples": [
   {
    "title": "Events and pmf values for the payoff Y(i, j) = ij − 10",
@@ -50,7 +50,15 @@
      "step_number": 6
     }
    ],
-   "problem_statement": "Roll two fair dice and record the outcome as $(i,j)$. The sample space is $\\Omega=\\{(i,j)\\mid i,j=1,\\dots,6\\}$ with $P(i,j)=1/36$. Consider the payoff function (random variable)\n\n$$Y(i,j)=ij-10.$$\n\n1. Find $p_Y(-4)$, $p_Y(0)$, $p_Y(1)$ and $p_Y(2)$.\n2. Find $P(Y\\ge 0)$, the probability that you do **not** lose money.\n3. Compare this with the game $X$ that pays \\$500 if $i+j=7$ and $-\\$100$ otherwise. Which game wins money more often?"
+   "problem_statement": "Roll two fair dice and record the outcome as $(i,j)$. The sample space is $\\Omega=\\{(i,j)\\mid i,j=1,\\dots,6\\}$ with $P(i,j)=1/36$. Consider the payoff function (random variable)\n\n$$Y(i,j)=ij-10.$$\n\n1. Find $p_Y(-4)$, $p_Y(0)$, $p_Y(1)$ and $p_Y(2)$.\n2. Find $P(Y\\ge 0)$, the probability that you do **not** lose money.\n3. Compare this with the game $X$ that pays \\$500 if $i+j=7$ and $-\\$100$ otherwise. Which game wins money more often?",
+   "sources": [
+    {
+     "material_id": "__ALGORITHMS_PDF__",
+     "filename": "algorithms.pdf",
+     "page_start": 1,
+     "page_end": 2
+    }
+   ]
   },
   {
    "title": "Building and using the cdf of the sum of two dice",
@@ -100,7 +108,15 @@
      "step_number": 6
     }
    ],
-   "problem_statement": "Roll two fair dice and let $Z(i,j)=i+j$.\n\n1. Make a table of the pmf $p(a)$ and the cdf $F(a)$ of $Z$.\n2. Compute $F(4)$, $F(6.5)$, $F(-1)$ and $F(13)$.\n3. Use the cdf to find $P(4<Z\\le 8)$ and $P(Z<4)$."
+   "problem_statement": "Roll two fair dice and let $Z(i,j)=i+j$.\n\n1. Make a table of the pmf $p(a)$ and the cdf $F(a)$ of $Z$.\n2. Compute $F(4)$, $F(6.5)$, $F(-1)$ and $F(13)$.\n3. Use the cdf to find $P(4<Z\\le 8)$ and $P(Z<4)$.",
+   "sources": [
+    {
+     "material_id": null,
+     "filename": "lecture-notes.pdf",
+     "page_start": 7,
+     "page_end": 7
+    }
+   ]
   }
  ],
  "practice": [
@@ -177,7 +193,21 @@
     "Paradox: an event with probability 0 (or 1) is independent of itself"
    ],
    "problem_statement": "A fair coin is tossed twice. Let $H_1$ = 'heads on first toss' and $H_2$ = 'heads on second toss'.\n\nUse the **formal definition of independence**:\n\n$$A \\text{ and } B \\text{ are independent if } P(A \\cap B) = P(A)\\cdot P(B).$$\n\nYou will first decide whether $H_1$ and $H_2$ are independent. Then you will examine the paradox of an event being independent of itself.",
-   "estimated_time_minutes": 10
+   "estimated_time_minutes": 10,
+   "sources": [
+    {
+     "material_id": "__ALGORITHMS_PDF__",
+     "filename": "algorithms.pdf",
+     "page_start": 3,
+     "page_end": 3
+    },
+    {
+     "material_id": "__ALGORITHMS_PDF__",
+     "filename": "algorithms.pdf",
+     "page_start": 4,
+     "page_end": 4
+    }
+   ]
   },
   {
    "steps": [
@@ -269,6 +299,71 @@
    ],
    "problem_statement": "Roll a fair die twice and record the outcome $(i, j)$. The sample space is $\\Omega = \\{(i,j) \\mid i, j = 1, \\dots, 6\\}$ with $P(i,j) = 1/36$.\n\nYou win \\$500 if the sum is 7 and lose \\$100 otherwise. This payoff is the random variable\n\n$$X(i,j) = \\begin{cases} 500 & \\text{if } i+j = 7 \\\\ -100 & \\text{if } i+j \\neq 7 \\end{cases}$$\n\nWork out the pmf and some cdf values of $X$.",
    "estimated_time_minutes": 10
+  },
+  {
+   "title": "Reading a probability table",
+   "difficulty": "easy",
+   "key_concepts": [
+    "probability mass function",
+    "sample space"
+   ],
+   "estimated_time_minutes": 4,
+   "problem_statement": "A discrete random variable $X$ has $P(X=1)=0.2$, $P(X=2)=0.5$ and $P(X=3)=0.3$.",
+   "sources": [
+    {
+     "material_id": "__ALGORITHMS_PDF__",
+     "filename": "algorithms.pdf",
+     "page_start": 2,
+     "page_end": 2
+    }
+   ],
+   "steps": [
+    {
+     "step_number": 1,
+     "question": "Which value of $X$ is the most likely?",
+     "hint": "Compare the three probabilities.",
+     "answer_type": "multiple_choice",
+     "options": [
+      {
+       "id": "A",
+       "text": "$X = 1$"
+      },
+      {
+       "id": "B",
+       "text": "$X = 2$"
+      },
+      {
+       "id": "C",
+       "text": "$X = 3$"
+      },
+      {
+       "id": "D",
+       "text": "They are equally likely"
+      }
+     ],
+     "correct_answer": "B",
+     "acceptable_answers": [],
+     "explanation": "$0.5$ is the largest of $0.2$, $0.5$ and $0.3$.",
+     "feedback_correct": "Yes, $X = 2$ has the largest probability.",
+     "feedback_incorrect": "Look for the largest of the three probabilities."
+    },
+    {
+     "step_number": 2,
+     "question": "What is $P(X \\ge 2)$? Give a decimal.",
+     "hint": "Add the probabilities of the values that are at least 2.",
+     "answer_type": "numeric",
+     "options": [],
+     "correct_answer": "0.8",
+     "acceptable_answers": [
+      "0.8",
+      "4/5"
+     ],
+     "tolerance": 0.001,
+     "explanation": "$P(X \\ge 2) = 0.5 + 0.3 = 0.8$.",
+     "feedback_correct": "Right: $0.5 + 0.3 = 0.8$.",
+     "feedback_incorrect": "Add $P(X=2)$ and $P(X=3)$."
+    }
+   ]
   }
  ],
  "quiz": [

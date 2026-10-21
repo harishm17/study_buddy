@@ -106,7 +106,7 @@ function UnitHeader({
 }) {
   return (
     <div className="flex items-center gap-x-3 gap-y-1 pb-1">
-      <h2 className="min-w-0 truncate text-heading text-fg">{unit.title}</h2>
+      <h2 className="min-w-0 break-words text-heading text-fg">{unit.title}</h2>
       {unit.weekLabel ? <Badge>{unit.weekLabel}</Badge> : null}
       <span className="shrink-0 text-small tabular text-fg-3">{pluralize(count, 'topic')}</span>
       <DropdownMenu>
