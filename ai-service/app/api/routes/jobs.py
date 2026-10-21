@@ -28,7 +28,7 @@ from app.services.cloud_tasks import (
     enqueue_topic_extraction_job,
     mark_undelivered,
 )
-from app.services.generation_chain import content_exists, continue_chain
+from app.services.generation_chain import content_exists, continue_chain, dispatch as dispatch_job, plan_next_job
 from app.services.job_reaper import reap_expired_jobs
 from app.services.llm.base import LLMRefusalError
 from app.services.llm.limiter import topic_lock
@@ -719,15 +719,18 @@ async def _generate_and_store_content(job: JobContext, input_data: ContentGenera
 
     logger.info(f"Completed content generation: {content_type} for topic {topic['id']}")
 
-    # See app/services/generation_chain.py: queue the topic's next missing type (and, for a
-    # whole-course run, the next topic) once this job is marked completed.
+    # See app/services/generation_chain.py: the topic's next missing type (and, for a whole-course
+    # run, the next topic) gets its job row now, before this one is marked completed, and is
+    # dispatched once it has been.
+    next_job = await plan_next_job(
+        user_id=job.user_id,
+        project_id=job.project_id,
+        topic_id=topic['id'],
+        preferences=input_data.preferences,
+    )
+
     async def queue_next():
-        await continue_chain(
-            user_id=job.user_id,
-            project_id=job.project_id,
-            topic_id=topic['id'],
-            preferences=input_data.preferences,
-        )
+        await dispatch_job(next_job)
 
     return JobOutcome(
         result={

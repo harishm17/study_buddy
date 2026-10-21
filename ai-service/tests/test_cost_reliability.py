@@ -562,3 +562,14 @@ class TestGenerationChain:
             "INSERT INTO topic_content (id, topic_id, content_type, content_data, updated_at) "
             "VALUES ($1, $2, 'solved_examples', '[]'::jsonb, NOW())", new_id(), topic)
         assert "solved_examples" not in await generation_chain.missing_content_types(topic)
+
+    async def test_the_next_job_has_a_row_before_it_is_dispatched(self, db, course, dispatched):
+        """The page that sees a job finish must be able to find the next job at once."""
+        planned = await generation_chain.plan_next_job(
+            user_id=course.user_id, project_id=course.project_id, topic_id=course.topics[0],
+            preferences={"prepare_rest": True},
+        )
+        row = await get_job(db, planned.job_id)
+        assert row["status"] == "pending" and dispatched == []
+        assert await generation_chain.dispatch(planned) == planned.job_id
+        assert [job["job_id"] for job in dispatched] == [planned.job_id]

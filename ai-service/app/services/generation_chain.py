@@ -18,6 +18,7 @@ and when the daily AI allowance is used up. The one exception is a topic that ca
 at all (no source material, or the model refuses it): a `prepare_all` run skips it and goes on.
 """
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from app.db.connection import execute_one, execute_query
@@ -60,10 +61,18 @@ async def missing_content_types(topic_id: str) -> List[str]:
     return [content_type for content_type in CONTENT_ORDER if content_type not in present]
 
 
-async def _start_job(
+@dataclass
+class PlannedJob:
+    """A generate-content job that has a row but has not been dispatched yet."""
+
+    job_id: str
+    data: Dict[str, Any]
+
+
+async def _create_job(
     *, user_id: str, project_id: str, topic_id: str, content_type: str, preferences: Dict[str, Any]
-) -> Optional[str]:
-    """Create and dispatch one generate-content job. None when one is already active."""
+) -> Optional[PlannedJob]:
+    """Create one generate-content job. None when one is already active for the target."""
     data = {"topicId": topic_id, "contentType": content_type, "preferences": preferences}
     job_id, created = await create_job(
         user_id=user_id,
@@ -76,14 +85,23 @@ async def _start_job(
     if not created:
         logger.info("Generation of %s for topic %s is already active (%s)", content_type, topic_id, job_id)
         return None
-    try:
-        await enqueue_job(job_id, "generate_content", data)
-    except Exception as exc:
-        logger.error("Could not dispatch generation job %s: %s", job_id, exc)
-        await mark_undelivered(job_id, str(exc))
+    return PlannedJob(job_id, data)
+
+
+async def dispatch(planned: Optional[PlannedJob]) -> Optional[str]:
+    """Send a planned job to the job endpoint. Returns its id, or None if nothing was sent."""
+    if planned is None:
         return None
-    logger.info("Queued %s for topic %s (job %s)", content_type, topic_id, job_id)
-    return job_id
+    try:
+        await enqueue_job(planned.job_id, "generate_content", planned.data)
+    except Exception as exc:
+        logger.error("Could not dispatch generation job %s: %s", planned.job_id, exc)
+        await mark_undelivered(planned.job_id, str(exc))
+        return None
+    logger.info(
+        "Queued %s for topic %s (job %s)", planned.data["contentType"], planned.data["topicId"], planned.job_id
+    )
+    return planned.job_id
 
 
 async def _next_topic_ids(project_id: str, after_topic_id: str) -> List[str]:
@@ -100,16 +118,18 @@ async def _next_topic_ids(project_id: str, after_topic_id: str) -> List[str]:
     return ids[ids.index(after_topic_id) + 1 :] if after_topic_id in ids else []
 
 
-async def continue_chain(
+async def plan_next_job(
     *,
     user_id: str,
     project_id: Optional[str],
     topic_id: str,
     preferences: Dict[str, Any],
     skip_topic: bool = False,
-) -> Optional[str]:
-    """Queue what comes after a finished generate-content job. Returns the new job's id, if any.
+) -> Optional[PlannedJob]:
+    """Create the job that comes after a finished generate-content job, if there is one.
 
+    The job row is created here, before the finished job is marked completed, so a page that
+    sees the finish can already find the next job (the frontend follows it); `dispatch` sends it.
     `skip_topic` leaves the rest of this topic alone (it could not be generated) and moves on
     to the next topic when the run is `prepare_all`.
     """
@@ -123,7 +143,7 @@ async def continue_chain(
     if not skip_topic:
         missing = await missing_content_types(topic_id)
         if missing:
-            return await _start_job(
+            return await _create_job(
                 user_id=user_id, project_id=project_id, topic_id=topic_id,
                 content_type=missing[0], preferences=flags,
             )
@@ -133,11 +153,16 @@ async def continue_chain(
     for next_topic_id in await _next_topic_ids(project_id, topic_id):
         missing = await missing_content_types(next_topic_id)
         if missing:
-            return await _start_job(
+            return await _create_job(
                 user_id=user_id, project_id=project_id, topic_id=next_topic_id,
                 content_type=missing[0], preferences=flags,
             )
     return None
+
+
+async def continue_chain(**kwargs: Any) -> Optional[str]:
+    """plan_next_job and dispatch in one step. Returns the new job's id, if any."""
+    return await dispatch(await plan_next_job(**kwargs))
 
 
 async def content_exists(topic_id: str, content_type: str) -> bool:
