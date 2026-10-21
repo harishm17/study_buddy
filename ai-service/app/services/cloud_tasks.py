@@ -158,6 +158,8 @@ JOB_ENDPOINTS = {
     "validate_material": "/jobs/validate-material",
     "chunk_material": "/jobs/chunk-material",
     "extract_topics": "/jobs/extract-topics",
+    "profile_exam": "/jobs/profile-exam",
+    "exam_relevance": "/jobs/exam-relevance",
     "generate_content": "/jobs/generate-content",
     "generate_exam": "/jobs/generate-exam",
     "grade_exam": "/jobs/grade-exam",
@@ -177,3 +179,11 @@ async def enqueue_chunking_job(job_id: str, material_id: str) -> str:
 
 async def enqueue_topic_extraction_job(job_id: str, project_id: str) -> str:
     return await enqueue_job(job_id, "extract_topics", {"projectId": project_id})
+
+
+async def enqueue_exam_profile_job(job_id: str, material_id: str) -> str:
+    return await enqueue_job(job_id, "profile_exam", {"materialId": material_id})
+
+
+async def enqueue_exam_relevance_job(job_id: str, project_id: str) -> str:
+    return await enqueue_job(job_id, "exam_relevance", {"projectId": project_id})

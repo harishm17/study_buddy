@@ -710,6 +710,113 @@ class MaterialCheck(BaseModel):
         return cls(is_valid=True, notes="Mock validation: accepted without a model call.", kind="content")
 
 
+# ---------------------------------------------------------------- past-exam style
+
+EXAM_QUESTION_KINDS = (
+    "multiple_choice",
+    "true_false",
+    "short_answer",
+    "numerical",
+    "derivation",
+    "essay",
+    "other",
+)
+ExamQuestionKind = Literal[
+    "multiple_choice", "true_false", "short_answer", "numerical", "derivation", "essay", "other"
+]
+
+
+class ExamTypeShare(BaseModel):
+    kind: ExamQuestionKind = Field(
+        description=(
+            "multiple_choice, true_false, short_answer (a sentence or two), numerical (a computed "
+            "number), derivation (a multi-step worked problem or proof), essay (an open-ended "
+            "explanation) or other"
+        )
+    )
+    share: float = Field(description="Fraction of the questions of this kind, 0 to 1; the shares add up to 1")
+
+
+class ExamPointsBand(BaseModel):
+    points: float = Field(description="Points one question is worth")
+    questions: int = Field(description="How many questions are worth that much")
+
+
+class ExamStyleProfile(BaseModel):
+    """How one past exam is written: enough for a model to write new questions in the same voice.
+
+    Stored on `materials.style_profile` as `model_dump()` (snake_case keys, plus `version`).
+    `example_stems` are paraphrases: `app/services/exam_style.py` checks them against the exam's
+    own text and drops any that copy it.
+    """
+
+    question_count: int = Field(description="How many questions the exam has (count a multi-part question once)")
+    total_points: Optional[float] = Field(
+        default=None, description="The exam's total points when it says so, otherwise null"
+    )
+    type_mix: List[ExamTypeShare] = Field(description="The kinds of question and their share of the exam")
+    points_distribution: List[ExamPointsBand] = Field(
+        description="How the points are spread: one entry per distinct points value. Empty when the exam gives no points"
+    )
+    typical_answer_length: str = Field(
+        description="What a full answer looks like, in one short phrase: 'one line', 'a short paragraph', 'half a page of worked steps'"
+    )
+    phrasing_conventions: List[str] = Field(
+        description=(
+            "2-5 short observations about how questions are worded: how they open, whether they give "
+            "data first, how they ask for justification or units, how multi-part questions are labelled"
+        )
+    )
+    task_verbs: List[str] = Field(
+        description="The 4-8 verbs the questions use most to say what to do (compute, show, explain, ...), most common first"
+    )
+    multi_part: bool = Field(description="Whether questions are split into labelled parts such as (a), (b), (c)")
+    calculator_and_units: str = Field(
+        description="What the exam says about calculators, formula sheets and units or significant figures; 'not stated' if nothing"
+    )
+    example_stems: List[str] = Field(
+        description=(
+            "Exactly 3 short example question stems, each REWRITTEN IN NEW WORDS about a different "
+            "situation than the exam's. They show the voice and shape of the questions. Never copy a "
+            "sentence or a run of more than 5 words from the exam"
+        )
+    )
+
+    @classmethod
+    def example(cls) -> "ExamStyleProfile":
+        return cls(
+            question_count=5,
+            total_points=50,
+            type_mix=[ExamTypeShare(kind="short_answer", share=0.6), ExamTypeShare(kind="derivation", share=0.4)],
+            points_distribution=[ExamPointsBand(points=10, questions=5)],
+            typical_answer_length="a short paragraph or a few lines of working",
+            phrasing_conventions=[
+                "Opens with a one-line setup, then asks the question (mock)",
+                "Parts are labelled (a), (b), (c) (mock)",
+            ],
+            task_verbs=["compute", "explain", "show"],
+            multi_part=True,
+            calculator_and_units="not stated (mock)",
+            example_stems=[
+                "A fair die is rolled twice; find the chance the total is at least ten. (mock)",
+                "Show that the estimator below stays unbiased when the sample doubles. (mock)",
+                "Explain in two sentences why a larger sample narrows the interval. (mock)",
+            ],
+        )
+
+    @classmethod
+    def example_for(cls, prompt: str) -> "ExamStyleProfile":
+        """A profile for the exam text in `prompt` (the mock provider's answer): the question
+        count follows the numbered questions, the rest is fixed."""
+        numbers = [int(match.group(1)) for match in re.finditer(r"(?m)^\s*(?:Problem|Question|Q)?\s*(\d{1,2})[.):]\s", prompt)]
+        profile = cls.example()
+        if numbers:
+            profile.question_count = max(numbers)
+            profile.points_distribution = [ExamPointsBand(points=10, questions=max(numbers))]
+            profile.total_points = 10 * max(numbers)
+        return profile
+
+
 class ShortAnswerGrade(BaseModel):
     points_earned: float
     feedback: str = Field(description="2-3 sentences on what was good and what was missing")

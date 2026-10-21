@@ -12,6 +12,7 @@ belongs to which setting:
     exam_questions          MODEL_EXAM         mock exam question generator
     grade_short_answer      MODEL_GRADING      exam short-answer grader
     extract_topics          MODEL_TOPICS       course planner (units, topics, sources)
+    exam_style              MODEL_TOPICS       past-exam style profile (always at low effort)
     order_units             MODEL_VALIDATION   cross-file unit order of a large course plan
     chat                    MODEL_CHAT         "Ask your materials" answers
     voice                   MODEL_VOICE        voice coach turns
@@ -31,7 +32,7 @@ ANTHROPIC_FAST_MODEL with ANTHROPIC_FAST_EFFORT for the "fast" ones, which is ho
 behaved before purposes had settings of their own.
 """
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 from app.config import settings
 from app.model_spec import ModelChoice, parse_model_spec
@@ -43,6 +44,9 @@ Tier = Literal["main", "fast"]
 class PurposeConfig:
     setting: str
     fallback_tier: Tier
+    # Set when a purpose shares another's model but always runs at this effort, whatever the
+    # setting says.
+    effort: Optional[str] = None
 
 
 PURPOSES = {
@@ -53,6 +57,7 @@ PURPOSES = {
     "exam_questions": PurposeConfig("MODEL_EXAM", "main"),
     "grade_short_answer": PurposeConfig("MODEL_GRADING", "fast"),
     "extract_topics": PurposeConfig("MODEL_TOPICS", "fast"),
+    "exam_style": PurposeConfig("MODEL_TOPICS", "fast", effort="low"),
     "chat": PurposeConfig("MODEL_CHAT", "main"),
     "voice": PurposeConfig("MODEL_VOICE", "fast"),
     "voice_drill": PurposeConfig("MODEL_VOICE", "fast"),
@@ -77,4 +82,7 @@ def resolve_model(purpose: str) -> ModelChoice:
         raise ValueError(
             f"Unknown LLM purpose {purpose!r}: add it to PURPOSES in app/services/llm/models.py"
         )
-    return parse_model_spec(getattr(settings, config.setting), tier_choice(config.fallback_tier))
+    choice = parse_model_spec(getattr(settings, config.setting), tier_choice(config.fallback_tier))
+    if config.effort is not None:
+        choice = ModelChoice(choice.model, config.effort)
+    return choice

@@ -7,6 +7,7 @@ do the work and return a `JobOutcome`.
 import asyncio
 import logging
 import json
+from typing import Optional
 from fastapi import APIRouter, HTTPException
 from app.models.jobs import JobPayload, MaterialValidationInput, ContentGenerationInput, ExamGenerationInput
 from app.services.document_processor.validator import material_role, validate_material
@@ -19,9 +20,13 @@ from app.services.content_generator.context import NoSourceMaterialError
 from app.services.content_generator.examples import ExampleType
 from app.services.content_generator.quiz import QuestionType
 from app.services.exam_generator import ExamGenerator
+from app.services.exam_relevance import mark_exam_relevant_topics, mark_exam_relevant_topics_quietly
+from app.services.exam_style import profile_exam_material
 from app.services.exam_grader import ExamGrader
 from app.services.cloud_tasks import (
     enqueue_chunking_job,
+    enqueue_exam_profile_job,
+    enqueue_exam_relevance_job,
     enqueue_topic_extraction_job,
     mark_undelivered,
 )
@@ -313,12 +318,90 @@ async def chunk_material_job(payload: JobPayload, job: JobContext) -> JobOutcome
     # Topic extraction stays off unless AUTO_EXTRACT_TOPICS_ON_CHUNK is set, to avoid
     # surprise topic churn while a student is still uploading files.
     project_id = material["project_id"]
-    after = None
-    if settings.AUTO_EXTRACT_TOPICS_ON_CHUNK and project_id:
-        async def after():
+
+    async def after():
+        # A past exam gets its style profile and its topics marked once its text is stored.
+        await _start_exam_jobs(input_data.materialId, project_id, job.user_id)
+        if settings.AUTO_EXTRACT_TOPICS_ON_CHUNK and project_id:
             await _start_topic_extraction(project_id, job.user_id)
 
     return JobOutcome(result={"chunks_created": chunks_created}, after=after)
+
+
+async def _start_exam_jobs(material_id: str, project_id: Optional[str], user_id: str) -> None:
+    """After a file is chunked: when it is a past exam, start the job that marks the topics it
+    covers and the one that writes its style profile (needs the model, so only when one is set up).
+    The role is read now, not at the start of the chunk job: the student may have changed it."""
+    if not project_id:
+        return
+    row = await execute_one("SELECT role FROM materials WHERE id = $1", material_id)
+    if not row or row["role"] != "exam":
+        return
+    await start_exam_relevance_job(project_id, user_id)
+    if settings.llm_configured:
+        job_id, created = await create_job(
+            user_id=user_id,
+            project_id=project_id,
+            job_type="profile_exam",
+            stage="extracting",
+            input_data={"materialId": material_id},
+            target_key=f"profile:{material_id}",
+        )
+        if created:
+            try:
+                await enqueue_exam_profile_job(job_id, material_id)
+            except Exception as exc:
+                logger.error("Could not dispatch exam profile job %s: %s", job_id, exc)
+                await mark_undelivered(job_id, str(exc))
+
+
+async def start_exam_relevance_job(project_id: str, user_id: str) -> None:
+    """One exam-relevance job per project at a time."""
+    job_id, created = await create_job(
+        user_id=user_id,
+        project_id=project_id,
+        job_type="exam_relevance",
+        stage="extracting",
+        input_data={"projectId": project_id},
+        target_key=f"exam-relevance:{project_id}",
+    )
+    if created:
+        try:
+            await enqueue_exam_relevance_job(job_id, project_id)
+        except Exception as exc:
+            logger.error("Could not dispatch exam relevance job %s: %s", job_id, exc)
+            await mark_undelivered(job_id, str(exc))
+
+
+@router.post("/jobs/profile-exam")
+@job_handler(
+    job_type="profile_exam",
+    label="Past exam style",
+    default_error_code="EXAM_PROFILE_FAILED",
+    stage="extracting",
+    uses_llm=True,
+)
+async def profile_exam_job(payload: JobPayload, job: JobContext) -> JobOutcome:
+    """Write the style profile of a past-exam file (one model call). A file that is no longer an
+    exam gets its profile cleared instead."""
+    input_data = parse_input(MaterialValidationInput, payload.data)
+    result = await profile_exam_material(input_data.materialId)
+    return JobOutcome(result=result)
+
+
+@router.post("/jobs/exam-relevance")
+@job_handler(
+    job_type="exam_relevance",
+    label="Exam relevance",
+    default_error_code="EXAM_RELEVANCE_FAILED",
+    stage="extracting",
+)
+async def exam_relevance_job(payload: JobPayload, job: JobContext) -> JobOutcome:
+    """Mark the topics of a project that its past exams cover. No model call."""
+    project_id = payload.data.get("projectId")
+    if not project_id:
+        raise PermanentJobError("projectId required", "INVALID_INPUT")
+    return JobOutcome(result=await mark_exam_relevant_topics(project_id))
 
 
 @router.post("/jobs/extract-topics")
@@ -350,6 +433,8 @@ async def extract_topics_job(payload: JobPayload, job: JobContext) -> JobOutcome
         raise HTTPException(status_code=404, detail="No topics extracted")
 
     written = await write_plan(plan_job)
+    # Topics whose concepts appear in the past exams are marked; this never fails planning.
+    await mark_exam_relevant_topics_quietly(project_id)
     total = await execute_one("SELECT count(*)::int AS n FROM topics WHERE project_id = $1", project_id)
     topics_total = total["n"] if total else written["topics"]
 
@@ -717,7 +802,8 @@ async def generate_exam_job(payload: JobPayload, job: JobContext) -> JobOutcome:
         result={
             "exam_id": exam_record['id'],
             "total_questions": result['total_questions'],
-            "topics_covered": result['topics_covered']
+            "topics_covered": result['topics_covered'],
+            "matched_past_exams": result['matched_past_exams'],
         },
         response={
             "examId": exam_record['id'],

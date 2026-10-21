@@ -44,6 +44,8 @@ LEASE_SECONDS = {
     "validate_material": 120,
     "chunk_material": 300,
     "extract_topics": 300,
+    "profile_exam": 300,
+    "exam_relevance": 300,
     "generate_content": 300,
     "generate_exam": 600,
     "grade_exam": 300,

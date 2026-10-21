@@ -59,12 +59,22 @@ SOURCE_BOTH = "keyword_and_semantic"
 NON_CONTENT_ROLES = ("syllabus", "exam")
 
 
-def _material_filter(first_param: int, exclude_roles: Sequence[str], exclude_material_ids: Sequence[str]):
-    """(SQL, args) that keep chunks of files with another role and not in the given files.
-    Parameters are numbered from `first_param`; the SQL is empty when nothing is excluded."""
+def _material_filter(
+    first_param: int,
+    exclude_roles: Sequence[str],
+    exclude_material_ids: Sequence[str],
+    include_roles: Sequence[str] = (),
+):
+    """(SQL, args) that keep chunks of files with another role and not in the given files, or,
+    with `include_roles`, only chunks of files with one of those roles (`exclude_roles` is then
+    not used). Parameters are numbered from `first_param`; the SQL is empty when nothing is
+    excluded."""
     clauses: List[str] = []
     args: List = []
-    if exclude_roles:
+    if include_roles:
+        args.append(list(include_roles))
+        clauses.append(f"AND m.role = ANY(${first_param + len(args) - 1}::text[])")
+    elif exclude_roles:
         args.append(list(exclude_roles))
         clauses.append(f"AND m.role <> ALL(${first_param + len(args) - 1}::text[])")
     if exclude_material_ids:
@@ -200,9 +210,10 @@ async def _vector_leg(
     pool_size: int,
     exclude_roles: Sequence[str] = (),
     exclude_material_ids: Sequence[str] = (),
+    include_roles: Sequence[str] = (),
 ) -> List[Dict]:
     """Nearest chunks of the project's valid materials by cosine similarity."""
-    filter_sql, filter_args = _material_filter(4, exclude_roles, exclude_material_ids)
+    filter_sql, filter_args = _material_filter(4, exclude_roles, exclude_material_ids, include_roles)
     sql = f"""
         SELECT {_CHUNK_COLUMNS},
                1 - (mc.chunk_embedding <=> $1::vector) AS similarity
@@ -239,6 +250,7 @@ async def _fulltext_leg(
     pool_size: int,
     exclude_roles: Sequence[str] = (),
     exclude_material_ids: Sequence[str] = (),
+    include_roles: Sequence[str] = (),
 ) -> List[Dict]:
     """Chunks matching any phrase, best `ts_rank_cd` first. Carries the vector similarity too."""
     if not phrases:
@@ -255,7 +267,7 @@ async def _fulltext_leg(
         similarity = "NULL::float8"
     tsquery = fulltext_query_sql(len(phrases), first_param=len(params) + 1)
     params.extend(phrases)
-    filter_sql, filter_args = _material_filter(len(params) + 1, exclude_roles, exclude_material_ids)
+    filter_sql, filter_args = _material_filter(len(params) + 1, exclude_roles, exclude_material_ids, include_roles)
     params.extend(filter_args)
     sql = f"""
         WITH q AS (SELECT {tsquery} AS query)
@@ -292,11 +304,14 @@ async def hybrid_search_chunks(
     limit: int = 20,
     exclude_roles: Sequence[str] = NON_CONTENT_ROLES,
     exclude_material_ids: Sequence[str] = (),
+    include_roles: Sequence[str] = (),
 ) -> List[Dict]:
     """The chunks of a project that best explain a topic, best first.
 
     Chunks of syllabus and past-exam files are never offered (`exclude_roles`), nor are those of
     `exclude_material_ids` (the supporting search skips the files a topic is taught from).
+    `include_roles` turns that round: only chunks of files with those roles are searched (the past
+    exams, to see which topics they test), and `exclude_roles` is not used.
 
     Runs the vector and full-text legs over the project's valid materials, fuses them with
     RRF and applies the similarity floor (see the module docstring). Returns at most `limit`
@@ -321,7 +336,7 @@ async def hybrid_search_chunks(
     vector_rows: List[Dict] = []
     if query_embedding is not None:
         vector_rows = await _vector_leg(
-            project_id, query_embedding, CANDIDATE_POOL, exclude_roles, exclude_material_ids
+            project_id, query_embedding, CANDIDATE_POOL, exclude_roles, exclude_material_ids, include_roles
         )
     fulltext_rows = await _fulltext_leg(
         project_id,
@@ -330,6 +345,7 @@ async def hybrid_search_chunks(
         CANDIDATE_POOL,
         exclude_roles,
         exclude_material_ids,
+        include_roles,
     )
 
     # Judged only when chunks have vectors: right after a model change, before re-embedding,

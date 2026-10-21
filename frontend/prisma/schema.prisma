@@ -103,6 +103,10 @@ model Material {
   // student. Syllabus and exam files are never topic sources and are left out of topic mapping
   // and generation retrieval.
   role             String    @default("content")
+  // How this past exam is written (question mix, points, task verbs, paraphrased example stems),
+  // extracted once the file is chunked and only while role is "exam". Shape: ExamStyleProfile in
+  // ai-service/app/services/llm/schemas.py. Null for every other file.
+  styleProfile     Json?     @map("style_profile")
 
   // Relations
   project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
