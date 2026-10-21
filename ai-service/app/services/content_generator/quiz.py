@@ -31,7 +31,8 @@ QUESTION_FORMAT_RULES = """Question rules:
 - short_answer: answerable in 1-3 sentences; give a sample_answer and 2-4 key_points a grader can check.
 - numerical: correct_answer is a plain number; give the unit and an absolute tolerance.
 - true_false: correct_answer is a boolean; the explanation says why.
-- Every question has an explanation of the correct answer and points from 1 to 5 by complexity."""
+- Every question has an explanation of the correct answer and points from 1 to 5 by complexity.
+- In explanations, refer to options by their content, never by letter. The options are shuffled after you write them."""
 
 
 def minimum_usable(requested: int) -> int:

@@ -7,6 +7,7 @@ from app.services.llm.schemas import (
     ChoiceOption,
     GeneratedQuestion,
     QuestionSet,
+    rewrite_option_letters,
     shuffle_choice_options,
 )
 
@@ -94,3 +95,75 @@ class TestShuffle:
     def test_question_set_usable_filters(self):
         questions = QuestionSet(questions=[_mcq(), _mcq(correct_answer="Z")]).usable()
         assert len(questions) == 1
+
+
+class TestOptionLetterReferences:
+    def _question(self, explanation, **extra):
+        stored = _mcq(correct_answer="D", explanation=explanation).normalized()
+        stored.update(extra)
+        return stored
+
+    def test_explanation_letters_follow_the_shuffle(self):
+        explanation = "Option C describes disjoint events, and D is the addition rule."
+        for seed in range(30):
+            shuffled = shuffle_choice_options(self._question(explanation), random.Random(seed))
+            letter_of = {o["text"]: o["id"] for o in shuffled["options"]}
+            expected = (
+                f"Option {letter_of['text C']} describes disjoint events, "
+                f"and {letter_of['text D']} is the addition rule."
+            )
+            assert shuffled["explanation"] == expected
+            assert shuffled["correct_answer"] == letter_of["text D"]
+
+    def test_the_audit_case(self):
+        # Whatever the shuffle does, the key and the explanation must agree.
+        question = self._question("Option C describes disjoint events, and D is the addition rule.")
+        shuffled = shuffle_choice_options(question, random.Random(0))
+        by_id = {o["id"]: o["text"] for o in shuffled["options"]}
+        key = shuffled["correct_answer"]
+        assert by_id[key] == "text D"
+        assert f"and {key} is the addition rule" in shuffled["explanation"]
+
+    def test_swaps_do_not_collide(self):
+        mapping = {"A": "C", "B": "B", "C": "A", "D": "D"}
+        assert rewrite_option_letters("Option A is wrong; C is right.", mapping) == "Option C is wrong; A is right."
+        assert rewrite_option_letters("Options A and C are close.", mapping) == "Options C and A are close."
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("Option A is correct.", "Option D is correct."),
+            ("option A is correct.", "option D is correct."),
+            ("Choice A fits.", "Choice D fits."),
+            ("(A) is the key.", "(D) is the key."),
+            ("A) the key\nB) a distractor", "D) the key\nC) a distractor"),
+            ("A describes it, B gives the wrong sign.", "D describes it, C gives the wrong sign."),
+            ("Options A, B and C are wrong.", "Options D, C and B are wrong."),
+        ],
+    )
+    def test_reference_forms(self, text, expected):
+        assert rewrite_option_letters(text, {"A": "D", "B": "C", "C": "B", "D": "A"}) == expected
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "Events $A$ and $B$ are independent, so $P(A)=0.4$.",
+            "P(A) is 0.4 and P(B) is 0.5.",
+            "A fair coin is tossed. A random sample is drawn.",
+            "Use `A is B` in the code.",
+            "The answer is 42.",
+        ],
+    )
+    def test_math_and_prose_are_left_alone(self, text):
+        assert rewrite_option_letters(text, {"A": "D", "B": "C", "C": "B", "D": "A"}) == text
+
+    def test_per_option_feedback_is_rewritten_too(self):
+        question = self._question("E", options=[{"id": x, "text": f"text {x}", "feedback": "Option B is wrong, see option C."} for x in "ABCD"])
+        shuffled = shuffle_choice_options(question, random.Random(3))
+        letter_of = {o["text"]: o["id"] for o in shuffled["options"]}
+        for option in shuffled["options"]:
+            assert option["feedback"] == f"Option {letter_of['text B']} is wrong, see option {letter_of['text C']}."
+
+    def test_other_question_types_keep_their_explanation(self):
+        question = {"question_type": "true_false", "correct_answer": True, "explanation": "Option C is wrong."}
+        assert shuffle_choice_options(dict(question)) == question

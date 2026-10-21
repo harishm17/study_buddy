@@ -29,6 +29,7 @@ Formatting rules for every text field:
 - Use markdown: short paragraphs, bullet lists, headings where they help.
 - Put any code snippet, memory layout, command or pseudo-code in a fenced code block with a language tag (```c, ```python, ```text). Use `inline code` only for short identifiers or expressions.
 - Write math in LaTeX: inline $E = mc^2$, display $$\\int_0^1 f(x)\\,dx$$, chemistry $2H_2 + O_2 \\to 2H_2O$. Inside fenced code blocks, write plain text instead of LaTeX.
+- Write money as USD 100 or \\$100 outside math; never wrap prose in $...$. Math mode is for symbols and expressions only.
 - Do not add citation tags such as [Citation: ...]; the app shows sources separately.
 - Do not end with offers of further help."""
 

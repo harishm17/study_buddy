@@ -7,6 +7,7 @@ is dropped instead of failing the whole set.
 """
 import math
 import random
+import re
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -123,22 +124,83 @@ class GeneratedQuestion(BaseModel):
         return stored
 
 
+# Spans the letter rewrite leaves alone: math (an event called A is not option A) and code.
+_PROTECTED_SPAN = re.compile(r"\$\$.*?\$\$|\$[^$\n]+\$|`[^`\n]*`", re.DOTALL)
+# Placeholders hold the new letter's index as a digit, so no later pattern can match them.
+_MARK_OPEN, _MARK_CLOSE = "", ""
+_MARK = re.compile(f"{_MARK_OPEN}(\\d+){_MARK_CLOSE}")
+_LETTER = re.compile(r"[A-D]")
+
+# "Option C", "choice (B)", "Options A and C": the letters after the word.
+_NAMED_OPTION = re.compile(
+    r"\b((?:[Oo]ptions?|[Cc]hoices?|[Aa]nswers?)\s+)"
+    r"(\(?[A-D]\)?(?:\s*(?:,|and|or|&|/)\s*\(?[A-D]\)?)*)(?![A-Za-z])"
+)
+# "(C)" on its own, but not the A in P(A).
+_PAREN_LETTER = re.compile(r"(?<![\w$\\])\(([A-D])\)(?!\w)")
+# "C) text" at the start of a line.
+_LINE_LETTER = re.compile(r"(?m)^(\s*(?:[-*]\s+)?)([A-D])\)")
+# "D is the addition rule", "B describes disjoint events".
+_LETTER_VERB = re.compile(
+    r"(?<![\w$\\'.])([A-D])"
+    r"(?=\s+(?:is|isn't|isn’t|describes|gives|states|shows|represents|restates|matches|would|correctly)\b)"
+)
+
+
+def rewrite_option_letters(text: str, mapping: Dict[str, str]) -> str:
+    """Point option-letter references in `text` at the options' new letters.
+
+    Every reference becomes a placeholder first and the new letter only at the end, so
+    A->C and C->A cannot collide. Math and code spans are left as they are.
+    """
+    old_letters = list(mapping)
+
+    def hold(letter: str) -> str:
+        if letter not in mapping:
+            return letter
+        return f"{_MARK_OPEN}{old_letters.index(letter)}{_MARK_CLOSE}"
+
+    def rewrite(chunk: str) -> str:
+        chunk = _NAMED_OPTION.sub(
+            lambda m: m.group(1) + _LETTER.sub(lambda letter: hold(letter.group(0)), m.group(2)), chunk
+        )
+        chunk = _PAREN_LETTER.sub(lambda m: f"({hold(m.group(1))})", chunk)
+        chunk = _LINE_LETTER.sub(lambda m: f"{m.group(1)}{hold(m.group(2))})", chunk)
+        return _LETTER_VERB.sub(lambda m: hold(m.group(1)), chunk)
+
+    parts: List[str] = []
+    last = 0
+    for span in _PROTECTED_SPAN.finditer(text):
+        parts.append(rewrite(text[last : span.start()]))
+        parts.append(span.group(0))
+        last = span.end()
+    parts.append(rewrite(text[last:]))
+    return _MARK.sub(lambda m: mapping[old_letters[int(m.group(1))]], "".join(parts))
+
+
 def shuffle_choice_options(question: Dict[str, Any], rng: Optional[random.Random] = None) -> Dict[str, Any]:
     """Shuffle a multiple-choice question's options and relabel them A, B, C...
 
     Models put the right answer in the same slot far more often than chance would, so
-    the stored key is reshuffled. Other question types are returned unchanged.
+    the stored key is reshuffled. The explanation (and any per-option feedback) was written
+    against the old letters, so letter references in it are moved to the new ones. Other
+    question types are returned unchanged.
     """
     options = question.get("options")
     if question.get("question_type") != "multiple_choice" or not options:
         return question
     rng = rng or random
-    correct_text = next(o["text"] for o in options if o["id"] == question["correct_answer"])
-    texts = [o["text"] for o in options]
-    rng.shuffle(texts)
-    labels = [chr(ord("A") + i) for i in range(len(texts))]
-    question["options"] = [{"id": label, "text": text} for label, text in zip(labels, texts)]
-    question["correct_answer"] = labels[texts.index(correct_text)]
+    order = list(range(len(options)))
+    rng.shuffle(order)
+    labels = [chr(ord("A") + i) for i in range(len(options))]
+    mapping = {options[old]["id"]: labels[new] for new, old in enumerate(order)}
+    question["options"] = [{**options[old], "id": labels[new]} for new, old in enumerate(order)]
+    for option in question["options"]:
+        if option.get("feedback"):
+            option["feedback"] = rewrite_option_letters(option["feedback"], mapping)
+    question["correct_answer"] = mapping[question["correct_answer"]]
+    if question.get("explanation"):
+        question["explanation"] = rewrite_option_letters(question["explanation"], mapping)
     return question
 
 
