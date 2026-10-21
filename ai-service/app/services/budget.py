@@ -79,7 +79,11 @@ async def over_budget_message(user_id: str) -> Optional[str]:
     spent = await spent_today_usd(user_id)
     if spent < budget:
         return None
-    return (
+    # The dollar figures are for logs and the job's error message. Students never see them: the
+    # frontend shows its own copy for LLM_DAILY_BUDGET, with the reset time in their timezone.
+    message = (
         f"Daily AI usage limit reached (${spent:.2f} of ${budget:.2f} used today, UTC). "
         "It is available again after midnight UTC."
     )
+    logger.info("User %s is over the daily AI budget: %s", user_id, message)
+    return message
