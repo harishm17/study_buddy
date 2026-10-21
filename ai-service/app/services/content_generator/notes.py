@@ -113,7 +113,6 @@ Return only the markdown."""
 
         response = await self.llm.generate_text(
             content_messages(topic_name, topic_description, chunks, instructions),
-            tier="main",
             max_tokens=12000,
             purpose="section_notes",
         )

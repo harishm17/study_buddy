@@ -1,4 +1,5 @@
 """Configuration settings for AI service."""
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,24 +17,45 @@ class Settings(BaseSettings):
     # "mock" returns schema-valid placeholder output with no API calls (local dev, e2e runs).
     LLM_PROVIDER: str = "anthropic"  # anthropic or mock
     ANTHROPIC_API_KEY: str = ""
-    # Notes, examples, quizzes and exams.
+    # The two fallback models. A purpose below with no value of its own uses the main model
+    # (notes, examples, practice, quizzes, exams, chat) or the fast one (grading, topics, voice,
+    # validation), each with its effort.
     ANTHROPIC_MODEL: str = "claude-opus-5-5"
-    # Validation, topic extraction, short-answer grading and voice drills.
     ANTHROPIC_FAST_MODEL: str = "claude-haiku-5-5"
     # Effort controls how much the model thinks; thinking tokens are billed as output.
     ANTHROPIC_EFFORT: str = "medium"
     ANTHROPIC_FAST_EFFORT: str = "low"
     LLM_TIMEOUT_SECONDS: float = 180.0
-    LLM_MAX_RETRIES: int = 2
+    # Retries the SDK makes itself (connection errors, 408/409, 429, 5xx) with backoff, honouring
+    # the retry-after header. A call that still fails is a transient job failure and is retried
+    # by the dispatcher.
+    LLM_MAX_RETRIES: int = 4
+    # Model calls running at once, across every job and chat answer in this process.
+    LLM_MAX_CONCURRENCY: int = 4
+    # The mock provider (LLM_PROVIDER=mock) takes this long per call, to look like a model.
+    MOCK_LLM_LATENCY_SECONDS: float = 0.0
 
-    # Voice coach turns (POST /voice/turn): the fast tier at low effort, short replies. The browser
-    # does speech-to-text and text-to-speech; the model only sees text.
-    VOICE_EFFORT: str = "low"
+    # One model per purpose, "<model-id>:<effort>" (see app/services/llm/models.py for every form
+    # that is accepted, and which call sites use which setting). Empty means the fallback above:
+    # today's behaviour is Opus at medium effort for MODEL_NOTES, MODEL_EXAMPLES, MODEL_PRACTICE,
+    # MODEL_QUIZ and MODEL_EXAM, and Haiku at low effort for MODEL_GRADING, MODEL_TOPICS and
+    # MODEL_VALIDATION.
+    MODEL_NOTES: str = ""
+    MODEL_EXAMPLES: str = ""
+    MODEL_PRACTICE: str = ""
+    MODEL_QUIZ: str = ""
+    MODEL_EXAM: str = ""
+    MODEL_GRADING: str = ""
+    MODEL_TOPICS: str = ""
+    # "Ask your materials" answers: the main model, short thinking.
+    MODEL_CHAT: str = ":low"
+    # Voice coach turns and drills: the fast model, short thinking. The browser does
+    # speech-to-text and text-to-speech; the model only sees text.
+    MODEL_VOICE: str = ":low"
+    MODEL_VALIDATION: str = ""
+
     VOICE_MAX_TOKENS: int = 800
 
-    # "Ask your materials" chat. Answers are written by the CHAT_TIER model at CHAT_EFFORT.
-    CHAT_TIER: str = "main"  # main or fast
-    CHAT_EFFORT: str = "low"
     CHAT_MAX_TOKENS: int = 4000
     # Excerpts offered to the model per question, and the cosine similarity below which a chunk
     # is not offered at all. A question is shorter than a topic query, so its floor is lower
@@ -101,6 +123,18 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"  # Frontend URL for CORS
     ENVIRONMENT: str = "development"
     AI_INTERNAL_TOKEN: str = ""
+
+    @field_validator(
+        "MODEL_NOTES", "MODEL_EXAMPLES", "MODEL_PRACTICE", "MODEL_QUIZ", "MODEL_EXAM",
+        "MODEL_GRADING", "MODEL_TOPICS", "MODEL_CHAT", "MODEL_VOICE", "MODEL_VALIDATION",
+    )
+    @classmethod
+    def _check_model_spec(cls, value: str) -> str:
+        # Fail at startup, not on the first call, when an effort is misspelt.
+        from app.model_spec import ModelChoice, parse_model_spec
+
+        parse_model_spec(value, ModelChoice("placeholder", None))
+        return value
 
     @property
     def is_production(self) -> bool:

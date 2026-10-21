@@ -32,7 +32,6 @@ from app.services.llm.base import (
     LLMMessage,
     LLMProvider,
     LLMUsage,
-    Tier,
 )
 from app.services.llm.usage import estimate_cost_usd
 
@@ -200,7 +199,6 @@ async def stream_answer(
 
     chunks_by_ref = {chunk_ref(chunk["id"]): chunk for chunk in chunks}
     excerpts = [to_excerpt(chunk) for chunk in chunks]
-    tier: Tier = "fast" if settings.CHAT_TIER == "fast" else "main"
     markers: Dict[str, int] = {}
     try:
         async for event in provider.stream_cited_answer(
@@ -208,8 +206,6 @@ async def stream_answer(
             history=history,
             question=question,
             excerpts=excerpts,
-            tier=tier,
-            effort=settings.CHAT_EFFORT or None,
             max_tokens=settings.CHAT_MAX_TOKENS,
             purpose="chat",
         ):

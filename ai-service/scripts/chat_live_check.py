@@ -28,6 +28,7 @@ from app.services.llm.base import (  # noqa: E402
     AnswerText,
 )
 from app.services.llm.factory import LLMFactory  # noqa: E402
+from app.services.llm.models import resolve_model  # noqa: E402
 
 CHUNKS = [
     {
@@ -85,8 +86,6 @@ async def ask(question: str) -> None:
         history=[],
         question=question,
         excerpts=excerpts,
-        tier="fast" if settings.CHAT_TIER == "fast" else "main",
-        effort=settings.CHAT_EFFORT or None,
         max_tokens=settings.CHAT_MAX_TOKENS,
         purpose="chat",
     ):
@@ -110,7 +109,8 @@ async def ask(question: str) -> None:
 
 
 async def main() -> None:
-    print(f"provider={settings.LLM_PROVIDER} model tier={settings.CHAT_TIER} effort={settings.CHAT_EFFORT}")
+    choice = resolve_model("chat")
+    print(f"provider={settings.LLM_PROVIDER} model={choice.model} effort={choice.effort}")
     await ask("How does a hash table deal with two keys that land in the same bucket?")
     await ask("What is the capital of France?")
 

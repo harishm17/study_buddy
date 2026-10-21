@@ -234,7 +234,6 @@ Feedback: 2-3 sentences on what was good and what was missing."""
             grade = await self.llm.generate_structured(
                 messages,
                 ShortAnswerGrade,
-                tier="fast",
                 max_tokens=2000,
                 purpose="grade_short_answer",
             )

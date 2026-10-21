@@ -21,6 +21,7 @@ from anthropic.types.beta import (
     BetaTextDelta,
 )
 
+from app.config import settings
 from app.services.llm.anthropic_provider import AnthropicProvider, split_excerpt_blocks
 from app.services.llm.base import (
     AnswerCitation,
@@ -111,7 +112,7 @@ class FakeStream:
 
 
 def provider_with(events, final=None, error=None) -> tuple[AnthropicProvider, list]:
-    provider = AnthropicProvider(api_key="test-key", model="claude-opus-5-5", fast_model="claude-haiku-5-5")
+    provider = AnthropicProvider(api_key="test-key")
     calls: list = []
 
     def stream(**params):
@@ -138,7 +139,7 @@ class TestRequest:
         assert params["model"] == "claude-opus-5-5"
         assert params["max_tokens"] == 4000
         assert params["system"] == [{"type": "text", "text": "Answer from the excerpts."}]
-        assert params["output_config"] == {"effort": "medium"}  # the provider default; the chat service passes its own
+        assert params["output_config"] == {"effort": "low"}  # MODEL_CHAT: the main model at low effort
         assert params["fallbacks"] == "default"
         # Citations cannot be combined with structured outputs.
         assert "format" not in params["output_config"]
@@ -157,12 +158,13 @@ class TestRequest:
         assert question == {"type": "text", "text": "What is hashing?"}
 
     @pytest.mark.asyncio
-    async def test_effort_and_tier_overrides(self):
+    async def test_model_and_effort_come_from_model_chat(self, monkeypatch):
+        monkeypatch.setattr(settings, "MODEL_CHAT", "claude-haiku-5-5:high")
         provider, calls = provider_with([text_start(), text_delta("ok")])
-        await collect(provider, tier="fast", effort="low")
+        await collect(provider)
         params = calls[0]
         assert params["model"] == "claude-haiku-5-5"
-        assert params["output_config"] == {"effort": "low"}
+        assert params["output_config"] == {"effort": "high"}
         assert "fallbacks" not in params and "betas" not in params
 
     @pytest.mark.asyncio

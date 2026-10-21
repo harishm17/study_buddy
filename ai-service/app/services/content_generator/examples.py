@@ -105,7 +105,6 @@ Difficulty: {difficulty_level}. {guidance}
         result = await self.llm.generate_structured(
             content_messages(topic_name, topic_description, chunks, instructions),
             SolvedExampleSet,
-            tier="main",
             max_tokens=16000,
             purpose="solved_examples",
         )
@@ -138,7 +137,6 @@ Difficulty: {difficulty_level}. {guidance}
         result = await self.llm.generate_structured(
             content_messages(topic_name, topic_description, chunks, instructions),
             InteractiveExampleSet,
-            tier="main",
             max_tokens=16000,
             purpose="interactive_examples",
         )

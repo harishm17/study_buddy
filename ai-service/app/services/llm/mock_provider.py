@@ -17,12 +17,14 @@ from app.services.llm.base import (
     LLMResponse,
     LLMUsage,
     SchemaT,
-    Tier,
     TurnDone,
     TurnEvent,
     TurnText,
     TurnToolUse,
 )
+from app.config import settings
+from app.services.llm.limiter import llm_slot
+from app.services.llm.models import PURPOSES
 from app.services.llm.usage import record_usage
 
 logger = logging.getLogger(__name__)
@@ -149,18 +151,26 @@ def _mock_turn(messages: List[Dict[str, Any]], tools: List[Dict[str, Any]]) -> t
 class MockProvider(LLMProvider):
     """Returns each schema's `example()` and fixed markdown, and records zero usage."""
 
-    def model_for(self, tier: Tier) -> str:
-        return f"mock-{tier}"
+    def model_for(self, purpose: str) -> str:
+        config = PURPOSES.get(purpose)
+        return f"mock-{config.fallback_tier if config else 'main'}"
+
+    async def _simulate_call(self) -> None:
+        """The model call itself, which takes MOCK_LLM_LATENCY_SECONDS (none by default). Tests
+        override it to fail or to watch how many calls run at once."""
+        if settings.MOCK_LLM_LATENCY_SECONDS > 0:
+            await asyncio.sleep(settings.MOCK_LLM_LATENCY_SECONDS)
 
     async def generate_text(
         self,
         messages: List[LLMMessage],
         *,
-        tier: Tier = "main",
+        purpose: str,
         max_tokens: int = 16000,
-        purpose: str = "",
     ) -> LLMResponse:
-        usage = LLMUsage(model=self.model_for(tier), purpose=purpose)
+        async with llm_slot():
+            await self._simulate_call()
+        usage = LLMUsage(model=self.model_for(purpose), purpose=purpose)
         record_usage(usage)
         return LLMResponse(content=MOCK_NOTES, model=usage.model, stop_reason="end_turn", usage=usage)
 
@@ -169,14 +179,15 @@ class MockProvider(LLMProvider):
         messages: List[LLMMessage],
         schema: Type[SchemaT],
         *,
-        tier: Tier = "main",
+        purpose: str,
         max_tokens: int = 16000,
-        purpose: str = "",
     ) -> SchemaT:
         example = getattr(schema, "example", None)
         if example is None:
             raise LLMOutputError(f"MockProvider has no example for {schema.__name__}")
-        record_usage(LLMUsage(model=self.model_for(tier), purpose=purpose))
+        async with llm_slot():
+            await self._simulate_call()
+        record_usage(LLMUsage(model=self.model_for(purpose), purpose=purpose))
         return example()
 
     async def stream_cited_answer(
@@ -186,14 +197,14 @@ class MockProvider(LLMProvider):
         history: List[LLMMessage],
         question: str,
         excerpts: List[Excerpt],
-        tier: Tier = "main",
-        effort: Optional[str] = None,
         max_tokens: int = 4000,
         purpose: str = "chat",
     ) -> AsyncIterator[AnswerEvent]:
         """A fixed-shape answer that quotes the first two excerpts and cites each."""
         if not excerpts:
             raise LLMOutputError("The mock provider needs at least one excerpt")
+        async with llm_slot():  # the wait for the first token
+            await self._simulate_call()
         parts: List[tuple[str, Optional[Excerpt]]] = [
             (f"Mock answer to \"{question[:80]}\" (LLM_PROVIDER is mock, no model was called). ", None)
         ]
@@ -219,7 +230,7 @@ class MockProvider(LLMProvider):
                 citations.append(citation)
                 yield citation
 
-        usage = LLMUsage(model=self.model_for(tier), purpose=purpose)
+        usage = LLMUsage(model=self.model_for(purpose), purpose=purpose)
         record_usage(usage)
         yield AnswerDone(text=text, citations=citations, stop_reason="end_turn", usage=usage)
 
@@ -229,12 +240,12 @@ class MockProvider(LLMProvider):
         system: str,
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]],
-        tier: Tier = "fast",
-        effort: Optional[str] = None,
         max_tokens: int = 800,
         purpose: str = "voice",
     ) -> AsyncIterator[TurnEvent]:
         """A scripted reply (see _mock_turn). Reports a few nominal tokens, at no cost."""
+        async with llm_slot():  # the wait for the first token
+            await self._simulate_call()
         text, call = _mock_turn(messages, tools)
         content: List[Dict[str, Any]] = []
         if text:
@@ -248,7 +259,7 @@ class MockProvider(LLMProvider):
             yield TurnToolUse(id=tool_id, name=call["name"], input=call["input"])
 
         # Nominal counts so the usage ledger gets a row; the model name is unpriced, so it costs $0.
-        usage = LLMUsage(model=self.model_for(tier), purpose=purpose, input_tokens=100, output_tokens=20)
+        usage = LLMUsage(model=self.model_for(purpose), purpose=purpose, input_tokens=100, output_tokens=20)
         record_usage(usage)
         yield TurnDone(
             stop_reason="tool_use" if call is not None else "end_turn", content=content, usage=usage

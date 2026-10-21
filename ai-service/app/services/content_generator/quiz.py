@@ -121,7 +121,6 @@ Set difficulty to "{difficulty_level}" and list the concepts each question tests
         result = await self.llm.generate_structured(
             content_messages(topic_name, topic_description, chunks, instructions),
             QuestionSet,
-            tier="main",
             max_tokens=16000,
             purpose="topic_quiz",
         )

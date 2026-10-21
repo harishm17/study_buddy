@@ -76,7 +76,7 @@ class FakeStream:
 
 
 def claude(events, final, error=None) -> tuple[AnthropicProvider, list]:
-    provider = AnthropicProvider(api_key="test-key", model="claude-opus-5-5", fast_model="claude-haiku-5-5")
+    provider = AnthropicProvider(api_key="test-key")
     calls: list = []
 
     def stream(**params):
@@ -100,7 +100,7 @@ class TestClaudeTurn:
     async def test_request_uses_the_fast_model_low_effort_and_auto_tool_choice(self):
         text = SimpleNamespace(type="text", text="Hello there.")
         provider, calls = claude([delta("Hello there.")], final_message([text]))
-        await collect(provider, effort="low", max_tokens=800)
+        await collect(provider, max_tokens=800)
 
         params = calls[0]
         assert params["model"] == "claude-haiku-5-5"
@@ -308,15 +308,14 @@ class TestRoute:
         deltas = "".join(e["delta"] for e in events if e["type"] == "text")
         assert deltas and deltas == events[-1]["content"][0]["text"]
 
-    def test_the_model_gets_the_fast_tier_low_effort_and_small_budget(self, client, wired, monkeypatch):
-        monkeypatch.setattr(settings, "VOICE_EFFORT", "low")
+    def test_the_model_gets_the_voice_purpose_and_small_budget(self, client, wired, monkeypatch):
         monkeypatch.setattr(settings, "VOICE_MAX_TOKENS", 777)
         wired["provider"] = ScriptedProvider(
             [TurnText(text="Hi."), TurnDone(stop_reason="end_turn", content=[{"type": "text", "text": "Hi."}], usage=usage())]
         )
         post(client)
         call = wired["provider"].calls[0]
-        assert (call["tier"], call["effort"], call["max_tokens"], call["purpose"]) == ("fast", "low", 777, "voice")
+        assert (call["max_tokens"], call["purpose"]) == (777, "voice")
         assert call["system"] == "You are a coach." and call["tools"] == TOOLS
         assert call["messages"] == [{"role": "user", "content": "Start"}]
 

@@ -103,7 +103,7 @@ class TestNotesGeneration:
             {"filename": "bio.pdf", "category": "lecture_notes", "pages": "3-4", "material_id": "m1", "page": 3}
         ]
         kwargs = llm.generate_text.call_args.kwargs
-        assert kwargs["tier"] == "main" and kwargs["purpose"] == "section_notes"
+        assert kwargs["purpose"] == "section_notes"
         instructions = llm.generate_text.call_args.args[0][-1].content
         assert "Calvin cycle" in instructions
 

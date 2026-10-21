@@ -259,7 +259,7 @@ Requirements:
 Return the topics in the order a student should study them.
 """
 
-        # Topic extraction from headings and samples is a short structured task: fast tier.
+        # Topic extraction from headings and samples is a short structured task: cheap model.
         llm = LLMFactory.get_provider()
         response = await llm.generate_structured(
             [
@@ -270,7 +270,6 @@ Return the topics in the order a student should study them.
                 LLMMessage(role="user", content=prompt)
             ],
             TopicList,
-            tier="fast",
             max_tokens=6000,
             purpose="extract_topics",
         )

@@ -53,13 +53,7 @@ def _response(*texts, stop_reason="end_turn", model="claude-opus-5-5", content=N
 
 
 def _provider(reply) -> tuple[AnthropicProvider, AsyncMock]:
-    provider = AnthropicProvider(
-        api_key="test-key",
-        model="claude-opus-5-5",
-        fast_model="claude-haiku-5-5",
-        effort="medium",
-        fast_effort="low",
-    )
+    provider = AnthropicProvider(api_key="test-key")
     create = AsyncMock(side_effect=reply) if isinstance(reply, BaseException) else AsyncMock(return_value=reply)
     provider.client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(create=create)))
     return provider, create
@@ -74,17 +68,15 @@ MESSAGES = [
 
 class TestRequestShape:
     @pytest.mark.asyncio
-    async def test_main_tier_request(self):
+    async def test_main_model_request(self):
         provider, create = _provider(_response('{"ok": true, "reason": "fine"}'))
-        await provider.generate_structured(MESSAGES, Verdict, max_tokens=4000, purpose="t")
+        await provider.generate_structured(MESSAGES, Verdict, max_tokens=4000, purpose="topic_quiz")
 
         params = create.call_args.kwargs
         assert params["model"] == "claude-opus-5-5"
         assert params["max_tokens"] == 4000
-        # System prompt is a cached block; consecutive user turns merge into one message.
-        assert params["system"] == [
-            {"type": "text", "text": "You are a grader.", "cache_control": {"type": "ephemeral"}}
-        ]
+        # Only the block a message marks is cached; consecutive user turns merge into one message.
+        assert params["system"] == [{"type": "text", "text": "You are a grader."}]
         assert len(params["messages"]) == 1
         first, second = params["messages"][0]["content"]
         assert first["cache_control"] == {"type": "ephemeral"}
@@ -98,9 +90,9 @@ class TestRequestShape:
         assert "thinking" not in params and "temperature" not in params
 
     @pytest.mark.asyncio
-    async def test_fast_tier_uses_haiku_without_fallback(self):
+    async def test_fast_model_without_fallback(self):
         provider, create = _provider(_response("text", model="claude-haiku-5-5"))
-        await provider.generate_text([LLMMessage(role="user", content="hi")], tier="fast")
+        await provider.generate_text([LLMMessage(role="user", content="hi")], purpose="validate_material")
 
         params = create.call_args.kwargs
         assert params["model"] == "claude-haiku-5-5"
@@ -110,33 +102,33 @@ class TestRequestShape:
 
     def test_missing_key_is_a_configuration_error(self):
         with pytest.raises(LLMNotConfiguredError):
-            AnthropicProvider(api_key="", model="m", fast_model="f")
+            AnthropicProvider(api_key="")
 
 
 class TestResponses:
     @pytest.mark.asyncio
     async def test_structured_output_is_validated(self):
         provider, _ = _provider(_response('{"ok": true, "reason": "fine"}'))
-        result = await provider.generate_structured(MESSAGES, Verdict)
+        result = await provider.generate_structured(MESSAGES, Verdict, purpose="topic_quiz")
         assert result == Verdict(ok=True, reason="fine")
 
     @pytest.mark.asyncio
     async def test_schema_mismatch_is_an_output_error(self):
         provider, _ = _provider(_response('{"ok": "maybe"}'))
         with pytest.raises(LLMOutputError, match="Verdict"):
-            await provider.generate_structured(MESSAGES, Verdict)
+            await provider.generate_structured(MESSAGES, Verdict, purpose="topic_quiz")
 
     @pytest.mark.asyncio
     async def test_empty_text_is_an_output_error(self):
         provider, _ = _provider(_response("   "))
         with pytest.raises(LLMOutputError, match="no text"):
-            await provider.generate_text(MESSAGES)
+            await provider.generate_text(MESSAGES, purpose="section_notes")
 
     @pytest.mark.asyncio
     async def test_truncated_output_is_an_output_error(self):
         provider, _ = _provider(_response('{"ok": tr', stop_reason="max_tokens"))
         with pytest.raises(LLMOutputError, match="max_tokens"):
-            await provider.generate_structured(MESSAGES, Verdict)
+            await provider.generate_structured(MESSAGES, Verdict, purpose="topic_quiz")
 
     @pytest.mark.asyncio
     async def test_refusal_is_not_retryable(self):
@@ -144,7 +136,7 @@ class TestResponses:
             _response("", stop_reason="refusal", stop_details=SimpleNamespace(category="cyber"))
         )
         with pytest.raises(LLMRefusalError, match="cyber") as excinfo:
-            await provider.generate_text(MESSAGES)
+            await provider.generate_text(MESSAGES, purpose="section_notes")
         assert excinfo.value.retryable is False
 
     @pytest.mark.asyncio
@@ -156,16 +148,16 @@ class TestResponses:
             SimpleNamespace(type="text", text='{"ok": true, "reason": "rescued"}'),
         ]
         provider, _ = _provider(_response(content=content))
-        result = await provider.generate_structured(MESSAGES, Verdict)
+        result = await provider.generate_structured(MESSAGES, Verdict, purpose="topic_quiz")
         assert result.reason == "rescued"
 
     @pytest.mark.asyncio
     async def test_usage_is_recorded_with_cost(self):
         provider, _ = _provider(_response("hello"))
         with track_llm_usage() as usages:
-            await provider.generate_text(MESSAGES, purpose="notes")
-            await provider.generate_text(MESSAGES, purpose="notes")
-        assert [u.purpose for u in usages] == ["notes", "notes"]
+            await provider.generate_text(MESSAGES, purpose="section_notes")
+            await provider.generate_text(MESSAGES, purpose="section_notes")
+        assert [u.purpose for u in usages] == ["section_notes", "section_notes"]
         summary = summarize_usage(usages)
         assert summary["calls"] == 2
         assert summary["input_tokens"] == 200
@@ -205,7 +197,7 @@ class TestErrorTranslation:
     async def test_sdk_errors_map_to_typed_errors(self, error, expected, retryable):
         provider, _ = _provider(error)
         with pytest.raises(expected) as excinfo:
-            await provider.generate_text(MESSAGES)
+            await provider.generate_text(MESSAGES, purpose="section_notes")
         assert excinfo.value.retryable is retryable
 
 
@@ -213,16 +205,16 @@ class TestMockProvider:
     @pytest.mark.asyncio
     async def test_returns_schema_examples(self):
         provider = MockProvider()
-        check = await provider.generate_structured(MESSAGES, MaterialCheck)
+        check = await provider.generate_structured(MESSAGES, MaterialCheck, purpose="validate_material")
         assert check.is_valid is True
-        questions = await provider.generate_structured(MESSAGES, QuestionSet)
+        questions = await provider.generate_structured(MESSAGES, QuestionSet, purpose="topic_quiz")
         assert len(questions.usable()) == 24
-        text = await provider.generate_text(MESSAGES)
+        text = await provider.generate_text(MESSAGES, purpose="section_notes")
         assert "mock" in text.content.lower()
 
     @pytest.mark.asyncio
     async def test_mock_question_set_covers_every_type_with_distinct_valid_questions(self):
-        questions = (await MockProvider().generate_structured(MESSAGES, QuestionSet)).usable()
+        questions = (await MockProvider().generate_structured(MESSAGES, QuestionSet, purpose="topic_quiz")).usable()
 
         by_type = {}
         for question in questions:
@@ -239,7 +231,7 @@ class TestMockProvider:
     @pytest.mark.asyncio
     async def test_schema_without_example_fails_clearly(self):
         with pytest.raises(LLMOutputError, match="Verdict"):
-            await MockProvider().generate_structured(MESSAGES, Verdict)
+            await MockProvider().generate_structured(MESSAGES, Verdict, purpose="topic_quiz")
 
 
 class TestFactory:
@@ -250,16 +242,12 @@ class TestFactory:
         with patch("app.services.llm.factory.settings") as settings:
             settings.LLM_PROVIDER = "anthropic"
             settings.ANTHROPIC_API_KEY = "test-key"
-            settings.ANTHROPIC_MODEL = "claude-opus-5-5"
-            settings.ANTHROPIC_FAST_MODEL = "claude-haiku-5-5"
-            settings.ANTHROPIC_EFFORT = "medium"
-            settings.ANTHROPIC_FAST_EFFORT = "low"
             settings.LLM_TIMEOUT_SECONDS = 30
             settings.LLM_MAX_RETRIES = 2
             LLMFactory.reset()
             provider = LLMFactory.get_provider()
             assert isinstance(provider, AnthropicProvider)
-            assert provider.model_for("fast") == "claude-haiku-5-5"
+            assert provider.model_for("validate_material") == "claude-haiku-5-5"
             assert LLMFactory.get_provider() is provider
 
     def test_mock_provider(self):

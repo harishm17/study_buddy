@@ -165,7 +165,6 @@ Give a one or two sentence note explaining the decision.
         check = await llm.generate_structured(
             [LLMMessage(role="user", content=prompt)],
             MaterialCheck,
-            tier="fast",
             max_tokens=2000,
             purpose="validate_material",
         )
