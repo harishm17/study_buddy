@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }

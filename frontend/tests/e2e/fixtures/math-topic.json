@@ -1,0 +1,363 @@
+{
+ "description": "Random variables as payoff functions, with the pmf and the cdf.",
+ "notes": "# Discrete Random Variables\n\n## Overview\n\nThis topic builds new vocabulary on top of **sample spaces** and **probability functions**. The three key terms are:\n\n1. **Random variable**: a numerical value attached to each outcome of an experiment.\n2. **Probability mass function (pmf)**: how likely each value is.\n3. **Cumulative distribution function (cdf)**: how much probability has accumulated up to each value.\n\nThe learning goals are to:\n- know the definition of a discrete random variable;\n- describe pmfs and cdfs with tables and formulas;\n- recognise the Bernoulli, binomial and geometric distributions;\n- construct new random variables from old ones, for example by adding them.\n\n## Key Concepts\n\n### Random variables as payoff functions\n\nThe motivating idea is a **game**. Roll a die twice and record $(i, j)$. The sample space is\n\n$$\\Omega = \\{(i,j) \\mid i, j = 1,\\dots,6\\}, \\qquad P(i,j) = \\tfrac{1}{36}.$$\n\nSuppose you win \\$500 if the sum is 7 and lose \\$100 otherwise. This payoff is a function of the outcome:\n\n$$X(i,j) = \\begin{cases} 500 & \\text{if } i+j = 7 \\\\ -100 & \\text{if } i + j \\neq 7 \\end{cases}$$\n\nA different game uses a different payoff, such as $Y(i,j) = ij - 10$:\n- rolling $(6,2)$ wins \\$2;\n- rolling $(2,3)$ gives $-\\$4$, a loss of \\$4.\n\nWhich game is the better bet? That question has to wait until expectation is covered.\n\n**Definition.** Let $\\Omega$ be a sample space. A **discrete random variable** is a function\n$$X : \\Omega \\to \\mathbb{R}$$\nthat takes a discrete set of values.\n\nThe name has two parts:\n- It is **random** because its value depends on the random outcome of an experiment.\n- It is a **variable** because we treat it like an ordinary variable: we can add it to others, square it, and so on.\n\n### A wide set\n\nStart with ten animals:\n\n$$S = \\{\\text{Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}$$\n\nIn a sentence the same set, $S = \\{\\text{Antelope, Bee, Cat, Dog, Elephant, Frog, Gnat, Hyena, Iguana, Jaguar}\\}$, is too wide for a phone and has to scroll rather than widen the page.\n",
+ "examples": [
+  {
+   "title": "Events and pmf values for the payoff Y(i, j) = ij − 10",
+   "difficulty": "medium",
+   "final_answer": "- $p_Y(-4)=4/36$, $p_Y(0)=2/36$, $p_Y(1)=0$, $p_Y(2)=4/36$\n- $P(Y\\ge 0)=19/36$\n- $Game Y$ pays a positive amount with probability $17/36$, compared with $1/6$ for game $X$\n- So $Y$ wins more often. Which game is the better bet requires expectation.",
+   "key_concepts": [
+    "Random variable as a payoff function $X:\\Omega\\to\\mathbb{R}$",
+    "Event $Y=a$ as a set of outcomes",
+    "pmf $p(a)=P(Y=a)$, with $p(a)=0$ for values never taken",
+    "Inequalities as events"
+   ],
+   "solution_steps": [
+    {
+     "work": "For any value $a$, the event $Y=a$ is the set of outcomes with $ij-10=a$, i.e. $ij=a+10$.\n\n- $Y=-4 \\iff ij=6$\n- $Y=0 \\iff ij=10$\n- $Y=1 \\iff ij=11$\n- $Y=2 \\iff ij=12$",
+     "description": "Translate each value of Y into an event in Ω.",
+     "explanation": "**Principle: events from random variables.** $Y=a$ means the set of all outcomes $\\omega$ with $Y(\\omega)=a$. We work with outcomes because only outcomes have known probabilities.",
+     "step_number": 1
+    },
+    {
+     "work": "```text\nij = 6  : (1,6) (6,1) (2,3) (3,2)   -> 4 outcomes\nij = 10 : (2,5) (5,2)               -> 2 outcomes\nij = 11 : none (11 is prime > 6)    -> 0 outcomes\nij = 12 : (2,6) (6,2) (3,4) (4,3)   -> 4 outcomes\n```",
+     "description": "List the outcomes in each event and count them.",
+     "explanation": "Outcomes are equally likely, so counting outcomes is enough to find probabilities.",
+     "step_number": 2
+    },
+    {
+     "work": "$$p_Y(-4)=\\tfrac{4}{36},\\quad p_Y(0)=\\tfrac{2}{36},\\quad p_Y(1)=0,\\quad p_Y(2)=\\tfrac{4}{36}.$$",
+     "description": "Convert the counts to pmf values.",
+     "explanation": "**Principle: pmf definition** $p(a)=P(Y=a)$. If $Y$ never takes the value $a$, the event is empty and $p(a)=0$. This happens for $a=1$.",
+     "step_number": 3
+    },
+    {
+     "work": "$Y\\ge 0 \\iff ij\\ge 10$. Count by first die $i$:\n\n```text\ni=1: none                          0\ni=2: j=5,6        (10,12)         2\ni=3: j=4,5,6      (12,15,18)      3\ni=4: j=3,4,5,6                    4\ni=5: j=2,...,6                    5\ni=6: j=2,...,6                    5\n                          total = 19\n```",
+     "description": "Describe the event Y ≥ 0 as an inequality on ij.",
+     "explanation": "**Principle: inequalities define events.** $Y\\ge 0$ is the set of outcomes $\\omega$ with $Y(\\omega)\\ge 0$. Organising the count by $i$ ensures no outcome is missed.",
+     "step_number": 4
+    },
+    {
+     "work": "$$P(Y\\ge 0)=\\frac{19}{36}\\approx 0.528.$$",
+     "description": "Compute P(Y ≥ 0).",
+     "explanation": "Equally likely outcomes: the probability equals the number of favourable outcomes divided by 36.",
+     "step_number": 5
+    },
+    {
+     "work": "The event $X=500$ is $\\{(1,6),(2,5),(3,4),(4,3),(5,2),(6,1)\\}$, so\n\n$$P(X=500)=\\tfrac{6}{36}=\\tfrac16\\approx 0.167.$$\n\nIn game $Y$, you win a strictly positive amount when $ij>10$. That probability is $\\tfrac{19-2}{36}=\\tfrac{17}{36}\\approx 0.472$.",
+     "description": "Compute the winning probability for game X and compare.",
+     "explanation": "The same sample space supports different payoff functions. Comparing event probabilities tells us how *often* each game wins. Deciding which game is the *better bet* needs expectation, which comes later in the course.",
+     "step_number": 6
+    }
+   ],
+   "problem_statement": "Roll two fair dice and record the outcome as $(i,j)$. The sample space is $\\Omega=\\{(i,j)\\mid i,j=1,\\dots,6\\}$ with $P(i,j)=1/36$. Consider the payoff function (random variable)\n\n$$Y(i,j)=ij-10.$$\n\n1. Find $p_Y(-4)$, $p_Y(0)$, $p_Y(1)$ and $p_Y(2)$.\n2. Find $P(Y\\ge 0)$, the probability that you do **not** lose money.\n3. Compare this with the game $X$ that pays \\$500 if $i+j=7$ and $-\\$100$ otherwise. Which game wins money more often?"
+  },
+  {
+   "title": "Building and using the cdf of the sum of two dice",
+   "difficulty": "medium",
+   "final_answer": "- pmf: $36p(a)=1,2,3,4,5,6,5,4,3,2,1$ for $a=2,\\dots,12$\n- cdf: $36F(a)=1,3,6,10,15,21,26,30,33,35,36$\n- $F(4)=6/36$, $F(6.5)=15/36$, $F(-1)=0$, $F(13)=1$\n- $P(4<Z\\le8)=20/36=5/9$ and $P(Z<4)=3/36=1/12$",
+   "key_concepts": [
+    "cdf $F(a)=P(Z\\le a)$ as accumulated pmf",
+    "cdf is defined for all real $a$ and is non-decreasing",
+    "$P(a<Z\\le b)=F(b)-F(a)$",
+    "Strict vs non-strict inequalities"
+   ],
+   "solution_steps": [
+    {
+     "work": "The sum $Z=a$ has $a-1$ outcomes for $a\\le 7$ and $13-a$ outcomes for $a\\ge 7$. For example, $Z=4$ is $\\{(1,3),(2,2),(3,1)\\}$.",
+     "description": "Count the outcomes for each possible sum.",
+     "explanation": "**Principle: pmf from equally likely outcomes.** Each outcome has probability $1/36$, so $p(a)$ is the count divided by 36.",
+     "step_number": 1
+    },
+    {
+     "work": "```text\na     : 2  3  4  5   6   7   8   9   10  11  12\n36p(a): 1  2  3  4   5   6   5   4   3   2   1\n36F(a): 1  3  6  10  15  21  26  30  33  35  36\n```",
+     "description": "Write the pmf table and accumulate it to get the cdf.",
+     "explanation": "**Principle: cdf** $F(a)=P(Z\\le a)=\\sum_{b\\le a}p(b)$. Each cdf entry is the running total of the pmf. The last entry is 36/36 = 1, which checks the table.",
+     "step_number": 2
+    },
+    {
+     "work": "$F(4)=6/36$. This matches the event $Z\\le 4=\\{(1,1),(1,2),(1,3),(2,1),(2,2),(3,1)\\}$, which has 6 outcomes.",
+     "description": "Evaluate F at the integer values asked for.",
+     "explanation": "Checking $F(4)$ against a direct listing of the event confirms that the accumulation is right.",
+     "step_number": 3
+    },
+    {
+     "work": "- $F(6.5)=P(Z\\le 6.5)=P(Z\\le 6)=15/36$\n- $F(-1)=0$\n- $F(13)=1$",
+     "description": "Evaluate F at values Z cannot take.",
+     "explanation": "**Principle: $F(a)$ is defined for every real $a$.** Between possible values the cdf stays constant. Below the smallest value it is 0, and above the largest value it is 1. This agrees with the cdf properties $0\\le F\\le1$ and the limits at $\\pm\\infty$.",
+     "step_number": 4
+    },
+    {
+     "work": "$$P(4<Z\\le 8)=F(8)-F(4)=\\frac{26}{36}-\\frac{6}{36}=\\frac{20}{36}=\\frac59.$$\n\nCheck with the pmf: $(4+5+6+5)/36=20/36$.",
+     "description": "Find P(4 < Z ≤ 8) as a difference of cdf values.",
+     "explanation": "The event $Z\\le 8$ splits into the disjoint events $Z\\le4$ and $4<Z\\le8$. Subtracting the cdf values removes the overlap exactly.",
+     "step_number": 5
+    },
+    {
+     "work": "$$P(Z<4)=P(Z\\le 3)=F(3)=\\frac{3}{36}=\\frac1{12}\\neq F(4).$$",
+     "description": "Handle the strict inequality carefully.",
+     "explanation": "**The cdf uses $\\le$.** $Z$ takes only integer values, so $Z<4$ is the same as $Z\\le 3$. Using $F(4)$ here would wrongly include $P(Z=4)=3/36$.",
+     "step_number": 6
+    }
+   ],
+   "problem_statement": "Roll two fair dice and let $Z(i,j)=i+j$.\n\n1. Make a table of the pmf $p(a)$ and the cdf $F(a)$ of $Z$.\n2. Compute $F(4)$, $F(6.5)$, $F(-1)$ and $F(13)$.\n3. Use the cdf to find $P(4<Z\\le 8)$ and $P(Z<4)$."
+  }
+ ],
+ "practice": [
+  {
+   "steps": [
+    {
+     "hint": "List the equally likely outcomes of two fair tosses. How many are there, and how many are 'both heads'?",
+     "question": "What is $P(H_1 \\cap H_2)$, the probability that **both** tosses are heads? Give a decimal.",
+     "answer_type": "numeric",
+     "explanation": "The four equally likely outcomes are HH, HT, TH and TT. Only HH is in $H_1 \\cap H_2$, so\n\n$$P(H_1 \\cap H_2) = \\tfrac14 = 0.25.$$",
+     "step_number": 1,
+     "correct_answer": "0.25",
+     "feedback_correct": "Right. One of the four equally likely outcomes is HH.",
+     "acceptable_answers": [
+      "0.25",
+      "1/4",
+      ".25"
+     ],
+     "feedback_incorrect": "Write out all outcomes of two tosses: HH, HT, TH, TT. They are equally likely. Count how many have heads on both tosses."
+    },
+    {
+     "hint": "Each toss alone gives heads with probability $1/2$. Compare the product with your answer from Step 1.",
+     "question": "Compute $P(H_1)\\cdot P(H_2)$. Then state whether $H_1$ and $H_2$ are independent. Answer 'yes' or 'no'.",
+     "answer_type": "text",
+     "explanation": "$$P(H_1)P(H_2) = \\tfrac12 \\cdot \\tfrac12 = \\tfrac14 = P(H_1 \\cap H_2).$$\n\nThe defining equation holds, so $H_1$ and $H_2$ are independent.\n\nThis matches the informal idea that knowing the first toss tells you nothing about the second. In real experiments this still has to be checked. For example, a coin that landed in honey and was not cleaned might bias the second toss.",
+     "step_number": 2,
+     "correct_answer": "yes",
+     "feedback_correct": "Correct. The product equals the joint probability, so the events are independent.",
+     "acceptable_answers": [
+      "yes",
+      "Yes",
+      "independent",
+      "yes, independent"
+     ],
+     "feedback_incorrect": "Independence means $P(A\\cap B)=P(A)P(B)$. Compute $\\tfrac12\\cdot\\tfrac12$ and compare it with $P(H_1\\cap H_2)$ from Step 1."
+    },
+    {
+     "hint": "What is $A \\cap A$ as a set?",
+     "question": "Now consider a single event $A$ and ask whether it can be independent of **itself**. Substitute $B = A$ into the formal definition. What equation in $P(A)$ must hold?\n\n(a) $P(A) = 2P(A)$\n(b) $P(A) = P(A)^2$\n(c) $P(A) = 1 - P(A)$\n(d) $P(A)^2 = 0$",
+     "answer_type": "multiple_choice",
+     "explanation": "Since $A \\cap A = A$, the definition $P(A\\cap A) = P(A)P(A)$ becomes\n\n$$P(A) = P(A)^2.$$",
+     "step_number": 3,
+     "correct_answer": "b",
+     "feedback_correct": "Yes. Because $A\\cap A = A$, the left side is just $P(A)$.",
+     "acceptable_answers": [
+      "b",
+      "(b)",
+      "P(A) = P(A)^2",
+      "P(A)=P(A)^2"
+     ],
+     "feedback_incorrect": "Replace $B$ by $A$ in $P(A\\cap B)=P(A)P(B)$, and simplify $A\\cap A$ to $A$."
+    },
+    {
+     "hint": "Factor: $P(A)\\,(1 - P(A)) = 0$.",
+     "question": "The course notes point out that $P(A)=0$ makes $A$ independent of itself. What is the **other** value of $P(A)$ that solves $P(A) = P(A)^2$?",
+     "answer_type": "numeric",
+     "explanation": "$P(A)(1-P(A)) = 0$ gives $P(A)=0$ or $P(A)=1$.\n\nThe result looks paradoxical, because learning that $A$ occurred surely tells you about $A$. It is resolved by noticing that these statements carry no information:\n\n- If $P(A)=0$, the statement '$A$ occurred' is vacuous.\n- If $P(A)=1$, we already knew $A$ would occur.",
+     "step_number": 4,
+     "correct_answer": "1",
+     "feedback_correct": "Exactly. Events of probability 0 or 1 are the only ones independent of themselves.",
+     "acceptable_answers": [
+      "1",
+      "1.0",
+      "P(A)=1"
+     ],
+     "feedback_incorrect": "Rewrite $P(A)=P(A)^2$ as $P(A)(1-P(A))=0$. A product is zero when one of its factors is zero."
+    }
+   ],
+   "title": "Checking Independence and the Paradox of Self-Independence",
+   "difficulty": "medium",
+   "key_concepts": [
+    "Formal definition of independence: $P(A\\cap B)=P(A)P(B)$",
+    "Independent trials such as repeated coin tosses",
+    "Paradox: an event with probability 0 (or 1) is independent of itself"
+   ],
+   "problem_statement": "A fair coin is tossed twice. Let $H_1$ = 'heads on first toss' and $H_2$ = 'heads on second toss'.\n\nUse the **formal definition of independence**:\n\n$$A \\text{ and } B \\text{ are independent if } P(A \\cap B) = P(A)\\cdot P(B).$$\n\nYou will first decide whether $H_1$ and $H_2$ are independent. Then you will examine the paradox of an event being independent of itself.",
+   "estimated_time_minutes": 10
+  },
+  {
+   "steps": [
+    {
+     "hint": "The event $X = 500$ is the set of all outcomes whose two dice sum to 7. List the pairs with first die $1, 2, \\dots, 6$.",
+     "question": "How many outcomes $(i,j)$ are in the event $X = 500$?",
+     "answer_type": "numeric",
+     "explanation": "$X = 500$ is the set $\\{(1,6),(2,5),(3,4),(4,3),(5,2),(6,1)\\}$. For every value of the first die there is exactly one second die that makes the sum 7, so there are 6 outcomes.",
+     "step_number": 1,
+     "correct_answer": "6",
+     "feedback_correct": "Correct. Every value of the first die pairs with exactly one value of the second die to give a sum of 7.",
+     "acceptable_answers": [
+      "6",
+      "six"
+     ],
+     "feedback_incorrect": "For each first roll $i$ from 1 to 6, ask which $j$ makes $i + j = 7$. Count those pairs. Remember that $(1,6)$ and $(6,1)$ are different outcomes."
+    },
+    {
+     "hint": "Each outcome has probability $1/36$. Multiply by the number of outcomes in the event.",
+     "question": "What is $p(500) = P(X = 500)$? Give it as a fraction in lowest terms.",
+     "answer_type": "text",
+     "explanation": "$P(X=500) = 6 \\cdot \\frac{1}{36} = \\frac{6}{36} = \\frac{1}{6}$.",
+     "step_number": 2,
+     "correct_answer": "1/6",
+     "feedback_correct": "Right: $p(500) = 1/6$.",
+     "acceptable_answers": [
+      "1/6",
+      "6/36",
+      "0.1667",
+      "0.167"
+     ],
+     "feedback_incorrect": "Use the count from Step 1. With 6 outcomes, each of probability $1/36$, the event has probability $6/36$. Simplify that fraction."
+    },
+    {
+     "hint": "$X$ takes only two values, and the pmf values must add to 1.",
+     "question": "What is $p(-100) = P(X = -100)$?",
+     "answer_type": "text",
+     "explanation": "Every outcome not in the event $X = 500$ gives $X = -100$. So $p(-100) = 1 - \\frac{1}{6} = \\frac{5}{6}$, which is the same as $30/36$.",
+     "step_number": 3,
+     "correct_answer": "5/6",
+     "feedback_correct": "Correct. The two pmf values $1/6$ and $5/6$ sum to 1.",
+     "acceptable_answers": [
+      "5/6",
+      "30/36",
+      "0.8333",
+      "0.833"
+     ],
+     "feedback_incorrect": "The outcomes with $X = -100$ are exactly those *not* summing to 7. Subtract Step 2's answer from 1."
+    },
+    {
+     "hint": "Does $X$ ever take the value 1000? The pmf is defined for every number $a$.",
+     "question": "What is $p(1000) = P(X = 1000)$?",
+     "answer_type": "numeric",
+     "explanation": "$X$ never equals 1000, so the event $X = 1000$ is the empty set $\\emptyset$. That gives $p(1000) = 0$. The pmf is defined for all $a$ and equals 0 at values $X$ never takes.",
+     "step_number": 4,
+     "correct_answer": "0",
+     "feedback_correct": "Exactly. The event is empty, so its probability is 0.",
+     "acceptable_answers": [
+      "0",
+      "0.0"
+     ],
+     "feedback_incorrect": "List the outcomes $\\omega$ with $X(\\omega) = 1000$. There are none, so the event is empty."
+    },
+    {
+     "hint": "Which values of $X$ are less than or equal to 0? Add their pmf values.",
+     "question": "Using the cdf $F(a) = P(X \\le a)$, compute $F(0)$.",
+     "answer_type": "text",
+     "explanation": "The only value of $X$ that is $\\le 0$ is $-100$. So\n\n$$F(0) = p(-100) = \\frac{5}{6}.$$",
+     "step_number": 5,
+     "correct_answer": "5/6",
+     "feedback_correct": "Correct. Only $-100$ is at or below 0, so $F(0) = 5/6$.",
+     "acceptable_answers": [
+      "5/6",
+      "30/36",
+      "0.8333",
+      "0.833"
+     ],
+     "feedback_incorrect": "The cdf accumulates the pmf over all values $\\le a$. Here 500 is not $\\le 0$ but $-100$ is."
+    }
+   ],
+   "title": "A Dice Game as a Random Variable",
+   "difficulty": "medium",
+   "key_concepts": [
+    "Random variable as a payoff function $X: \\Omega \\to \\mathbb{R}$",
+    "The event $X = a$",
+    "Probability mass function",
+    "pmf is 0 at values never taken",
+    "Cumulative distribution function"
+   ],
+   "problem_statement": "Roll a fair die twice and record the outcome $(i, j)$. The sample space is $\\Omega = \\{(i,j) \\mid i, j = 1, \\dots, 6\\}$ with $P(i,j) = 1/36$.\n\nYou win \\$500 if the sum is 7 and lose \\$100 otherwise. This payoff is the random variable\n\n$$X(i,j) = \\begin{cases} 500 & \\text{if } i+j = 7 \\\\ -100 & \\text{if } i+j \\neq 7 \\end{cases}$$\n\nWork out the pmf and some cdf values of $X$.",
+   "estimated_time_minutes": 10
+  }
+ ],
+ "quiz": [
+  {
+   "question_type": "multiple_choice",
+   "question_text": "According to the course definition, which statement best describes a **discrete random variable** $X$ on a sample space $\\Omega$?",
+   "options": [
+    {
+     "id": "A",
+     "text": "A function $X:\\Omega \\to \\mathbf{R}$ taking a discrete set of values"
+    },
+    {
+     "id": "B",
+     "text": "A probability assigned to each event in $\\Omega$"
+    },
+    {
+     "id": "C",
+     "text": "An outcome chosen at random from $\\Omega$"
+    },
+    {
+     "id": "D",
+     "text": "A function from $\\mathbf{R}$ to $[0,1]$"
+    }
+   ],
+   "points": 1,
+   "difficulty": "medium",
+   "concepts_tested": [
+    "definition of discrete random variable",
+    "random variables as functions"
+   ],
+   "correct_answer": "A",
+   "explanation": "A discrete random variable is a function $X:\\Omega \\to \\mathbf{R}$ that takes a discrete set of values. A probability on events is a probability function, not a random variable."
+  },
+  {
+   "question_type": "numerical",
+   "question_text": "Two fair dice are rolled, with outcomes $(i,j)$, each having probability $1/36$. The payoff function is $Y(i,j) = ij - 10$ dollars.\n\nWhat is the probability that you **win money**, i.e. $P(Y > 0)$? Give your answer as a decimal.",
+   "unit": "probability",
+   "points": 3,
+   "difficulty": "medium",
+   "concepts_tested": [
+    "random variables as payoff functions",
+    "events defined by inequalities"
+   ],
+   "correct_answer": 400,
+   "tolerance": 0,
+   "explanation": "Win \\$500 with probability $6/36$ and lose \\$100 otherwise, so the payoffs are $500$ and $-\\$100$."
+  },
+  {
+   "question_type": "multiple_choice",
+   "question_text": "For $M = \\max(i,j)$ on two fair dice, the cdf values are\n\n```text\nvalue a:  1     2     3     4      5      6\nF(a):     1/36  4/36  9/36  16/36  25/36  36/36\n```\n\nWhat is $P(2 < M \\le 5)$?",
+   "options": [
+    {
+     "id": "A",
+     "text": "$12/36$"
+    },
+    {
+     "id": "B",
+     "text": "$16/36$"
+    },
+    {
+     "id": "C",
+     "text": "$25/36$"
+    },
+    {
+     "id": "D",
+     "text": "$21/36$"
+    }
+   ],
+   "points": 3,
+   "difficulty": "medium",
+   "concepts_tested": [
+    "cdf",
+    "using F to compute interval probabilities",
+    "less than or equal in cdf definition"
+   ],
+   "correct_answer": "C",
+   "explanation": "The cdf accumulates the pmf, so it is the running total of the pmf values for $M = \\max(i,j)$."
+  },
+  {
+   "question_type": "true_false",
+   "question_text": "If $a$ is a number that the random variable $X$ never takes, then the pmf value $p(a)$ is undefined.",
+   "points": 1,
+   "difficulty": "medium",
+   "concepts_tested": [
+    "probability mass function",
+    "events and random variables"
+   ],
+   "correct_answer": true,
+   "explanation": "A value that $X$ never takes has no outcomes, so $p(a)=P(X=a)=0$."
+  }
+ ]
+}

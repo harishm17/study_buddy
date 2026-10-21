@@ -11,6 +11,7 @@ import {
   startMessage,
   styleUsesTools,
 } from './coach-prompt'
+import { VOICE_LANGUAGES } from '@/features/voice/speech'
 
 const base = { mode: 'topic_drill' as const, style: 'oral_quiz' as const, language: 'en', topicName: 'Hash tables', topicDescription: 'Keys, buckets and collisions' }
 
@@ -129,5 +130,9 @@ describe('languageLabel', () => {
     assert.equal(languageLabel('hi'), 'Hindi')
     assert.equal(languageLabel('PT-br'), 'Portuguese')
     assert.equal(languageLabel('tlh'), 'tlh')
+  })
+
+  it('has a name for every language the lobby offers', () => {
+    for (const language of VOICE_LANGUAGES) assert.equal(languageLabel(language.code), language.label)
   })
 })

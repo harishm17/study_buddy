@@ -16,6 +16,7 @@ const updateProjectSchema = z.object({
   status: z.enum(['setup', 'topics_pending', 'active', 'completed']).optional(),
 })
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }

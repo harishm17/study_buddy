@@ -8,6 +8,7 @@ import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import { apiNotFound, apiUnauthorized, apiInternal, isUnauthorizedError } from '@/lib/api/errors'
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ materialId: string }> }

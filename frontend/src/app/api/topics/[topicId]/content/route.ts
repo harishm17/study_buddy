@@ -9,6 +9,7 @@ import { requireAuth } from '@/lib/auth/get-session'
 import type { Prisma } from '@prisma/client'
 import { toPublicContentData } from '@/lib/learning/quiz-questions'
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ topicId: string }> }

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { withPrisma } from './db'
 
 /**
  * A voice-review course for the e2e spec.
@@ -7,7 +7,7 @@ import { PrismaClient } from '@prisma/client'
  * backend drops any question with a digit or a math word (src/lib/voice/concept.ts), so the
  * seeded demo course always answers 422 "no conceptual questions". This fixture adds a small
  * course with hand-written conceptual questions to its own test account, straight in the dev
- * database (DATABASE_URL, the shared sb_design database by default). It is idempotent.
+ * database (DATABASE_URL). It is idempotent.
  *
  * Progress is set so the sprint's three weakest topics are known: Recursion basics (no data),
  * Graph search (40, unfinished), Sorting by comparison (70); Hash tables (90) is left out.
@@ -131,11 +131,7 @@ export async function ensureVoiceFixture(baseURL: string): Promise<VoiceFixture>
   })
   if (signup.status !== 201 && signup.status !== 409) throw new Error(`signup failed: HTTP ${signup.status}`)
 
-  const prisma = new PrismaClient({
-    datasourceUrl: process.env.DATABASE_URL ?? 'postgresql://postgres@127.0.0.1:5544/sb_design',
-    log: [],
-  })
-  try {
+  return withPrisma(async (prisma) => {
     const user = await prisma.user.findUniqueOrThrow({ where: { email: VOICE_TEST_EMAIL } })
     let project = await prisma.project.findFirst({ where: { userId: user.id, name: COURSE_NAME } })
     project ??= await prisma.project.create({
@@ -186,9 +182,7 @@ export async function ensureVoiceFixture(baseURL: string): Promise<VoiceFixture>
       topics,
       weakest: ['Recursion basics', 'Graph search', 'Sorting by comparison'],
     }
-  } finally {
-    await prisma.$disconnect()
-  }
+  })
 }
 
 /**
@@ -196,13 +190,5 @@ export async function ensureVoiceFixture(baseURL: string): Promise<VoiceFixture>
  * session would answer 409 ACTIVE_SESSION) or uses up the daily minutes.
  */
 export async function clearVoiceSessions(): Promise<void> {
-  const prisma = new PrismaClient({
-    datasourceUrl: process.env.DATABASE_URL ?? 'postgresql://postgres@127.0.0.1:5544/sb_design',
-    log: [],
-  })
-  try {
-    await prisma.voiceDrillSession.deleteMany({ where: { user: { email: VOICE_TEST_EMAIL } } })
-  } finally {
-    await prisma.$disconnect()
-  }
+  await withPrisma((prisma) => prisma.voiceDrillSession.deleteMany({ where: { user: { email: VOICE_TEST_EMAIL } } }))
 }

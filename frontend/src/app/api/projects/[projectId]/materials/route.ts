@@ -239,6 +239,7 @@ export async function POST(
   }
 }
 
+// Kept for API clients; the UI reads this through server queries.
 /**
  * GET /api/projects/[projectId]/materials
  * List all materials for a project

@@ -52,6 +52,87 @@ jobs:
       - run: uv run python -m compileall -q app
       - run: uv run pytest -q
 
+  e2e:
+    # Playwright against the real stack: Postgres with pgvector, the AI service on the mock LLM (no
+    # API calls) and the production build of the web app. scripts/e2e-stack.sh starts both services.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: studybuddy
+          POSTGRES_USER: dev
+          POSTGRES_PASSWORD: devpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dev -d studybuddy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://dev:devpass@localhost:5432/studybuddy
+      NEXTAUTH_SECRET: ci-secret-ci-secret-ci-secret-32chars
+      NEXTAUTH_URL: http://localhost:3000
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      EMBEDDING_CACHE_DIR: ${{ github.workspace }}/.cache/models
+      TIKTOKEN_CACHE_DIR: ${{ github.workspace }}/.cache/tiktoken
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
+        with:
+          version: '0.12.23'
+          enable-cache: true
+          cache-dependency-glob: ai-service/uv.lock
+      - name: Cache the embedding model, the tokenizer and the browser
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/models
+            .cache/tiktoken
+            ~/.cache/ms-playwright
+          key: e2e-assets-${{ hashFiles('frontend/package-lock.json', 'ai-service/uv.lock') }}
+      - name: Install the web app and migrate the database
+        working-directory: frontend
+        run: |
+          npm ci
+          npx prisma generate
+          npx prisma migrate deploy
+      - name: Install the AI service, then fetch the embedding model and the tokenizer once
+        working-directory: ai-service
+        run: |
+          uv sync --locked --python 3.14
+          uv run python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='BAAI/bge-small-en-v1.5', cache_dir='$EMBEDDING_CACHE_DIR')"
+          uv run python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+      - name: Build the web app
+        working-directory: frontend
+        run: npm run build
+      - name: Install the browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Start the AI service and the web app
+        run: scripts/e2e-stack.sh start
+      - name: Playwright
+        working-directory: frontend
+        run: npx playwright test
+      - name: Upload the Playwright report and the service logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            .e2e/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
   frontend-image:
     runs-on: ubuntu-latest
     steps:

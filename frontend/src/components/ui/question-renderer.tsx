@@ -5,7 +5,7 @@ import * as RadioGroup from '@radix-ui/react-radio-group'
 import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import { cn } from '@/lib/utils'
 import { Input } from './input'
-import { LazyMarkdownInline } from './lazy-markdown'
+import { MathText } from './math-text'
 import { Textarea } from './textarea'
 
 type QuestionRendererProps = {
@@ -70,7 +70,7 @@ function ChoiceList({
           >
             {choice.tile}
           </span>
-          <span className="min-w-0 flex-1 pt-px">{choice.content}</span>
+          <span className="min-w-0 flex-1 overflow-x-auto pt-px">{choice.content}</span>
         </RadioGroup.Item>
       ))}
     </RadioGroup.Root>
@@ -137,7 +137,7 @@ export function QuestionRenderer({
         choices={options.map((option) => ({
           value: option.id,
           tile: option.tile,
-          content: <LazyMarkdownInline>{option.text}</LazyMarkdownInline>,
+          content: <MathText>{option.text}</MathText>,
         }))}
       />
     )
@@ -186,8 +186,8 @@ export function QuestionRenderer({
 
   return (
     <div className={cn('flex flex-col gap-4', className)}>
-      <h2 className="text-heading text-fg">
-        <LazyMarkdownInline>{question.question_text}</LazyMarkdownInline>
+      <h2 className="overflow-x-auto text-heading text-fg">
+        <MathText>{question.question_text}</MathText>
         {showPoints && question.points ? (
           <span className="ml-2 whitespace-nowrap text-small font-normal text-fg-3 tabular">
             ({question.points} {question.points === 1 ? 'point' : 'points'})

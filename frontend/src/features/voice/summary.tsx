@@ -6,6 +6,7 @@ import { ArrowCounterClockwise } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { InlineAlert } from '@/components/ui/inline-alert'
+import { MathText } from '@/components/ui/math-text'
 import { ProgressRing } from '@/components/ui/progress-ring'
 import type { VoiceAlert } from './errors'
 import { clip, minutesLabel } from './format'
@@ -73,7 +74,7 @@ export function Summary({ summary, reason, alert, back, onRestart }: SummaryProp
               <ul className="mt-2 flex flex-col gap-2" data-testid="voice-revisit">
                 {summary.revisit.slice(0, 6).map((question) => (
                   <li key={question} className="text-small text-fg-2">
-                    {clip(question)}
+                    <MathText>{clip(question)}</MathText>
                   </li>
                 ))}
               </ul>

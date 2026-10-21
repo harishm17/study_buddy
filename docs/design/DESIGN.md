@@ -470,7 +470,7 @@ CS 161 Algorithms                                  [ Ask ]  [ Mock exam ]  [...]
 12 topics  .  4 strong  .  2 due for review
 
 +---------------------------------------------+  +--------------------------+
-| Up next                                     |  | Course progress          |
+| Up next                                     |  | Course mastery           |
 | Review Dynamic programming                  |  |   (ring 96: 38%)          |
 | Due today. Your last quiz was 55%.          |  |   Strong 4  Getting 3     |
 |                                [ Start -> ] |  |   Learning 2  Not st. 3   |
@@ -503,8 +503,8 @@ Recent mock exams                          Building content (only while jobs run
   voice_drill -> topic voice; generate_content -> topic with missing view (or, for the batch
   action, run generate-missing-content in place); take_exam -> exams. Data: the next-actions
   logic, rendered on the server; refreshed with `router.refresh()` on window focus.
-- Course progress card: big ProgressRing (average mastery of topics with data, or share of strong
-  topics; label "Course progress"), and the four mastery buckets as a 2x2 list with counts.
+- Course mastery card: big ProgressRing (mean mastery over all topics, not-started ones counting
+  as 0; label "Course mastery"), and the four mastery buckets as a 2x2 list with counts.
 - Topic tiles: 4 columns desktop (2 mobile), interactive cards: ring 28 + percent, name (2 lines
   max), status caption ("Strong", "Due today" in warning-soft-fg, "Not started"). Max 8, "View
   all" link.

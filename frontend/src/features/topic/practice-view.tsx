@@ -8,10 +8,12 @@ import { IconButton } from '@/components/ui/icon-button'
 import { InlineAlert } from '@/components/ui/inline-alert'
 import { Input } from '@/components/ui/input'
 import { LazyMarkdown } from '@/components/ui/lazy-markdown'
+import { MathText } from '@/components/ui/math-text'
 import { Progress } from '@/components/ui/progress'
 import { QuestionRenderer } from '@/components/ui/question-renderer'
 import { pluralize } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { ConceptChip } from './concept-chip'
 import { GenerateOptions } from './generation-ui'
 import { checkPracticeAnswer, splitChoices } from './practice-check'
 import { practiceStepKey, type PracticeProgress } from './practice-keys'
@@ -156,7 +158,9 @@ function ActiveStep({
 
       {feedback === 'revealed' ? (
         <InlineAlert title="The answer is shown, so this step won't count as solved.">
-          <p className="mt-1 text-body-strong text-fg">{step.correctAnswer}</p>
+          <p className="mt-1 text-body-strong text-fg">
+            <MathText>{step.correctAnswer}</MathText>
+          </p>
           {step.explanation ? (
             <LazyMarkdown variant="compact" className="mt-2 text-small! text-fg-2!">
               {step.explanation}
@@ -337,7 +341,7 @@ export function PracticeView({ topicId, practice }: { topicId: string; practice:
             Problem {problemIndex + 1} of {problems.length}
           </span>
           <span className="text-fg-3">: </span>
-          {problem.title}
+          <MathText>{problem.title}</MathText>
         </h2>
         <ProblemSwitcher problems={problems} progress={progress} current={problemIndex} onSelect={select} />
       </div>
@@ -367,7 +371,7 @@ export function PracticeView({ topicId, practice }: { topicId: string; practice:
               </Badge>
             ) : null}
             {problem.keyConcepts.map((concept) => (
-              <Badge key={concept}>{concept}</Badge>
+              <ConceptChip key={concept}>{concept}</ConceptChip>
             ))}
             {problem.minutes ? <span className="ml-1 text-caption text-fg-3">About {problem.minutes} min</span> : null}
           </div>
@@ -417,7 +421,7 @@ export function PracticeView({ topicId, practice }: { topicId: string; practice:
                     </p>
                     <p className="max-w-[60%] truncate text-small font-medium text-fg">
                       {status === 'revealed' ? <span className="mr-1.5 font-normal text-fg-3">Answer shown</span> : null}
-                      {step.correctAnswer}
+                      <MathText>{step.correctAnswer}</MathText>
                     </p>
                   </div>
                 ) : (

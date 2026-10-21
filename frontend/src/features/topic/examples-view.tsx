@@ -6,9 +6,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { LazyMarkdown } from '@/components/ui/lazy-markdown'
+import { MathText } from '@/components/ui/math-text'
 import { pluralize } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { CompletionRow } from './completion-row'
+import { ConceptChip } from './concept-chip'
 import { GenerateOptions } from './generation-ui'
 import { useMarkComplete } from './use-mark-complete'
 import type { ExamplesContent, SolvedExample } from './types'
@@ -31,7 +33,7 @@ function StepTimeline({ example, visible }: { example: SolvedExample; visible: n
               {step.description ? (
                 <p className="text-body-strong text-fg">
                   <span className="sr-only">Step {index + 1}: </span>
-                  {step.description}
+                  <MathText>{step.description}</MathText>
                 </p>
               ) : null}
               {step.work ? <LazyMarkdown variant="compact" className="mt-2">{step.work}</LazyMarkdown> : null}
@@ -80,7 +82,9 @@ function ExampleCard({
           className="flex w-full items-center gap-3 rounded-card px-5 py-4 text-left"
         >
           <span className="tabular text-body-strong text-fg-3">{index + 1}</span>
-          <span className="min-w-0 flex-1 text-subheading text-fg">{example.title}</span>
+          <span className="min-w-0 flex-1 text-subheading text-fg">
+            <MathText>{example.title}</MathText>
+          </span>
           {example.difficulty ? (
             <Badge tone={example.difficulty === 'hard' ? 'warning' : 'neutral'}>
               {example.difficulty[0].toUpperCase() + example.difficulty.slice(1)}
@@ -128,7 +132,7 @@ function ExampleCard({
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="mr-1 text-small text-fg-2">Key concepts</span>
               {example.keyConcepts.map((concept) => (
-                <Badge key={concept}>{concept}</Badge>
+                <ConceptChip key={concept}>{concept}</ConceptChip>
               ))}
             </div>
           ) : null}

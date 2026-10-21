@@ -90,14 +90,14 @@ function ProgressCard({ average, counts }: { average: number | null; counts: Mas
   return (
     <Card aria-labelledby="progress-heading" role="region" className="flex flex-col gap-4">
       <h2 id="progress-heading" className="text-small font-medium text-fg-2">
-        Course progress
+        Course mastery
       </h2>
       <div className="flex items-center gap-5">
         <ProgressRing
           size={96}
           value={average}
           label={percent === null ? '--' : `${percent}%`}
-          aria-label={percent === null ? 'Course progress: not started' : `Course progress: ${percent}%`}
+          aria-label={percent === null ? 'Course mastery: not started' : `Course mastery: ${percent}%`}
         />
         <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3">
           {BUCKETS.map((bucket) => (
@@ -204,7 +204,7 @@ export function TodayView({ course, today }: { course: CourseShell; today: Today
       />
 
       <div className="flex flex-col gap-10">
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
           <UpNext courseId={course.id} actions={today.upNext} />
           <ProgressCard average={today.averageMastery} counts={today.counts} />
         </div>

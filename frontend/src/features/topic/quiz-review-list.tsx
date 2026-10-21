@@ -2,7 +2,8 @@
 
 import * as React from 'react'
 import { CheckCircle, CircleHalf, XCircle } from '@phosphor-icons/react/dist/ssr'
-import { LazyMarkdown, LazyMarkdownInline } from '@/components/ui/lazy-markdown'
+import { LazyMarkdown } from '@/components/ui/lazy-markdown'
+import { MathText } from '@/components/ui/math-text'
 import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import type { QuizReviewItem } from '@/lib/learning/quiz-review'
 import { formatAnswer, formatKey, reviewState } from './quiz-format'
@@ -52,6 +53,8 @@ export function ReviewList({ entries }: { entries: ReviewEntry[] }) {
       {entries.map(({ index, question, review, answer }) => {
         const state = reviewState(review)
         const shortAnswer = question.question_type === 'short_answer'
+        // Typed answers are the student's own words; options and keys are the model's.
+        const typed = shortAnswer || question.question_type === 'numerical'
         const given = formatAnswer(question, answer)
         return (
           <li key={index} className="flex gap-3 py-4">
@@ -68,7 +71,7 @@ export function ReviewList({ entries }: { entries: ReviewEntry[] }) {
               <div className="flex items-start justify-between gap-4">
                 <p className="text-body-strong text-fg">
                   <span className="tabular mr-2 text-fg-3">{index + 1}</span>
-                  <LazyMarkdownInline>{question.question_text}</LazyMarkdownInline>
+                  <MathText>{question.question_text}</MathText>
                 </p>
                 <span className="tabular whitespace-nowrap text-small text-fg-2">
                   {points(review.pointsEarned)}/{points(review.pointsPossible)}
@@ -78,7 +81,7 @@ export function ReviewList({ entries }: { entries: ReviewEntry[] }) {
               <Detail label="Your answer">
                 {given ? (
                   <span className="whitespace-pre-wrap break-words">
-                    {shortAnswer ? given : <LazyMarkdownInline>{given}</LazyMarkdownInline>}
+                    {typed ? given : <MathText>{given}</MathText>}
                   </span>
                 ) : (
                   <span className="text-fg-3">No answer</span>
@@ -90,15 +93,15 @@ export function ReviewList({ entries }: { entries: ReviewEntry[] }) {
                   {review.correctAnswer ? (
                     <Detail label={shortAnswer ? 'Sample answer' : 'Correct answer'}>
                       <span className="whitespace-pre-wrap break-words">
-                        {shortAnswer ? (
-                          formatKey(question, review.correctAnswer)
-                        ) : (
-                          <LazyMarkdownInline>{formatKey(question, review.correctAnswer)}</LazyMarkdownInline>
-                        )}
+                        <MathText>{formatKey(question, review.correctAnswer)}</MathText>
                       </span>
                     </Detail>
                   ) : null}
-                  {review.feedback ? <Detail label="Feedback">{review.feedback}</Detail> : null}
+                  {review.feedback ? (
+                    <Detail label="Feedback">
+                      <MathText>{review.feedback}</MathText>
+                    </Detail>
+                  ) : null}
                   {review.explanation ? (
                     <div className="mt-2">
                       <p className="text-small font-medium text-fg">Why</p>

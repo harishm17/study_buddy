@@ -1,10 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Runs against a live stack. The dev stack in /tmp/sb-design/dev.sh serves on port 3700.
-const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3700'
+// Runs against a live stack (the web app, the AI service with LLM_PROVIDER=mock, and the database
+// in DATABASE_URL). global-setup.ts seeds the demo course the specs share. Set PLAYWRIGHT_BASE_URL
+// to the app's address.
+const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000'
 
 export default defineConfig({
   testDir: './tests',
+  globalSetup: './tests/e2e/global-setup.ts',
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,

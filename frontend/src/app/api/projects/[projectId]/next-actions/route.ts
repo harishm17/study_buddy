@@ -11,6 +11,7 @@ import {
 
 export const dynamic = 'force-dynamic'
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
