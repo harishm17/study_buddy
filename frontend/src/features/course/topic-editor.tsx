@@ -383,6 +383,9 @@ export function TopicEditor({
     queue.current = queue.current.then(async () => {
       try {
         await apiFetch(`/api/topics/${id}`, { method: 'PATCH', json: { orderIndex: to } })
+        // A refresh that was already on its way (after adding a topic, say) can land after the
+        // optimistic move and put the old order back; this one brings the saved order.
+        router.refresh()
       } catch {
         setItems(before)
         toast.error("Couldn't move the topic. Try again.")
