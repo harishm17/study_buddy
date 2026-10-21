@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { X } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { SkipLink } from './skip-link'
-import { SlotsProvider, SlotTarget } from './slots'
+import { SlotsProvider, SlotTarget, useSlots } from './slots'
 
 /** Where "Exit" goes: one level up from the current page. */
 export function exitHref(pathname: string): string {
@@ -21,13 +21,30 @@ export function exitHref(pathname: string): string {
  * <FocusHeader title status actions />.
  */
 export function FocusShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
   return (
     <SlotsProvider>
+      <FocusFrame>{children}</FocusFrame>
+    </SlotsProvider>
+  )
+}
+
+function FocusFrame({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname()
+  const { exitGuard } = useSlots()
+  return (
+    <>
       <SkipLink />
       <header className="sticky top-0 z-topbar flex h-(--topbar-height) items-center gap-3 border-b border-border bg-canvas/90 px-4 backdrop-blur-md md:px-6">
         <Button asChild variant="ghost" size="sm" icon={<X />} className="-ml-2">
-          <Link href={exitHref(pathname)}>Exit</Link>
+          <Link
+            href={exitHref(pathname)}
+            onClick={(event) => {
+              // A page can ask for a confirm first (the exam taker does).
+              if (exitGuard.current && !exitGuard.current()) event.preventDefault()
+            }}
+          >
+            Exit
+          </Link>
         </Button>
         <SlotTarget name="title" className="min-w-0 flex-1 truncate text-body-strong text-fg" />
         <SlotTarget name="status" className="flex shrink-0 items-center gap-3 text-small text-fg-2" />
@@ -36,6 +53,6 @@ export function FocusShell({ children }: { children: React.ReactNode }) {
       <main id="main" tabIndex={-1} className="outline-none">
         {children}
       </main>
-    </SlotsProvider>
+    </>
   )
 }

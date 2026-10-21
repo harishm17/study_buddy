@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict'
+import { describe, it } from 'node:test'
+import { examSummary, examTitle, formatMinutes, formatScore, preselectTopics, QUESTION_MIXES } from './exam-options'
+
+const NOW = Date.parse('2026-10-20T12:00:00Z')
+
+describe('preselectTopics', () => {
+  it('picks topics that are due or below strong, and those with no signal', () => {
+    const picked = preselectTopics(
+      [
+        { id: 'strong', mastery: 0.9, dueAt: '2026-11-01T00:00:00Z' },
+        { id: 'strong-due', mastery: 0.9, dueAt: '2026-10-19T00:00:00Z' },
+        { id: 'learning', mastery: 0.3, dueAt: null },
+        { id: 'new', mastery: null, dueAt: null },
+      ],
+      NOW
+    )
+    assert.deepEqual(picked, ['strong-due', 'learning', 'new'])
+  })
+
+  it('picks everything when every topic is strong and not due', () => {
+    const picked = preselectTopics(
+      [
+        { id: 'a', mastery: 0.85, dueAt: '2026-11-01T00:00:00Z' },
+        { id: 'b', mastery: 0.95, dueAt: null },
+      ],
+      NOW
+    )
+    assert.deepEqual(picked, ['a', 'b'])
+  })
+})
+
+describe('question mixes', () => {
+  it('each one adds up to 100', () => {
+    for (const mix of Object.values(QUESTION_MIXES)) {
+      const { multiple_choice, short_answer, numerical } = mix.distribution
+      assert.equal(multiple_choice + short_answer + numerical, 100)
+    }
+  })
+})
+
+describe('labels', () => {
+  it('names generated exams by date and keeps custom names', () => {
+    assert.equal(examTitle('Sample Exam - 2026-10-20', '2026-10-20T12:00:00Z'), 'Sample exam, Oct 20')
+    assert.equal(examTitle('Midterm drill', '2026-10-20T12:00:00Z'), 'Midterm drill')
+  })
+
+  it('summarises and formats', () => {
+    assert.equal(examSummary({ questionCount: 20, durationMinutes: 60, difficulty: 'medium' }), '20 questions, 1 hr, medium')
+    assert.equal(formatMinutes(90), '1 hr 30 min')
+    assert.equal(formatMinutes(45), '45 min')
+    assert.equal(formatScore(72), '72%')
+    assert.equal(formatScore(71.25), '71.3%')
+  })
+})
