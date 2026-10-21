@@ -139,3 +139,13 @@ The complement $A^c = S - A$ contains every element of $S$ that is not in $A$. I
 
 $$|A^c| = |S| - |A| = 30 - 6 = 24$$
 
+
+## Addendum (2026-10-21): recall-copy rescored
+
+The recall-copy check above counted a question whenever all its numbers appeared anywhere in the
+topic's notes and examples, so new scenarios that used small numbers (3, 4, 12) counted as copies.
+The check now needs the numbers *and* at least 40% of the question's content words in one window
+of about 60 words of the notes or examples. Rescored on this run's stored outputs (no model
+calls): **4 of 32 numeric questions (12%)** restate a worked example (a die's even faces, the
+sets {1..12}, a cdf on 1..4, an LIS array). The earlier model-choice run's 84% used the old
+check and is not comparable.

@@ -139,6 +139,18 @@ def test_recall_copy_flags_questions_that_reuse_the_example_numbers():
     assert [d["index"] for d in result["details"]] == [0, 3]
 
 
+def test_recall_copy_ignores_new_scenarios_that_share_small_numbers():
+    notes = (
+        "A die has 6 faces. " + "Sets and Venn diagrams are a way to picture events. " * 20
+        + "There are 12 months, 4 seasons and 3 meals in this unrelated paragraph."
+    )
+    questions = [
+        # New scenario: its numbers occur in the notes, but nowhere together with its words.
+        {"question_text": "A restaurant offers 4 starters, 6 mains and 3 desserts. How many meals?"},
+    ]
+    assert recall_copy_check(questions, notes)["copied"] == 0
+
+
 def test_recall_copy_rate_is_none_without_numeric_questions():
     assert recall_copy_check([{"question_text": "Define independence."}], "5 and 7")["rate"] is None
 
