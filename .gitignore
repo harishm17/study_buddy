@@ -54,3 +54,8 @@ evals/.cache/
 
 # e2e stack logs and uploads (scripts/e2e-stack.sh)
 .e2e/
+
+# Generation eval: source excerpts and model outputs (derived from CC BY-NC-SA course material) stay local
+evals/results/*/raw/
+evals/results/*/judge/
+evals/results/*/excerpts.json
