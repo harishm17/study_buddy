@@ -990,3 +990,86 @@ Session (in place of the lobby; on mobile it uses the focus layout):
   dashes anywhere in UI text.
 - Every feature PR includes screenshots (light and dark, 1440px and 390px) taken with the
   Playwright script against the local dev stack with demo data.
+
+---
+
+## 10. Domain, SEO and legal pages
+
+Site: **https://studymargins.com** (apex is canonical). Brand "Margins".
+
+### 10.1 Technical SEO
+- `metadataBase: new URL('https://studymargins.com')` in the root layout. Title template
+  `"%s - Margins"`, default title `"Margins: study from your own course files"`. Default
+  description: "Upload lecture notes and past exams. Margins builds notes, practice, quizzes and
+  timed mock exams from them, with sources for every answer." (Under 160 characters.)
+- Canonical URL on every public page (`alternates.canonical`).
+- `www.studymargins.com` permanently redirects to the apex: a `redirects()` entry in
+  `next.config.js` with `has: [{ type: 'host', value: 'www.studymargins.com' }]` (keep path and
+  query).
+- `src/app/robots.ts`: allow `/`, `/privacy`, `/terms`, `/signup`, `/login`; disallow `/api/`,
+  `/home`, `/courses/`. Sitemap link `https://studymargins.com/sitemap.xml`.
+- `src/app/sitemap.ts`: `/` (priority 1), `/signup` (0.6), `/privacy` (0.3), `/terms` (0.3),
+  with `lastModified` = build time.
+- Every signed-in page sets `robots: { index: false, follow: false }` in its layout metadata.
+  `/login` is `index: false, follow: true`.
+- Open Graph and Twitter cards for `/`: `src/app/opengraph-image.tsx` (next/og, 1200x630): canvas
+  background, brand tile + wordmark top left, headline "Study from your own course files." in
+  64px Geist 600, and a cropped real product screenshot on the right (load from
+  `public/screens/notes-light.png`). `twitter-image` re-exports it. `og:type website`,
+  `og:site_name Margins`, `twitter:card summary_large_image`.
+- JSON-LD on `/` (script type application/ld+json): `SoftwareApplication` with name "Margins",
+  url, `applicationCategory: "EducationalApplication"`, `operatingSystem: "Web"`,
+  `offers: { price: 0, priceCurrency: "USD" }`, description; plus an `Organization` with name,
+  url and logo (`/icon-512.png`).
+- Icons: `src/app/icon.tsx` (32px brand tile), `apple-icon.tsx` (180px), and static
+  `public/icon-192.png`, `public/icon-512.png`; `src/app/manifest.ts` (name "Margins",
+  short_name "Margins", start_url "/home", display "standalone", background and theme colours
+  from `--canvas` / `--accent` light values in hex).
+- The landing page is fully static (no session read on the server for the content; the nav's
+  signed-in state is a tiny client island reading the session) so it is cacheable and fast.
+  Target Lighthouse SEO 100, performance >= 95.
+- Semantic structure on public pages: one h1, logical h2s, descriptive link text, alt text on
+  every screenshot ("Margins notes page showing Graph traversal notes with sources").
+
+### 10.2 Legal pages (`/privacy`, `/terms`)
+Marketing layout, a 680px reading column (reading typography), last-updated date at the top,
+headings h2. Linked from the footer and the sign-up page ("By creating an account you agree to
+the Terms and Privacy Policy." in caption fg-3 under the button). Google's OAuth consent screen
+links to both, so they must exist before the new UI ships. Copy (use verbatim, adjusting only
+formatting):
+
+**Privacy Policy** (title "Privacy")
+- Intro: "Margins is a study tool run by Harish Manoharan. This page explains what we store and
+  why. Last updated October 20, 2026."
+- What we store: "Your account: your email address, your name if you give one, and a hashed
+  password (or your Google account ID if you sign in with Google). Your course files and what
+  Margins creates from them: notes, examples, practice, quizzes, mock exams, chat answers, your
+  answers and scores, and voice review transcripts. Basic usage records, such as how much AI
+  processing your account used each day, so we can keep the service within its limits."
+- How it's used: "Only to run Margins for you: to process your files, create study material,
+  grade your answers and show your progress. We don't sell your data, show ads, or use your files
+  to train AI models."
+- Services we use: "Anthropic processes the text of your files and your questions to create study
+  material and answers (Anthropic does not use this data to train its models by default).
+  Railway hosts the app, the database and file storage in the United States. Google provides
+  sign-in if you choose it. Voice review uses your browser's built-in speech recognition, which
+  may send audio to your browser vendor (Google for Chrome, Apple for Safari)."
+- Your choices: "Delete a course and its files and everything created from them are deleted. To
+  delete your account entirely, email hello@studymargins.com from the address you signed up with
+  and we'll remove it within 30 days."
+- Contact: "hello@studymargins.com"
+
+**Terms of Use** (title "Terms")
+- Intro: "By using Margins you agree to these terms. Last updated October 20, 2026."
+- "Margins is provided as is, for personal study. It is free to use, and features or limits may
+  change."
+- "Only upload material you have the right to use. You keep ownership of your files and of what
+  you write."
+- "Study material created by Margins can contain mistakes. Check important facts against your
+  course materials and your instructors."
+- "Don't use Margins to break the law, to attack the service, or to break your school's academic
+  integrity rules, such as using it during an exam where that isn't allowed."
+- "We may suspend accounts that misuse the service. You can stop using Margins and delete your
+  data at any time."
+- "These terms may be updated; the date at the top shows the latest version. Questions:
+  hello@studymargins.com."
