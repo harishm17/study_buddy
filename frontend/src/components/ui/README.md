@@ -1,0 +1,45 @@
+# UI primitives
+
+One component per file. Tokens, type scale, radii and motion live in `src/app/globals.css`;
+components use the semantic names only (`bg-surface`, `text-fg-2`, `rounded-card`, `text-small`).
+Icons are Phosphor, imported from `@phosphor-icons/react/dist/ssr` and passed to components as
+elements (`icon={<Plus />}`), which keeps every primitive usable from server components.
+
+| File | Exports | Notes |
+|---|---|---|
+| `relative-time.tsx` | `RelativeTime`, `DueLabel` | "2h ago" and "Due today" labels |
+| `button.tsx` | `Button`, `buttonVariants` | primary, secondary, ghost, danger, link; sm, md, lg; `icon`, `kbd`, `loading`, `asChild` |
+| `icon-button.tsx` | `IconButton` | square, `label` is the aria-label and the tooltip |
+| `input.tsx` | `Input` | leading `icon`, `trailing` slot, `invalid` |
+| `textarea.tsx` | `Textarea` | auto-grows, min 3 rows |
+| `field.tsx` | `Field` | label, hint, error, optional; wires ids to the control |
+| `select.tsx` | `Select` | Radix select with an `options` array |
+| `checkbox.tsx` | `Checkbox` | optional `label`, `description`, `trailing` |
+| `segmented-control.tsx` | `SegmentedControl` | radio group semantics, arrow keys |
+| `tabs.tsx` | `Tabs` | underline tabs as links, scrolls with fade edges |
+| `badge.tsx` | `Badge` | neutral, accent, warning, danger |
+| `card.tsx` | `Card` | `compact`, `interactive`, `asChild` |
+| `dialog.tsx` | `Dialog` and parts | 440 / 560 / 720 |
+| `confirm-dialog.tsx` | `ConfirmDialog` | names the action, async confirm |
+| `sheet.tsx` | `Sheet` and parts | right sheet (bottom sheet on mobile) or left sheet |
+| `popover.tsx` | `Popover` and parts | |
+| `dropdown-menu.tsx` | `DropdownMenu` and parts | items, radio items, submenus, kbd hints |
+| `tooltip.tsx` | `Tooltip`, `TooltipProvider` | for icon buttons and truncated text |
+| `hover-card.tsx` | `HoverCard` and parts | 340px, 300ms delay |
+| `toaster.tsx` | `Toaster`, `toast` | sonner |
+| `progress.tsx` | `Progress` | 4px bar, `indeterminate` |
+| `progress-ring.tsx` | `ProgressRing` | 16 / 28 / 44 / 96, empty state |
+| `mastery-indicator.tsx` | `MasteryIndicator` | ring plus label, or ring with tooltip |
+| `skeleton.tsx` | `Skeleton`, `SkeletonText` | shimmer, off under reduced motion |
+| `empty-state.tsx` | `EmptyState` | |
+| `inline-alert.tsx` | `InlineAlert` | neutral, accent, warning, danger |
+| `job-status.tsx` | `JobStatus`, `stageLabel` | the one way to show a background job |
+| `question-renderer.tsx` | `QuestionRenderer` | multiple choice, true/false, numerical, short answer |
+| `markdown.tsx` | `Markdown`, `MarkdownInline` | heavy: import through `lazy-markdown.tsx` |
+| `lazy-markdown.tsx` | `LazyMarkdown`, `LazyMarkdownInline` | next/dynamic wrappers |
+| `kbd.tsx` | `Kbd` | |
+| `spinner.tsx` | `Spinner` | |
+| `styles.ts` | shared class strings | floating surface, menu item |
+
+Rules: radius is 6 (chips), 8 (buttons, inputs), 12 (cards, overlays), full. Cards have no
+shadow; only floating things do. Focus uses the global 2px accent ring.

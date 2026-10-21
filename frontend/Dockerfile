@@ -59,7 +59,8 @@ RUN useradd --system --uid 1001 nextjs
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# REMOVED: COPY public folder line (since it doesn't exist in your project)
+# Static files (product screenshots for the sign in page)
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Copy Prisma schema/migrations
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma

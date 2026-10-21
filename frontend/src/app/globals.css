@@ -1,281 +1,434 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-@layer base {
-  :root {
-    --background: 212 30% 96%;
-    --foreground: 219 44% 14%;
-    --card: 0 0% 100%;
-    --card-foreground: 219 44% 14%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 219 44% 14%;
-    --primary: 202 88% 39%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 208 30% 92%;
-    --secondary-foreground: 218 35% 23%;
-    --muted: 209 27% 91%;
-    --muted-foreground: 217 16% 42%;
-    --accent: 38 90% 90%;
-    --accent-foreground: 28 68% 28%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214 22% 82%;
-    --input: 214 22% 84%;
-    --ring: 198 90% 42%;
-    --radius: 1rem;
-    --surface: 210 36% 97%;
-    --surface-elevated: 0 0% 100%;
-    --accent-soft: 198 76% 90%;
-    --focus-ring: 198 90% 42%;
+/* Dark mode is a class on <html> (next-themes). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The desktop sidebar collapsed to its 64px rail. The state lives on <html data-sidebar>, set
+   by a script before first paint, so there is no flash of the wide sidebar. */
+@custom-variant rail ([data-sidebar='collapsed'] .sidebar-desktop &);
+
+/* ---------------------------------------------------------------------------------------
+   Design tokens (docs/design/DESIGN.md section 3). Components use the semantic names only.
+   Neutrals are a cool grey at hue 255; the one accent is fern at hue 168.
+   --------------------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: light;
+
+  --canvas: oklch(0.985 0.002 255);
+  --surface: oklch(0.997 0.001 255);
+  --surface-2: oklch(0.968 0.003 255);
+  --surface-3: oklch(0.94 0.004 255);
+  --border: oklch(0.915 0.004 255);
+  --border-strong: oklch(0.85 0.006 255);
+  --fg: oklch(0.22 0.012 255);
+  --fg-2: oklch(0.43 0.012 255);
+  --fg-3: oklch(0.54 0.01 255);
+
+  --accent: oklch(0.52 0.11 168);
+  --accent-hover: oklch(0.47 0.11 168);
+  --accent-fg: oklch(0.99 0.01 168);
+  --accent-soft: oklch(0.955 0.03 168);
+  --accent-soft-fg: oklch(0.38 0.09 168);
+
+  --warning: oklch(0.74 0.14 72);
+  --warning-soft: oklch(0.965 0.04 85);
+  --warning-soft-fg: oklch(0.45 0.1 60);
+
+  --danger: oklch(0.56 0.19 27);
+  --danger-soft: oklch(0.962 0.025 25);
+  --danger-soft-fg: oklch(0.45 0.16 27);
+  --danger-fg: oklch(0.99 0.005 27);
+
+  /* Dark chip behind tooltips in the light theme (and the reverse). */
+  --inverse: oklch(0.24 0.012 255);
+  --inverse-fg: oklch(0.96 0.003 255);
+
+  --overlay: oklch(0.2 0.01 255 / 0.4);
+
+  --float-shadow:
+    0 1px 2px oklch(0.2 0.02 255 / 0.06), 0 12px 32px -12px oklch(0.2 0.02 255 / 0.22);
+  --tiny-shadow: 0 1px 1px oklch(0.2 0.02 255 / 0.06);
+
+  --sidebar-width: 248px;
+  --sidebar-rail-width: 64px;
+  --topbar-height: 56px;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --canvas: oklch(0.165 0.006 255);
+  --surface: oklch(0.195 0.007 255);
+  --surface-2: oklch(0.228 0.008 255);
+  --surface-3: oklch(0.265 0.009 255);
+  --border: oklch(0.29 0.008 255);
+  --border-strong: oklch(0.37 0.01 255);
+  --fg: oklch(0.95 0.004 255);
+  --fg-2: oklch(0.77 0.008 255);
+  --fg-3: oklch(0.63 0.008 255);
+
+  --accent: oklch(0.74 0.12 168);
+  --accent-hover: oklch(0.79 0.12 168);
+  --accent-fg: oklch(0.18 0.03 168);
+  --accent-soft: oklch(0.27 0.045 168);
+  --accent-soft-fg: oklch(0.86 0.09 168);
+
+  --warning: oklch(0.8 0.13 75);
+  --warning-soft: oklch(0.29 0.05 75);
+  --warning-soft-fg: oklch(0.88 0.1 80);
+
+  --danger: oklch(0.68 0.17 25);
+  --danger-soft: oklch(0.28 0.06 25);
+  --danger-soft-fg: oklch(0.87 0.08 25);
+  --danger-fg: oklch(0.17 0.03 25);
+
+  --inverse: oklch(0.95 0.004 255);
+  --inverse-fg: oklch(0.2 0.01 255);
+
+  --overlay: oklch(0.1 0.01 255 / 0.6);
+
+  --float-shadow: 0 1px 2px oklch(0 0 0 / 0.3), 0 12px 32px -12px oklch(0 0 0 / 0.6);
+  --tiny-shadow: 0 1px 1px oklch(0 0 0 / 0.25);
+}
+
+/* Utilities are generated from the semantic variables, so a theme switch only swaps variables. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-fg: var(--accent-soft-fg);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-soft-fg: var(--warning-soft-fg);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-soft-fg: var(--danger-soft-fg);
+  --color-danger-fg: var(--danger-fg);
+  --color-inverse: var(--inverse);
+  --color-inverse-fg: var(--inverse-fg);
+  --color-overlay: var(--overlay);
+
+  --shadow-float: var(--float-shadow);
+  --shadow-tiny: var(--tiny-shadow);
+}
+
+@theme {
+  --font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Shape lock: 6 chips and small controls, 8 buttons and inputs, 12 cards and overlays. */
+  --radius-*: initial;
+  --radius-chip: 6px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-full: 9999px;
+
+  /* Type scale. */
+  --text-*: initial;
+  --text-display-xl: 52px;
+  --text-display-xl--line-height: 56px;
+  --text-display-xl--letter-spacing: -0.025em;
+  --text-display-xl--font-weight: 600;
+  --text-display: 36px;
+  --text-display--line-height: 42px;
+  --text-display--letter-spacing: -0.02em;
+  --text-display--font-weight: 600;
+  --text-title: 26px;
+  --text-title--line-height: 32px;
+  --text-title--letter-spacing: -0.015em;
+  --text-title--font-weight: 600;
+  --text-heading: 18px;
+  --text-heading--line-height: 26px;
+  --text-heading--letter-spacing: -0.01em;
+  --text-heading--font-weight: 600;
+  --text-subheading: 15px;
+  --text-subheading--line-height: 22px;
+  --text-subheading--font-weight: 600;
+  --text-body: 14px;
+  --text-body--line-height: 22px;
+  --text-body-strong: 14px;
+  --text-body-strong--line-height: 22px;
+  --text-body-strong--font-weight: 500;
+  --text-small: 13px;
+  --text-small--line-height: 20px;
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-caption--letter-spacing: 0.01em;
+  --text-caption--font-weight: 500;
+  --text-reading: 17px;
+  --text-reading--line-height: 29px;
+  --text-reading-h2: 23px;
+  --text-reading-h2--line-height: 31px;
+  --text-reading-h2--letter-spacing: -0.012em;
+  --text-reading-h2--font-weight: 600;
+  --text-reading-h3: 19px;
+  --text-reading-h3--line-height: 28px;
+  --text-reading-h3--letter-spacing: -0.005em;
+  --text-reading-h3--font-weight: 600;
+  --text-code: 13.5px;
+  --text-code--line-height: 22px;
+
+  --breakpoint-*: initial;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* Motion. */
+  --ease-enter: cubic-bezier(0.2, 0, 0, 1);
+  --ease-leave: cubic-bezier(0.4, 0, 1, 1);
+
+  --animate-fade-in: fade-in 180ms var(--ease-enter) both;
+  --animate-fade-out: fade-out 120ms var(--ease-leave) both;
+  --animate-pop-in: pop-in 180ms var(--ease-enter) both;
+  --animate-pop-out: pop-out 120ms var(--ease-leave) both;
+  --animate-dialog-in: dialog-in 240ms var(--ease-enter) both;
+  --animate-dialog-out: dialog-out 160ms var(--ease-leave) both;
+  --animate-sheet-in-right: sheet-in-right 240ms var(--ease-enter) both;
+  --animate-sheet-out-right: sheet-out-right 180ms var(--ease-leave) both;
+  --animate-sheet-in-left: sheet-in-left 240ms var(--ease-enter) both;
+  --animate-sheet-out-left: sheet-out-left 180ms var(--ease-leave) both;
+  --animate-sheet-in-bottom: sheet-in-bottom 240ms var(--ease-enter) both;
+  --animate-sheet-out-bottom: sheet-out-bottom 180ms var(--ease-leave) both;
+  --animate-slide-in: slide-in 240ms var(--ease-enter) both;
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-indeterminate: indeterminate 1.4s var(--ease-enter) infinite;
+  --animate-spin: spin 0.8s linear infinite;
+  --animate-caret: caret 1s steps(1) infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
   }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --surface: 222 40% 8%;
-    --surface-elevated: 222.2 84% 10%;
-    --accent-soft: 222 36% 18%;
-    --focus-ring: 224 76% 56%;
+  @keyframes fade-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+  }
+  @keyframes pop-out {
+    to {
+      opacity: 0;
+      transform: scale(0.98);
+    }
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+  }
+  @keyframes dialog-out {
+    to {
+      opacity: 0;
+      transform: scale(0.985);
+    }
+  }
+  @keyframes sheet-in-right {
+    from {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-out-right {
+    to {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-in-left {
+    from {
+      transform: translateX(-24px);
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-out-left {
+    to {
+      transform: translateX(-24px);
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-in-bottom {
+    from {
+      transform: translateY(32px);
+      opacity: 0;
+    }
+  }
+  @keyframes sheet-out-bottom {
+    to {
+      transform: translateY(32px);
+      opacity: 0;
+    }
+  }
+  @keyframes slide-in {
+    from {
+      transform: translateX(12px);
+      opacity: 0;
+    }
+  }
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(340%);
+    }
+  }
+  @keyframes caret {
+    50% {
+      opacity: 0;
+    }
   }
 }
 
+/* Z-index scale, mirrors src/config/layers.ts. */
+@utility z-sticky {
+  z-index: 10;
+}
+@utility z-sidebar {
+  z-index: 20;
+}
+@utility z-topbar {
+  z-index: 30;
+}
+@utility z-dropdown {
+  z-index: 40;
+}
+@utility z-overlay {
+  z-index: 50;
+}
+@utility z-modal {
+  z-index: 60;
+}
+@utility z-popper {
+  z-index: 65;
+}
+@utility z-toast {
+  z-index: 70;
+}
+
+/* Numbers that update or are compared. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 @layer base {
-  * {
-    @apply border-border;
+  /* Tailwind 4 defaults borders to currentColor; the design wants the hairline colour. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
   }
 
   html {
-    scroll-behavior: smooth;
+    font-family: var(--font-sans);
+    background: var(--canvas);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
-    position: relative;
-    min-height: 100vh;
-    background:
-      radial-gradient(1200px 460px at -12% -14%, hsla(196, 92%, 50%, 0.16), transparent 62%),
-      radial-gradient(980px 360px at 112% -12%, hsla(41, 95%, 58%, 0.13), transparent 58%),
-      linear-gradient(180deg, hsl(var(--surface)) 0%, hsl(var(--background)) 34%, hsl(var(--surface)) 100%);
+    min-height: 100dvh;
+    font-size: 14px;
+    line-height: 22px;
   }
 
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: -1;
-    background-image:
-      linear-gradient(to right, hsla(210, 34%, 76%, 0.1) 1px, transparent 1px),
-      linear-gradient(to bottom, hsla(210, 34%, 76%, 0.1) 1px, transparent 1px);
-    background-size: 40px 40px;
-    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0));
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
   }
 
-  a {
-    transition: color 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+  button,
+  [role='button'],
+  summary {
+    cursor: pointer;
   }
 
-  textarea {
-    @apply min-h-[120px] w-full rounded-xl border border-input/90 bg-white/90 px-3 py-2 text-sm leading-6 outline-none ring-offset-background transition;
+  button:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
   }
 
-  textarea:focus-visible {
-    @apply ring-2 ring-ring ring-offset-2;
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--accent-soft-fg);
   }
 
-  code, pre, .font-mono-ui {
-    font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  /* One focus ring everywhere: 2px accent, 2px offset, following the element's radius. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Autofill keeps the field's own surface instead of the browser's yellow or blue. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--fg);
+    box-shadow: 0 0 0 1000px var(--surface) inset;
+    caret-color: var(--fg);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--fg-3);
+  }
+
+  /* Thin, quiet scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
   }
 }
 
-@layer components {
-  .page-shell {
-    @apply relative mx-auto w-full max-w-7xl px-4 py-8 md:px-8 md:py-10;
+/* Everything collapses to instant when the system asks for less motion. Spinners keep
+   turning (they carry meaning) but slower. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 
-  .hero-panel {
-    @apply relative overflow-hidden rounded-3xl border border-border/70 bg-white/85 p-6 shadow-[0_28px_64px_-42px_rgba(14,43,79,0.62)] backdrop-blur md:p-8;
-  }
-
-  .hero-panel::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.36) 0%, rgba(255, 255, 255, 0) 48%);
-  }
-
-  .hero-panel::after {
-    content: "";
-    position: absolute;
-    right: -28%;
-    top: -52%;
-    height: 236px;
-    width: 236px;
-    border-radius: 9999px;
-    background: radial-gradient(circle, hsla(199, 100%, 48%, 0.2), transparent 70%);
-  }
-
-  .section-title {
-    @apply text-3xl font-semibold tracking-tight text-foreground md:text-4xl;
-  }
-
-  .section-subtitle {
-    @apply mt-2 text-sm leading-6 text-muted-foreground md:text-base;
-  }
-
-  .surface-elevated {
-    @apply rounded-2xl border border-border/70 bg-white/85 shadow-[0_24px_56px_-44px_rgba(13,43,82,0.7)] backdrop-blur;
-  }
-
-  .stagger-enter {
-    animation: fade-up 0.45s ease both;
-  }
-
-  .tab-pill {
-    @apply inline-flex min-h-11 items-center justify-center whitespace-nowrap rounded-xl border border-border/70 bg-white/85 px-4 py-2 text-sm font-medium text-foreground/80 transition hover:border-primary/40 hover:bg-white hover:!text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 focus-visible:ring-offset-2;
-  }
-
-  .tab-pill:disabled {
-    @apply cursor-not-allowed border-border/60 bg-muted/45 text-muted-foreground/80 hover:bg-muted/45 hover:text-muted-foreground/80;
-  }
-
-  .tab-pill-active {
-    @apply border-primary/90 bg-primary !text-primary-foreground font-semibold shadow-[0_14px_24px_-18px_rgba(7,95,139,0.8)];
-    color: hsl(var(--primary-foreground)) !important;
-  }
-
-  .tab-pill-active:hover,
-  .tab-pill-active:focus-visible {
-    background-color: hsl(var(--primary)) !important;
-    color: hsl(var(--primary-foreground)) !important;
-    border-color: hsl(var(--primary)) !important;
-  }
-
-  .tab-pill-active *,
-  .tab-pill-active svg,
-  .tab-pill-active span {
-    color: inherit !important;
-  }
-
-  .tab-pill-active:disabled {
-    @apply opacity-100 grayscale-0;
-    color: hsl(var(--primary-foreground)) !important;
-  }
-
-  .markdown-content {
-    @apply mx-auto max-w-4xl text-base leading-8 text-foreground;
-  }
-
-  .markdown-content h1 {
-    @apply mb-4 text-3xl font-semibold tracking-tight;
-  }
-
-  .markdown-content h2 {
-    @apply mt-8 mb-3 border-b border-border/60 pb-2 text-2xl font-semibold tracking-tight;
-  }
-
-  .markdown-content h3 {
-    @apply mt-6 mb-2 text-xl font-semibold;
-  }
-
-  .markdown-content p {
-    @apply mb-4 text-[1.03rem] leading-8 text-foreground/95;
-  }
-
-  .markdown-content ul,
-  .markdown-content ol {
-    @apply mb-5 ml-6 space-y-2;
-  }
-
-  .markdown-content li {
-    @apply text-[1.02rem] leading-8;
-  }
-
-  .markdown-content blockquote {
-    @apply my-5 rounded-r-xl border-l-4 border-primary/35 bg-primary/5 px-4 py-3 text-foreground/90;
-  }
-
-  .markdown-content pre {
-    @apply my-6 overflow-x-auto rounded-xl border border-border/70 bg-slate-950 p-4 text-slate-100;
-  }
-
-  .markdown-content code {
-    @apply rounded bg-muted px-1.5 py-0.5 text-sm;
-  }
-
-  .markdown-content pre code {
-    @apply bg-transparent p-0 text-inherit;
-  }
-
-  .markdown-content hr {
-    @apply my-8 border-border/70;
-  }
-
-  .markdown-compact {
-    @apply mx-0 max-w-none text-sm leading-6 text-foreground/95;
-  }
-
-  .markdown-compact h1 {
-    @apply mb-3 text-2xl font-semibold tracking-tight;
-  }
-
-  .markdown-compact h2 {
-    @apply mt-5 mb-2 border-b border-border/60 pb-1.5 text-xl font-semibold;
-  }
-
-  .markdown-compact h3 {
-    @apply mt-4 mb-2 text-lg font-semibold;
-  }
-
-  .markdown-compact p {
-    @apply mb-3 text-sm leading-6;
-  }
-
-  .markdown-compact ul,
-  .markdown-compact ol {
-    @apply mb-4 ml-5 space-y-1.5;
-  }
-
-  .markdown-compact li {
-    @apply text-sm leading-6;
-  }
-
-  .markdown-compact blockquote {
-    @apply my-4 rounded-r-xl border-l-4 border-primary/35 bg-primary/5 px-3 py-2 text-foreground/90;
-  }
-
-  .markdown-compact pre {
-    @apply my-4 overflow-x-auto rounded-xl border border-border/70 bg-slate-950 p-3 text-slate-100;
-  }
-}
-
-@keyframes fade-up {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  [data-essential-motion] {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
   }
 }

@@ -1,0 +1,33 @@
+/* The voice band's orb: pure CSS, a soft disc with a pulsing core. Still under reduced motion. */
+.voice-orb-core {
+  animation: voice-orb-pulse 3.2s ease-in-out infinite;
+}
+.voice-orb-ring {
+  animation: voice-orb-ring 3.2s ease-in-out infinite;
+}
+@keyframes voice-orb-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes voice-orb-ring {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-orb-core,
+  .voice-orb-ring {
+    animation: none;
+  }
+}

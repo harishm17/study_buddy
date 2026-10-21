@@ -1,27 +1,34 @@
-import * as React from "react"
-import * as ProgressPrimitive from "@radix-ui/react-progress"
+import { cn } from '@/lib/utils'
 
-import { cn } from "@/lib/utils"
+type ProgressProps = {
+  /** 0 to 100. Ignored when indeterminate. */
+  value?: number
+  indeterminate?: boolean
+  tone?: 'accent' | 'warning'
+  'aria-label': string
+  className?: string
+}
 
-const Progress = React.forwardRef<
-  React.ElementRef<typeof ProgressPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root>
->(({ className, value, ...props }, ref) => (
-  <ProgressPrimitive.Root
-    ref={ref}
-    value={value}
-    className={cn(
-      "relative h-2.5 w-full overflow-hidden rounded-full bg-secondary/80",
-      className
-    )}
-    {...props}
-  >
-    <ProgressPrimitive.Indicator
-      className="h-full w-full flex-1 bg-gradient-to-r from-primary to-cyan-400 transition-all"
-      style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
-    />
-  </ProgressPrimitive.Root>
-))
-Progress.displayName = ProgressPrimitive.Root.displayName
-
-export { Progress }
+/** A 4px bar. Indeterminate shows a moving 30% segment. */
+export function Progress({ value = 0, indeterminate, tone = 'accent', className, ...aria }: ProgressProps) {
+  const clamped = Math.min(100, Math.max(0, value))
+  return (
+    <div
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={indeterminate ? undefined : Math.round(clamped)}
+      className={cn('h-1 w-full overflow-hidden rounded-full bg-surface-3', className)}
+      {...aria}
+    >
+      <div
+        className={cn(
+          'h-full rounded-full',
+          tone === 'accent' ? 'bg-accent' : 'bg-warning',
+          indeterminate ? 'w-[30%] animate-indeterminate' : 'transition-[width] duration-300 ease-enter'
+        )}
+        style={indeterminate ? undefined : { width: `${clamped}%` }}
+      />
+    </div>
+  )
+}

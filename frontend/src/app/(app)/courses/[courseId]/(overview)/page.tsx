@@ -1,0 +1,24 @@
+import { notFound } from 'next/navigation'
+import { SetupGuide } from '@/features/course/setup-guide'
+import { TodayView } from '@/features/course/today-view'
+import { getCourseOverview } from '@/server/queries/course'
+import { getCourseShell } from '@/server/queries/courses'
+import { requireUser } from '@/server/session'
+
+export async function generateMetadata({ params }: { params: Promise<{ courseId: string }> }) {
+  const user = await requireUser()
+  const course = await getCourseShell(user.id, (await params).courseId)
+  return { title: course?.name ?? 'Course' }
+}
+
+export default async function CourseOverviewPage({ params }: { params: Promise<{ courseId: string }> }) {
+  const user = await requireUser()
+  const { courseId } = await params
+  const overview = await getCourseOverview(user.id, courseId)
+  if (!overview) notFound()
+
+  if (overview.mode === 'setup') {
+    return <SetupGuide courseId={courseId} name={overview.course.name} setup={overview.setup} />
+  }
+  return <TodayView course={overview.course} today={overview.today} />
+}
