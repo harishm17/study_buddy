@@ -11,6 +11,7 @@ from app.api.internal_auth import require_internal_token
 from app.api.routes import health
 from app.config import settings
 from app.logging_utils import configure_sensitive_data_redaction
+from app.services.job_runner import retry_after
 from app.services.llm.base import LLMError
 
 configure_sensitive_data_redaction()
@@ -110,9 +111,11 @@ app.add_middleware(
 async def llm_error_handler(_: Request, exc: LLMError) -> JSONResponse:
     """Model failures outside job handlers (voice drills) get a typed error, not a bare 500."""
     logger.warning("LLM error: %s: %s", exc.code, exc)
+    wait = retry_after(exc)
     return JSONResponse(
         status_code=503 if exc.retryable else 502,
         content={"detail": str(exc), "error_code": exc.code, "retryable": exc.retryable},
+        headers={"Retry-After": str(wait)} if wait else None,
     )
 
 

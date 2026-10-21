@@ -126,7 +126,7 @@ describe('applyChatEvent', () => {
     assert.equal(state.status, 'error')
     assert.equal(state.text, 'partial')
     assert.equal(state.error?.retryable, false)
-    assert.match(state.error?.message ?? '', /usage limit/)
+    assert.match(state.error?.message ?? '', /AI allowance/)
     assert.doesNotMatch(state.error?.message ?? '', /\$3/)
   })
 })

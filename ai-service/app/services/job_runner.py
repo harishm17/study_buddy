@@ -18,6 +18,7 @@ import functools
 import inspect
 import json
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Optional, Type, TypeVar
 
@@ -30,7 +31,7 @@ from app.services.budget import over_budget_message, record_usage_event
 from app.services.content_generator.context import NoSourceMaterialError
 from app.services.document_processor.chunker import NoContentError
 from app.services.document_processor.storage import StorageError
-from app.services.llm.base import LLMError
+from app.services.llm.base import LLMError, LLMRateLimitError, LLMUnavailableError
 from app.services.llm.usage import estimate_cost_usd, summarize_usage, track_llm_usage
 
 logger = logging.getLogger(__name__)
@@ -116,10 +117,13 @@ def classify_failure(exc: Exception, default_code: str) -> tuple[str, bool, int]
     """(error_code, retryable, HTTP status) for a failed job.
 
     Permanent failures answer 400 so the dispatcher does not retry them; transient
-    ones answer 500.
+    ones answer 5xx. A rate limit or an overloaded model answers 503 with a Retry-After
+    header (see retry_after): both are expected to pass, and the dispatcher retries any 5xx.
     """
     if isinstance(exc, PermanentJobError):
         return exc.code, False, 400
+    if isinstance(exc, (LLMRateLimitError, LLMUnavailableError)):
+        return exc.code, True, 503
     if isinstance(exc, LLMError):
         return exc.code, exc.retryable, 500 if exc.retryable else 400
     if isinstance(exc, (NoSourceMaterialError, NoContentError)):
@@ -129,6 +133,18 @@ def classify_failure(exc: Exception, default_code: str) -> tuple[str, bool, int]
     if isinstance(exc, HTTPException) and exc.status_code < 500:
         return default_code, False, 400
     return default_code, True, 500
+
+
+# How long the dispatcher is asked to wait before it retries, when the API did not say.
+_DEFAULT_RETRY_AFTER_SECONDS = {LLMRateLimitError: 20, LLMUnavailableError: 10}
+
+
+def retry_after(exc: Exception) -> Optional[int]:
+    """Whole seconds for the Retry-After header of a transient LLM failure, else None."""
+    for error_type, default in _DEFAULT_RETRY_AFTER_SECONDS.items():
+        if isinstance(exc, error_type):
+            return max(1, math.ceil(exc.retry_after or default))
+    return None
 
 
 async def claim_job(job_id: str, lease_seconds: float, stage: Optional[str]):
@@ -360,8 +376,11 @@ def job_handler(
                         logger.error("%s job %s failed: %s", label, job.id, exc)
                         error_code, retryable, status_code = classify_failure(exc, default_error_code)
                         await _fail(job, error_code, retryable, str(exc), usages)
+                        wait = retry_after(exc)
                         raise HTTPException(
-                            status_code=status_code, detail=f"{label} failed: {exc}"
+                            status_code=status_code,
+                            detail=f"{label} failed: {exc}",
+                            headers={"Retry-After": str(wait)} if wait else None,
                         ) from exc
                     await _complete(job, outcome, usages)
             finally:

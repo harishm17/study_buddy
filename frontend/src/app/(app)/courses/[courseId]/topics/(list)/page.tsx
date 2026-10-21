@@ -58,7 +58,6 @@ export default async function TopicsPage({
       <TopicsList
         courseId={courseId}
         summary={courseSummary(data.topics.length, counts, due)}
-        missingBlocks={data.missingBlocks}
         generation={data.generation}
         now={now}
         topics={data.topics.map((topic) => ({

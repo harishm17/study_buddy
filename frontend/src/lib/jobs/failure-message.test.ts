@@ -1,5 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { ALLOWANCE_TEMPLATE } from '@/lib/budget/copy'
 import {
   FALLBACK_FAILURE_MESSAGE,
   describeJobFailure,
@@ -8,12 +9,15 @@ import {
   type GenerationJobRow,
 } from './failure-message'
 
-test('the daily budget message is shown as the job wrote it', () => {
-  assert.equal(
-    describeJobFailure('LLM_DAILY_BUDGET', 'Daily limit of $2.00 reached. Resets at midnight UTC.'),
-    'Daily limit of $2.00 reached. Resets at midnight UTC.'
+test('the daily budget message never shows the job message, which carries dollar figures', () => {
+  const text = describeJobFailure(
+    'LLM_DAILY_BUDGET',
+    'Daily AI usage limit reached ($4.13 of $3.00 used today, UTC). It is available again after midnight UTC.'
   )
-  assert.match(describeJobFailure('LLM_DAILY_BUDGET', null), /limit/)
+  assert.equal(text, ALLOWANCE_TEMPLATE)
+  assert.doesNotMatch(text, /\$|USD/)
+  assert.match(text, /allowance/)
+  assert.equal(describeJobFailure('LLM_DAILY_BUDGET', null), ALLOWANCE_TEMPLATE)
 })
 
 test('missing source material explains what to do', () => {

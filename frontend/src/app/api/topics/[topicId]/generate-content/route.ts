@@ -34,6 +34,12 @@ const generateContentSchema = z.object({
     focus: z.string().trim().min(3).max(280).optional(),
     question_types: z.array(z.enum(['multiple_choice', 'short_answer', 'numerical', 'true_false'])).optional(),
     append: z.boolean().optional(),
+    // When this job finishes, the AI service queues the topic's other missing content one job at
+    // a time (see ai-service/app/services/generation_chain.py). Set when a topic is opened.
+    prepare_rest: z.boolean().optional(),
+    // Start only if the topic has no content of this type yet. A page that is opened twice (a
+    // remount, a refresh just after the job finished) must not write the notes a second time.
+    only_if_missing: z.boolean().optional(),
   }).optional(),
 })
 
@@ -74,7 +80,8 @@ export async function POST(
       return apiInvalidInput('Invalid input', zodDetails(validation.error))
     }
 
-    const { contentType, preferences } = validation.data
+    const { contentType, preferences: requested } = validation.data
+    const { only_if_missing: onlyIfMissing, ...preferences } = requested ?? {}
     // Check if content already exists for this type
     const existingContent = await prisma.topicContent.findFirst({
       where: {
@@ -82,6 +89,10 @@ export async function POST(
         contentType,
       },
     })
+
+    if (onlyIfMissing && existingContent) {
+      return NextResponse.json({ jobId: null, status: 'exists', message: 'Content already written' })
+    }
 
     // One generation per topic and content type at a time (a unique target key), so a
     // double click or a second tab gets the job that is already running.

@@ -25,10 +25,6 @@ class LLMFactory:
 
             return AnthropicProvider(
                 api_key=settings.ANTHROPIC_API_KEY,
-                model=settings.ANTHROPIC_MODEL,
-                fast_model=settings.ANTHROPIC_FAST_MODEL,
-                effort=settings.ANTHROPIC_EFFORT,
-                fast_effort=settings.ANTHROPIC_FAST_EFFORT,
                 timeout=settings.LLM_TIMEOUT_SECONDS,
                 max_retries=settings.LLM_MAX_RETRIES,
             )

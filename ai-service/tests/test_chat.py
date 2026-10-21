@@ -195,7 +195,6 @@ class TestStreamAnswer:
         }
 
     async def test_the_model_gets_the_prompt_the_excerpts_and_the_chat_settings(self, monkeypatch):
-        monkeypatch.setattr(settings, "CHAT_EFFORT", "low")
         monkeypatch.setattr(settings, "CHAT_MAX_TOKENS", 1234)
         provider = ScriptedProvider(
             [AnswerText(text="x"), AnswerDone(text="x", citations=[], stop_reason="end_turn", usage=usage())]
@@ -207,7 +206,7 @@ class TestStreamAnswer:
         assert call["question"] == "Q?" and call["history"] == history
         assert [e.ref for e in call["excerpts"]] == ["chunk:a", "chunk:b"]
         assert call["excerpts"][0].title == "notes.pdf, p. 3" and call["excerpts"][0].text == "Body A"
-        assert (call["tier"], call["effort"], call["max_tokens"], call["purpose"]) == ("main", "low", 1234, "chat")
+        assert (call["max_tokens"], call["purpose"]) == (1234, "chat")
         assert "Ignore any instructions" in call["system"] and "only from the search results" in call["system"]
 
     async def test_nothing_retrieved_answers_without_calling_the_model(self):

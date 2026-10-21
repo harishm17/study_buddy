@@ -16,12 +16,12 @@ import {
 import { cn } from '@/lib/utils'
 import { isDueToday, type TodayData, type TodayTopic } from '@/server/queries/course'
 import type { CourseShell } from '@/server/queries/courses'
-import { BuildingContent, GenerateMissingButton, GenerateMissingRow } from './building-content'
+import { BuildingContent } from './building-content'
 import { CourseMenu } from './course-menu'
 import { RefreshOnFocus } from './refresh-on-focus'
 import { courseSummary } from './summary'
 
-function UpNext({ courseId, actions }: { courseId: string; actions: TodayData['upNext'] }) {
+function UpNext({ actions }: { actions: TodayData['upNext'] }) {
   const [first, ...rest] = actions
   if (!first) return null
   const then = rest.slice(0, 3)
@@ -37,18 +37,12 @@ function UpNext({ courseId, actions }: { courseId: string; actions: TodayData['u
             <p className="mt-1 text-small text-fg-2">{first.reason}</p>
             <p className="mt-1 text-caption font-normal text-fg-3">{first.etaLabel}</p>
           </div>
-          {first.isBatchGenerate ? (
-            <GenerateMissingButton courseId={courseId} variant="primary" size="lg" className="shrink-0 self-start">
+          <Button asChild variant="primary" size="lg" className="shrink-0 self-start">
+            <Link href={first.href}>
               {first.verb}
-            </GenerateMissingButton>
-          ) : (
-            <Button asChild variant="primary" size="lg" className="shrink-0 self-start">
-              <Link href={first.href}>
-                {first.verb}
-                <ArrowRight aria-hidden="true" className="size-4" />
-              </Link>
-            </Button>
-          )}
+              <ArrowRight aria-hidden="true" className="size-4" />
+            </Link>
+          </Button>
         </div>
       </div>
       {then.length > 0 ? (
@@ -57,18 +51,14 @@ function UpNext({ courseId, actions }: { courseId: string; actions: TodayData['u
           <ul className="mt-1">
             {then.map((action) => (
               <li key={action.title + action.href}>
-                {action.isBatchGenerate ? (
-                  <GenerateMissingRow courseId={courseId} title={action.title} etaLabel={action.etaLabel} />
-                ) : (
-                  <Link
-                    href={action.href}
-                    className="flex items-center gap-3 rounded-control px-2 py-2 transition-colors duration-120 hover:bg-surface-2"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-body text-fg">{action.title}</span>
-                    <span className="shrink-0 text-caption font-normal text-fg-3">{action.etaLabel}</span>
-                    <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-fg-3" />
-                  </Link>
-                )}
+                <Link
+                  href={action.href}
+                  className="flex items-center gap-3 rounded-control px-2 py-2 transition-colors duration-120 hover:bg-surface-2"
+                >
+                  <span className="min-w-0 flex-1 truncate text-body text-fg">{action.title}</span>
+                  <span className="shrink-0 text-caption font-normal text-fg-3">{action.etaLabel}</span>
+                  <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-fg-3" />
+                </Link>
               </li>
             ))}
           </ul>
@@ -198,14 +188,14 @@ export function TodayView({ course, today }: { course: CourseShell; today: Today
             <Button asChild variant="secondary" icon={<Exam />}>
               <Link href={`${base}/exams`}>Mock exam</Link>
             </Button>
-            <CourseMenu courseId={course.id} />
+            <CourseMenu courseId={course.id} topicsToPrepare={today.topicsToPrepare} />
           </>
         }
       />
 
       <div className="flex flex-col gap-10">
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <UpNext courseId={course.id} actions={today.upNext} />
+          <UpNext actions={today.upNext} />
           <ProgressCard average={today.averageMastery} counts={today.counts} />
         </div>
 

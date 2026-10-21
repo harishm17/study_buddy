@@ -99,7 +99,7 @@ export function StudyTabs({
   nextId,
 }: StudyTabsProps) {
   const view = useTopicView()
-  const { running } = useTopic()
+  const { running, preparingNotes } = useTopic()
   const practice = usePracticeProgress(topicId)
   const base = `/courses/${courseId}/topics/${topicId}`
   const solved = solvedCount(practice.progress, practiceKeys)
@@ -115,7 +115,8 @@ export function StudyTabs({
   function glyphFor(id: ViewId): React.ReactNode {
     if (id === 'voice') return null
     const kind = id as ContentKind
-    if (running[kind] && !running[kind]?.done) return <Writing />
+    // A just-opened topic's notes count as being written from the first paint.
+    if ((running[kind] && !running[kind]?.done) || (kind === 'notes' && preparingNotes && !present.notes)) return <Writing />
     if (!present[kind]) return <Missing />
     switch (id) {
       case 'notes':

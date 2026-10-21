@@ -180,7 +180,6 @@ Set difficulty to "{difficulty}"."""
         result = await self.llm.generate_structured(
             content_messages(topic['name'], topic.get('description') or '', chunks, instructions),
             QuestionSet,
-            tier="main",
             max_tokens=16000,
             purpose="exam_questions",
         )

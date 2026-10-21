@@ -440,8 +440,8 @@ Three steps and you're ready to study.
 (2) Check the topics                                           <- current
     We found 12 topics in your files. Rename, merge or remove any,
     then confirm.                                 [ Review topics ]
-(3) Build your study content                                     muted
-    Notes, worked examples, practice and a quiz for every topic.
+(3) Start studying                                               muted
+    Notes, worked examples, practice and a quiz for each topic, written as you go.
 ```
 
 - Vertical stepper: number circle (28px; done = accent with check, current = accent ring, upcoming
@@ -456,12 +456,15 @@ Three steps and you're ready to study.
     started (no active job, no topics, all files ready), show "Find topics" primary button
     (POST extract-topics).
   - Step 2 current: count + "Review topics" button (to `/topics?edit=1`).
-  - Step 3 current (topics confirmed, content missing): "Build study content" primary button,
-    caption "Takes a few minutes. You can start reading as topics finish." It calls
-    generate-missing-content, then the step shows a JobStatus-style aggregate: "Writing content,
-    18 of 48 ready" with a Progress bar, computed from active generate_content jobs plus existing
-    content. When done the course flips to the Today view.
-- If the course is active but some content is missing the Today view shows it in Up next instead.
+  - Step 3 current (topics confirmed, no content yet): a "Start <first topic>" primary link to the
+    first topic, caption "The notes are written when you open a topic, which takes about a
+    minute." There is no bulk build button: opening the topic starts its notes (and the AI service
+    then queues the rest). While content is being written the step shows the aggregate "Writing
+    content, 1 of 4 ready" with a Progress bar. When the first notes exist the course flips to the
+    Today view.
+- If the course is active but some content is missing, Up next says "Start <topic>" (the first
+  topic that is not finished) and the notes are written when it is opened. The only bulk action is
+  "Prepare all topics now" in the course "..." menu (see below).
 
 **Active course: Today view**
 
@@ -496,12 +499,12 @@ Recent mock exams                          Building content (only while jobs run
   in these wireframes are only sketch separators; meta rows never use middle dots. Separate
   meta items with commas or 16px gaps.)
 - Up next card: the first action large (title heading, reason small fg-2, ETA caption, primary
-  button with the action verb: "Start", "Review", "Take quiz", "Upload", "Generate"). Below, up to
+  button with the action verb: "Start", "Continue", "Review", "Take quiz", "Upload"). Below, up to
   3 more actions as compact rows (title, ETA, arrow), each a link. Action routing per type:
   upload_materials -> materials; extract_topics / confirm_topics -> topics?edit=1;
-  study_topic -> topic notes; review_topic -> topic quiz; take_quiz -> topic quiz;
-  voice_drill -> topic voice; generate_content -> topic with missing view (or, for the batch
-  action, run generate-missing-content in place); take_exam -> exams. Data: the next-actions
+  study_topic -> topic notes ("Start <topic>", or "Continue <topic>" once its notes or examples
+  are done); review_topic -> topic quiz; take_quiz -> topic quiz; voice_drill -> topic voice;
+  take_exam -> exams. The planner no longer produces a "generate" action. Data: the next-actions
   logic, rendered on the server; refreshed with `router.refresh()` on window focus.
 - Course mastery card: big ProgressRing (mean mastery over all topics, not-started ones counting
   as 0; label "Course mastery"), and the four mastery buckets as a 2x2 list with counts.
@@ -582,7 +585,7 @@ We found these in your materials. Rename, merge or remove any. You can change th
 **List mode** (all confirmed):
 
 ```
-Topics                                [ Edit topics ]  [ Build missing content (6) ]
+Topics                                [ Edit topics ]
 12 topics, 4 strong, 2 due for review
 
   Sorting algorithms        (n)(e)(p)(q 82%)   Strong        Reviewed 3d ago
@@ -596,8 +599,7 @@ Topics                                [ Edit topics ]  [ Build missing content (
   exists but not completed, dashed border when content is missing; quiz shows best score text
   instead of a check when there is one; on the right the mastery label and review timing ("Due
   today" in warning-soft-fg, "Next review in 4 days" fg-3). Whole row is a link.
-- "Build missing content (N)" shows only when N > 0 (count of missing blocks across confirmed
-  topics).
+- No bulk build button: content is written when a topic is opened.
 - Sort control (segmented): Course order / Needs work.
 
 ### 6.8 Topic (`/courses/[courseId]/topics/[topicId]`) - the core study surface
@@ -754,7 +756,16 @@ Generation states for any view (content missing):
 - Failed: InlineAlert danger with `describeJobFailure` text and "Try again".
 - Preflight 503 (AI unavailable): InlineAlert danger "Study content can't be created right now.
   Try again in a few minutes."
-- Daily budget (`LLM_DAILY_BUDGET`): InlineAlert warning with the server message.
+- Daily budget (`LLM_DAILY_BUDGET`): InlineAlert warning "You've used today's AI allowance. It
+  resets at 5:00 PM." The reset is midnight UTC shown in the student's time zone ("tomorrow at
+  8:00 AM" when that is the next calendar day there). Never a dollar amount, anywhere in student UI.
+- Opening a topic with no notes starts them at once and shows the generating state (one job, even
+  if the page renders twice); the AI service then queues examples, practice and the quiz one at a
+  time, and the tabs show a spinner while each is written. Marking the examples done starts the
+  next topic's notes in the background.
+- Course "..." menu: "Prepare all topics now" (only while some topic lacks content) opens a
+  confirm dialog: "This writes notes, worked examples, practice and a quiz for about N topics, one
+  at a time. It uses a large part of today's AI allowance." [Cancel] [Prepare all topics].
 
 ### 6.9 Ask (`/courses/[courseId]/ask`) and the Ask sheet
 

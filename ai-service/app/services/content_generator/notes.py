@@ -35,7 +35,8 @@ class NotesGenerator:
         topic_id: str,
         topic_name: str,
         topic_description: str,
-        user_preferences: Optional[Dict] = None
+        user_preferences: Optional[Dict] = None,
+        cache_excerpts: bool = False,
     ) -> Dict:
         """
         Generate study notes for a topic.
@@ -45,6 +46,7 @@ class NotesGenerator:
             topic_name: Topic name
             topic_description: Topic description
             user_preferences: Optional preferences (detail_level, include_examples, focus)
+            cache_excerpts: True for a regeneration, so the excerpt block is cached
 
         Returns:
             Dict with generated content and metadata
@@ -61,6 +63,7 @@ class NotesGenerator:
             detail_level=preferences.get('detail_level', 'comprehensive'),
             include_examples=preferences.get('include_examples', True),
             focus=preferences.get('focus'),
+            cache_excerpts=cache_excerpts,
         )
         notes_content = self._postprocess_notes_markdown(notes_content)
         if len(notes_content.split()) < _MIN_NOTES_WORDS:
@@ -83,6 +86,7 @@ class NotesGenerator:
         detail_level: str,
         include_examples: bool,
         focus: Optional[str] = None,
+        cache_excerpts: bool = False,
     ) -> str:
         """Generate notes markdown."""
         detail_instruction = _DETAIL_LEVELS.get(detail_level, _DETAIL_LEVELS['comprehensive'])
@@ -112,8 +116,7 @@ Use exactly this structure:
 Return only the markdown."""
 
         response = await self.llm.generate_text(
-            content_messages(topic_name, topic_description, chunks, instructions),
-            tier="main",
+            content_messages(topic_name, topic_description, chunks, instructions, cache_excerpts),
             max_tokens=12000,
             purpose="section_notes",
         )

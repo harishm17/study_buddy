@@ -43,6 +43,8 @@ export default async function TopicLayout({
       courseId={courseId}
       contentVersion={data.contentVersion}
       initialFailures={initialFailures}
+      notesPresent={data.present.notes}
+      next={data.next}
     >
       <TopicActions courseId={courseId} topicId={topicId} name={topic.name} />
       <Page className="pt-6">

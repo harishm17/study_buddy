@@ -83,12 +83,15 @@ class TestSharedContext:
         assert 'source="bio.pdf"' in text and 'location="pp. 3-4"' in text
 
     def test_prefix_is_identical_across_tasks(self):
-        """Every generator shares system prompt + excerpts, so Claude can cache them."""
-        a = content_messages("T", "D", CHUNKS, "write notes")
-        b = content_messages("T", "D", CHUNKS, "write a quiz")
+        """Every generator shares system prompt + excerpts, so a regeneration can read the cache."""
+        a = content_messages("T", "D", CHUNKS, "write notes", cache_excerpts=True)
+        b = content_messages("T", "D", CHUNKS, "write a quiz", cache_excerpts=True)
         assert a[0].content == b[0].content == CONTENT_SYSTEM_PROMPT
         assert a[1].content == b[1].content and a[1].cache is True
         assert a[2].content != b[2].content and a[2].cache is False
+
+    def test_a_first_generation_caches_nothing(self):
+        assert not any(message.cache for message in content_messages("T", "D", CHUNKS, "write notes"))
 
 
 class TestNotesGeneration:
@@ -103,7 +106,7 @@ class TestNotesGeneration:
             {"filename": "bio.pdf", "category": "lecture_notes", "pages": "3-4", "material_id": "m1", "page": 3}
         ]
         kwargs = llm.generate_text.call_args.kwargs
-        assert kwargs["tier"] == "main" and kwargs["purpose"] == "section_notes"
+        assert kwargs["purpose"] == "section_notes"
         instructions = llm.generate_text.call_args.args[0][-1].content
         assert "Calvin cycle" in instructions
 

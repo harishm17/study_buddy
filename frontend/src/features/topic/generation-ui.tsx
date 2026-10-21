@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { InlineAlert } from '@/components/ui/inline-alert'
 import { JobStatus } from '@/components/ui/job-status'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useResetTime } from '@/lib/budget/use-reset-time'
 import { KIND_COPY } from './copy'
 import { GenerateForm } from './generate-form'
 import type { GenerateMode } from './generate-preferences'
@@ -102,6 +103,7 @@ function FailureAlert({
   onRetry?: () => void
   retrying?: boolean
 }) {
+  const text = useResetTime(message)
   return (
     <InlineAlert
       tone={tone}
@@ -114,7 +116,7 @@ function FailureAlert({
         ) : undefined
       }
     >
-      {message}
+      {text}
     </InlineAlert>
   )
 }
@@ -131,10 +133,11 @@ type ContentGateProps = {
  * Wraps a view with everything about its content being missing, being written or having
  * failed. With content present it shows the view, plus a status line while a replacement or
  * an addition is being written. Without it: the empty state, the generating state (a job
- * status and a skeleton of the final layout) or the failure with a retry.
+ * status and a skeleton of the final layout; also while a just-opened topic's notes are being
+ * started) or the failure with a retry.
  */
 export function ContentGate({ kind, topicName, present, children }: ContentGateProps) {
-  const { running, failure, startError, starting, generate } = useGeneration(kind)
+  const { running, failure, startError, starting, preparing, generate } = useGeneration(kind)
   const copy = KIND_COPY[kind]
 
   const status = running ? (
@@ -162,10 +165,14 @@ export function ContentGate({ kind, topicName, present, children }: ContentGateP
     )
   }
 
-  if (running) {
+  // Opening a topic starts its notes: show the generating state from the first paint, not the
+  // empty state for the moment before the job exists.
+  if (running || (preparing && !startError && !failure)) {
     return (
       <div className="flex flex-col gap-8" aria-busy="true">
-        <div className="max-w-[720px]">{status}</div>
+        <div className="max-w-[720px]">
+          {status ?? <JobStatus job={{ status: 'queued' }} showProgress />}
+        </div>
         <ViewSkeleton kind={kind} />
       </div>
     )

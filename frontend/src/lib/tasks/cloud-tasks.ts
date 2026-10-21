@@ -4,6 +4,7 @@
  */
 
 import { aiServiceHeaders } from '@/lib/ai-service/headers'
+import { retryDelayMs } from './retry-delay'
 
 let CloudTasksClient: any
 let client: any = null
@@ -47,12 +48,15 @@ export interface TaskPayload {
 export class TaskEnqueueError extends Error {
   retryable: boolean
   status?: number
+  /** The Retry-After header of the answer, when the AI service sent one. */
+  retryAfter?: string | null
 
-  constructor(message: string, retryable = true, status?: number) {
+  constructor(message: string, retryable = true, status?: number, retryAfter?: string | null) {
     super(message)
     this.name = 'TaskEnqueueError'
     this.retryable = retryable
     this.status = status
+    this.retryAfter = retryAfter
   }
 }
 
@@ -60,7 +64,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 // The AI service answers 200 for finished jobs and for jobs it skipped as already handled
 // ({"status": "skipped"}), 400 for failures a retry cannot fix (missing or rejected API
-// key, no credit, no source material, over the daily budget) and 5xx for transient ones.
+// key, no credit, no source material, over the daily budget) and 5xx for transient ones: a rate
+// limited or overloaded model answers 503 with a Retry-After, which the next attempt waits for.
 // Only transient failures are worth another call: network errors and 5xx.
 function isTransientTaskFailure(status: number): boolean {
   return status >= 500
@@ -86,7 +91,8 @@ async function callAiServiceWithRetry(endpoint: string, payload: TaskPayload): P
         throw new TaskEnqueueError(
           `[DEV] Task execution failed (${response.status}): ${message}`,
           retryable,
-          response.status
+          response.status,
+          response.headers.get('retry-after')
         )
       }
       return
@@ -100,8 +106,7 @@ async function callAiServiceWithRetry(endpoint: string, payload: TaskPayload): P
         break
       }
 
-      const backoff = 250 * (2 ** (attempt - 1)) + Math.floor(Math.random() * 120)
-      await sleep(backoff)
+      await sleep(retryDelayMs(attempt, normalized.retryAfter, Math.floor(Math.random() * 120)))
     }
   }
 

@@ -36,4 +36,4 @@ async def test_drill_tops_up_after_filtering():
         result = await voice.generate_concept_drill(DrillGenerateRequest(notes="n", count=3))
     assert result["total"] == 3
     assert "6 questions" in llm.generate_structured.call_args.args[0][-1].content
-    assert llm.generate_structured.call_args.kwargs["tier"] == "fast"
+    assert llm.generate_structured.call_args.kwargs["purpose"] == "voice_drill"

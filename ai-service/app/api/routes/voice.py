@@ -128,8 +128,6 @@ async def stream_voice_turn(provider: LLMProvider, payload: VoiceTurnRequest) ->
             system=payload.system,
             messages=payload.messages,
             tools=payload.tools,
-            tier="fast",
-            effort=settings.VOICE_EFFORT or None,
             max_tokens=settings.VOICE_MAX_TOKENS,
             purpose="voice",
         ):
@@ -234,7 +232,6 @@ For each, give 2-4 key points a listener can check, a short sample answer, and t
     result = await llm.generate_structured(
         messages,
         DrillQuestionSet,
-        tier="fast",
         max_tokens=8000,
         purpose="voice_drill",
     )

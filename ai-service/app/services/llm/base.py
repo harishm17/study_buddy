@@ -4,9 +4,6 @@ from typing import Any, AsyncIterator, Dict, List, Literal, Optional, Type, Type
 
 from pydantic import BaseModel
 
-# "main" writes study content; "fast" handles short classification and grading calls.
-Tier = Literal["main", "fast"]
-
 SchemaT = TypeVar("SchemaT", bound=BaseModel)
 
 
@@ -14,7 +11,9 @@ class LLMMessage(BaseModel):
     """One message in a request.
 
     `cache=True` marks the end of a prefix that later requests repeat (for example a
-    topic's source excerpts), so the provider can cache it.
+    topic's source excerpts), so the provider can cache it. Nothing is cached unless a message
+    asks for it: writing a cache entry costs more than a plain read of the same tokens, so
+    only a prefix that will be read again should be marked.
     """
 
     role: str  # 'system', 'user', 'assistant'
@@ -50,6 +49,8 @@ class LLMError(Exception):
     # Tokens a failed call still used (a refusal or cut-off answer is billed), so callers can
     # record the cost. None when the call produced no usage.
     usage: Optional["LLMUsage"] = None
+    # Seconds the API asked us to wait before trying again (its retry-after header), if it did.
+    retry_after: Optional[float] = None
 
 
 class LLMNotConfiguredError(LLMError):
@@ -188,9 +189,8 @@ class LLMProvider(ABC):
         self,
         messages: List[LLMMessage],
         *,
-        tier: Tier = "main",
+        purpose: str,
         max_tokens: int = 16000,
-        purpose: str = "",
     ) -> LLMResponse:
         """Return free text (markdown). Raises LLMOutputError when the text is empty or cut off."""
 
@@ -200,9 +200,8 @@ class LLMProvider(ABC):
         messages: List[LLMMessage],
         schema: Type[SchemaT],
         *,
-        tier: Tier = "main",
+        purpose: str,
         max_tokens: int = 16000,
-        purpose: str = "",
     ) -> SchemaT:
         """Return output constrained to `schema` and validated against it."""
 
@@ -214,8 +213,6 @@ class LLMProvider(ABC):
         history: List[LLMMessage],
         question: str,
         excerpts: List[Excerpt],
-        tier: Tier = "main",
-        effort: Optional[str] = None,
         max_tokens: int = 4000,
         purpose: str = "chat",
     ) -> AsyncIterator[AnswerEvent]:
@@ -234,8 +231,6 @@ class LLMProvider(ABC):
         system: str,
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]],
-        tier: Tier = "fast",
-        effort: Optional[str] = None,
         max_tokens: int = 800,
         purpose: str = "voice",
     ) -> AsyncIterator[TurnEvent]:
@@ -253,6 +248,6 @@ class LLMProvider(ABC):
         raise NotImplementedError(f"{type(self).__name__} does not support voice turns")
         yield  # pragma: no cover  (makes this an async generator)
 
-    def model_for(self, tier: Tier) -> Optional[str]:
-        """The model a tier maps to, for logging."""
+    def model_for(self, purpose: str) -> Optional[str]:
+        """The model a purpose maps to, for logging."""
         return None

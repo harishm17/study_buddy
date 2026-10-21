@@ -1,9 +1,24 @@
+/**
+ * POST /api/projects/[projectId]/generate-missing-content
+ *
+ * "Prepare all topics now". Content is normally written when a student opens a topic; this
+ * writes what is missing for the whole course, in course order, one topic at a time.
+ *
+ * It starts the first job only: the first confirmed topic with something missing, with
+ * `prepare_all` in the job's preferences. When that job finishes the AI service queues the
+ * topic's next missing type, and once the topic is complete the next topic's first one (see
+ * ai-service/app/services/generation_chain.py), so at most one topic is in flight and a run
+ * keeps going when the student closes the tab. Nothing starts while the course already has a
+ * generation job running.
+ */
+
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/get-session'
 import { prisma } from '@/lib/db/prisma'
 import { ensureAiGenerationReady } from '@/lib/api/ai-preflight'
 import { enqueueContentGenerationJob, TaskEnqueueError } from '@/lib/tasks/cloud-tasks'
 import {
+  ACTIVE_JOB_STATUSES,
   createJobOrFindActive,
   generateContentTarget,
 } from '@/lib/jobs/active-jobs'
@@ -14,22 +29,8 @@ import {
   isUnauthorizedError,
 } from '@/lib/api/errors'
 
-const REQUIRED_CONTENT_TYPES = [
-  'section_notes',
-  'solved_examples',
-  'interactive_examples',
-  'topic_quiz',
-] as const
-
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-  return !!value && typeof value === 'object' && !Array.isArray(value)
-}
-
-const getInputString = (inputData: unknown, key: string): string | null => {
-  if (!isRecord(inputData)) return null
-  const value = inputData[key]
-  return typeof value === 'string' && value.trim().length > 0 ? value : null
-}
+// The order a student meets them in, and so the order they are written in.
+const CONTENT_ORDER = ['section_notes', 'solved_examples', 'interactive_examples', 'topic_quiz'] as const
 
 export const dynamic = 'force-dynamic'
 
@@ -42,164 +43,100 @@ export async function POST(
     const { projectId } = await params
 
     const project = await prisma.project.findFirst({
-      where: {
-        id: projectId,
-        userId: auth.user.id,
-      },
-      select: {
-        id: true,
-      },
+      where: { id: projectId, userId: auth.user.id },
+      select: { id: true },
     })
-
-    if (!project) {
-      return apiNotFound('Project not found')
-    }
+    if (!project) return apiNotFound('Project not found')
 
     const preflightError = await ensureAiGenerationReady()
-    if (preflightError) {
-      return preflightError
-    }
+    if (preflightError) return preflightError
 
-    const [topics, activeGenerationJobs] = await Promise.all([
+    const [topics, activeJobs] = await Promise.all([
       prisma.topic.findMany({
-        where: {
-          projectId,
-          userConfirmed: true,
-        },
-        select: {
-          id: true,
-          content: {
-            select: {
-              contentType: true,
-            },
-          },
-        },
-        orderBy: {
-          orderIndex: 'asc',
-        },
+        where: { projectId, userConfirmed: true },
+        select: { id: true, content: { select: { contentType: true } } },
+        orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
       }),
-      prisma.processingJob.findMany({
-        where: {
-          projectId,
-          jobType: 'generate_content',
-          status: {
-            in: ['pending', 'processing'],
-          },
-        },
-        select: {
-          inputData: true,
-        },
+      prisma.processingJob.count({
+        where: { projectId, jobType: 'generate_content', status: { in: ACTIVE_JOB_STATUSES } },
       }),
     ])
 
-    const activeKeys = new Set<string>()
-    for (const job of activeGenerationJobs) {
-      const topicId = getInputString(job.inputData, 'topicId')
-      const contentType = getInputString(job.inputData, 'contentType')
-      if (!topicId || !contentType) continue
-      activeKeys.add(`${topicId}:${contentType}`)
-    }
+    const missing = topics
+      .map((topic) => {
+        const present = new Set(topic.content.map((item) => item.contentType))
+        return { topicId: topic.id, types: CONTENT_ORDER.filter((type) => !present.has(type)) }
+      })
+      .filter((topic) => topic.types.length > 0)
 
-    const missing: Array<{ topicId: string; contentType: (typeof REQUIRED_CONTENT_TYPES)[number] }> = []
-    for (const topic of topics) {
-      const available = new Set(topic.content.map((item) => item.contentType))
-      for (const contentType of REQUIRED_CONTENT_TYPES) {
-        if (!available.has(contentType)) {
-          missing.push({ topicId: topic.id, contentType })
-        }
-      }
-    }
-
-    if (missing.length === 0 && activeKeys.size === 0) {
+    if (missing.length === 0) {
       return NextResponse.json({
+        status: 'noop',
         queuedJobs: 0,
-        skippedActive: 0,
-        failedJobs: 0,
-        missingBlocks: 0,
-        message: 'All core content blocks are already generated.',
+        topicsToPrepare: 0,
+        message: 'All the study content is already written.',
+      })
+    }
+    if (activeJobs > 0) {
+      return NextResponse.json({
+        status: 'already_running',
+        queuedJobs: 0,
+        topicsToPrepare: missing.length,
+        message: 'Margins is already writing content for this course.',
       })
     }
 
-    let queuedJobs = 0
-    let skippedActive = 0
-    let failedJobs = 0
+    const first = missing[0]
+    const contentType = first.types[0]
+    const preferences = { prepare_all: true }
+    const { job, created } = await createJobOrFindActive({
+      userId: auth.user.id,
+      projectId,
+      jobType: 'generate_content',
+      status: 'pending',
+      stage: 'generating',
+      inputData: { topicId: first.topicId, contentType, preferences },
+      progressPercent: 0,
+      targetKey: generateContentTarget(first.topicId, contentType),
+    })
+    if (!created) {
+      return NextResponse.json({
+        status: 'already_running',
+        queuedJobs: 0,
+        topicsToPrepare: missing.length,
+        message: 'Margins is already writing content for this course.',
+      })
+    }
 
-    for (const item of missing) {
-      const key = `${item.topicId}:${item.contentType}`
-      if (activeKeys.has(key)) {
-        skippedActive += 1
-        continue
-      }
-
-      const preferences: Record<string, never> = {}
-      const targetKey = generateContentTarget(item.topicId, item.contentType)
-      const { job, created } = await createJobOrFindActive({
-        userId: auth.user.id,
-        projectId,
-        jobType: 'generate_content',
-        status: 'pending',
-        stage: 'generating',
-        inputData: {
-          topicId: item.topicId,
-          contentType: item.contentType,
-          preferences,
+    try {
+      await enqueueContentGenerationJob(job.id, first.topicId, contentType, preferences)
+    } catch (enqueueError) {
+      const retryable = enqueueError instanceof TaskEnqueueError ? enqueueError.retryable : true
+      await prisma.processingJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'failed',
+          errorCode: retryable ? 'ENQUEUE_FAILED' : 'ENQUEUE_PERMANENT',
+          errorMessage: 'Failed to enqueue content generation job',
+          retryable,
+          completedAt: new Date(),
         },
-        progressPercent: 0,
-        targetKey,
       })
-      if (!created) {
-        // Another request started this block between the check above and now.
-        skippedActive += 1
-        continue
-      }
-
-      try {
-        await enqueueContentGenerationJob(job.id, item.topicId, item.contentType, preferences)
-        queuedJobs += 1
-      } catch (enqueueError) {
-        failedJobs += 1
-        const retryable =
-          enqueueError instanceof TaskEnqueueError
-            ? enqueueError.retryable
-            : true
-        await prisma.processingJob.update({
-          where: { id: job.id },
-          data: {
-            status: 'failed',
-            errorCode: retryable ? 'ENQUEUE_FAILED' : 'ENQUEUE_PERMANENT',
-            errorMessage: 'Failed to enqueue content generation job',
-            retryable,
-            completedAt: new Date(),
-          },
-        })
-      }
+      return NextResponse.json(
+        { status: 'failed', queuedJobs: 0, topicsToPrepare: missing.length, message: "Couldn't start writing. Try again." },
+        { status: 502 }
+      )
     }
-
-    const status =
-      queuedJobs > 0
-        ? 'queued'
-        : skippedActive > 0
-          ? 'already_running'
-          : 'noop'
 
     return NextResponse.json({
-      status,
-      queuedJobs,
-      skippedActive,
-      failedJobs,
-      missingBlocks: missing.length,
-      message:
-        queuedJobs > 0
-          ? `Queued ${queuedJobs} content job${queuedJobs === 1 ? '' : 's'} in background.`
-          : skippedActive > 0
-            ? 'Missing content generation is already running in background.'
-            : 'No content jobs were queued.',
+      status: 'queued',
+      queuedJobs: 1,
+      topicsToPrepare: missing.length,
+      message: `Writing content for ${missing.length} topic${missing.length === 1 ? '' : 's'}, one at a time.`,
     })
   } catch (error) {
-    console.error('Generate missing content batch error:', error)
-    if (isUnauthorizedError(error)) {
-      return apiUnauthorized()
-    }
+    console.error('Prepare all topics error:', error)
+    if (isUnauthorizedError(error)) return apiUnauthorized()
     return apiInternal('Failed to queue missing content generation')
   }
 }

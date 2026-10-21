@@ -114,6 +114,9 @@ GOOGLE_OAUTH_CLIENT_SECRET=...
 LLM_PROVIDER=anthropic           # or mock
 ANTHROPIC_MODEL=claude-opus-5-5
 ANTHROPIC_FAST_MODEL=claude-haiku-5-5
+MODEL_QUIZ=claude-sonnet-5-5:medium  # one model per purpose ("<model>:<effort>"): MODEL_NOTES, _EXAMPLES,
+                                     # _PRACTICE, _QUIZ, _EXAM, _GRADING, _TOPICS, _CHAT, _VOICE, _VALIDATION
+LLM_MAX_CONCURRENCY=4            # model calls at once in the AI service
 VOICE_DAILY_MINUTES=30           # per user per 24 hours
 MAX_UPLOAD_MB=25
 S3_BUCKET=... S3_ENDPOINT=... S3_REGION=auto S3_ACCESS_KEY_ID=... S3_SECRET_ACCESS_KEY=...

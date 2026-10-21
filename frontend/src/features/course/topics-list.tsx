@@ -11,7 +11,7 @@ import { Tooltip } from '@/components/ui/tooltip'
 import { masteryLabel, masteryLevel, masteryPercent, masteryTone } from '@/lib/mastery'
 import { cn } from '@/lib/utils'
 import type { GenerationState } from '@/server/queries/course'
-import { BuildingContent, GenerateMissingButton } from './building-content'
+import { BuildingContent } from './building-content'
 import { needsWorkOrder, type GlyphState } from './summary'
 
 export type ListTopic = {
@@ -109,17 +109,15 @@ type TopicsListProps = {
   courseId: string
   topics: ListTopic[]
   summary: string
-  missingBlocks: number
   generation: GenerationState
   /** When this page was rendered, in ms, so "Needs work" can tell what is due. */
   now: number
 }
 
 /** Confirmed topics: progress, the study path, mastery and review timing, with a sort. */
-export function TopicsList({ courseId, topics, summary, missingBlocks, generation, now }: TopicsListProps) {
+export function TopicsList({ courseId, topics, summary, generation, now }: TopicsListProps) {
   const [sort, setSort] = React.useState<Sort>('order')
   const ordered = sort === 'order' ? topics : needsWorkOrder(topics, now)
-  const showBuild = missingBlocks > 0 && generation.activeJobs === 0
   const building = generation.activeJobs > 0 || generation.failures.length > 0
 
   return (
@@ -128,16 +126,9 @@ export function TopicsList({ courseId, topics, summary, missingBlocks, generatio
         title="Topics"
         description={summary}
         actions={
-          <>
-            <Button asChild variant="secondary" icon={<PencilSimple />}>
-              <Link href={`/courses/${courseId}/topics?edit=1`}>Edit topics</Link>
-            </Button>
-            {showBuild ? (
-              <GenerateMissingButton courseId={courseId} variant="primary">
-                {`Build missing content (${missingBlocks})`}
-              </GenerateMissingButton>
-            ) : null}
-          </>
+          <Button asChild variant="secondary" icon={<PencilSimple />}>
+            <Link href={`/courses/${courseId}/topics?edit=1`}>Edit topics</Link>
+          </Button>
         }
       />
       <div className="flex flex-col gap-6">

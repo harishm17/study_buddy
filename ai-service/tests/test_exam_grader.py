@@ -528,7 +528,7 @@ class TestGradingFixes:
         assert self._grader()._grade_true_false(question, 'maybe')['is_correct'] is False
 
     @pytest.mark.asyncio
-    async def test_short_answers_use_fast_tier_and_show_sample(self):
+    async def test_short_answers_use_the_grading_purpose_and_show_sample(self):
         with patch('app.services.exam_grader.LLMFactory.get_provider') as factory:
             llm = MagicMock()
             llm.generate_structured = AsyncMock(return_value=SimpleNamespace(points_earned=3, feedback='ok'))
@@ -536,7 +536,7 @@ class TestGradingFixes:
             questions = [dict(SHORT_QUESTION, question_text=f'Q{i}') for i in range(5)]
             result = await ExamGrader().grade_submission('s', questions, {str(i): 'ans' for i in range(5)})
         assert llm.generate_structured.await_count == 5
-        assert llm.generate_structured.call_args.kwargs['tier'] == 'fast'
+        assert llm.generate_structured.call_args.kwargs['purpose'] == 'grade_short_answer'
         assert result['earned_points'] == 15
         assert result['graded_questions'][0]['correct_answer'] == 'Answer'
 

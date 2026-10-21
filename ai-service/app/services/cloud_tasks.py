@@ -84,10 +84,23 @@ async def mark_undelivered(job_id: str, message: str) -> None:
         logger.error("Could not record the dispatch failure of job %s: %s", job_id, exc)
 
 
+def retry_delay_seconds(attempt: int, retry_after_header: Optional[str]) -> float:
+    """Wait before the next attempt: exponential backoff, or the Retry-After the service sent
+    (a rate-limited job asks for longer) if that is longer. Capped at two minutes."""
+    delay = 0.5 * 2 ** (attempt - 1)
+    try:
+        delay = max(delay, float(retry_after_header or 0))
+    except ValueError:
+        pass
+    return min(delay, 120.0)
+
+
 async def _post_with_retries(endpoint: str, payload: Dict[str, Any]) -> None:
     job_id = payload.get("jobId", "")
     last_error = ""
+    retry_after_header: Optional[str] = None
     for attempt in range(1, DIRECT_MAX_ATTEMPTS + 1):
+        retry_after_header = None
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -104,11 +117,12 @@ async def _post_with_retries(endpoint: str, payload: Dict[str, Any]) -> None:
                     )
                 return
             last_error = f"{endpoint} answered {response.status_code}: {response.text[:500]}"
+            retry_after_header = response.headers.get("retry-after")
         except httpx.HTTPError as exc:
             last_error = f"{endpoint} unreachable: {exc!r}"
         logger.warning("Dispatch of job %s failed (attempt %d): %s", job_id, attempt, last_error)
         if attempt < DIRECT_MAX_ATTEMPTS:
-            await asyncio.sleep(0.5 * 2 ** (attempt - 1))
+            await asyncio.sleep(retry_delay_seconds(attempt, retry_after_header))
     await mark_undelivered(job_id, last_error)
 
 

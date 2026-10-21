@@ -18,7 +18,7 @@ from app.services.topic_extractor import extract_topics_from_materials
 from app.services.embeddings.search import hybrid_search_chunks
 from app.services.embeddings.topic_mapping import replace_topic_mappings
 from app.services.content_generator import NotesGenerator, ExamplesGenerator, QuizGenerator
-from app.services.content_generator.context import TOPIC_CHUNK_LIMIT
+from app.services.content_generator.context import TOPIC_CHUNK_LIMIT, NoSourceMaterialError
 from app.services.content_generator.examples import ExampleType
 from app.services.content_generator.quiz import QuestionType
 from app.services.exam_generator import ExamGenerator
@@ -28,7 +28,10 @@ from app.services.cloud_tasks import (
     enqueue_topic_extraction_job,
     mark_undelivered,
 )
+from app.services.generation_chain import content_exists, continue_chain, dispatch as dispatch_job, plan_next_job
 from app.services.job_reaper import reap_expired_jobs
+from app.services.llm.base import LLMRefusalError
+from app.services.llm.limiter import topic_lock
 from app.services.job_runner import (
     JobContext,
     JobOutcome,
@@ -498,7 +501,11 @@ RETURNING id,
     uses_llm=True,
 )
 async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutcome:
-    """Generate content for a topic (notes, examples, or quiz)."""
+    """Generate content for a topic (notes, examples, or quiz).
+
+    Jobs for the same topic run one at a time: a job waits here, holding its claim and lease,
+    until the topic's earlier jobs have finished and stored their content.
+    """
     input_data = parse_input(ContentGenerationInput, payload.data)
 
     topic = await execute_one(
@@ -513,6 +520,35 @@ async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutco
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
 
+    async with topic_lock(topic["id"]):
+        try:
+            return await _generate_and_store_content(job, input_data, topic)
+        except Exception as exc:
+            await _skip_failed_topic(job, input_data, topic, exc)
+            raise
+
+
+async def _skip_failed_topic(job: JobContext, input_data: ContentGenerationInput, topic, exc: Exception) -> None:
+    """A "Prepare all topics now" run goes on to the next topic when this one cannot be generated
+    at all (no source material, or the model refuses it). Any other failure stops the run."""
+    if not isinstance(exc, (NoSourceMaterialError, LLMRefusalError)):
+        return
+    try:
+        await continue_chain(
+            user_id=job.user_id,
+            project_id=job.project_id,
+            topic_id=topic["id"],
+            preferences={**input_data.preferences, "prepare_rest": False},
+            skip_topic=True,
+        )
+    except Exception:
+        logger.exception("Could not continue the generation run after topic %s failed", topic["id"])
+
+
+async def _generate_and_store_content(job: JobContext, input_data: ContentGenerationInput, topic) -> JobOutcome:
+    # Nothing is cached the first time a type is generated; regenerating one (more examples,
+    # a new quiz set, a regenerated note) caches the excerpt block (see content_generator/context.py).
+    cache_excerpts = await content_exists(topic['id'], input_data.contentType)
     generated_content = None
     content_type = input_data.contentType
     focus = input_data.preferences.get("focus")
@@ -525,7 +561,8 @@ async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutco
             topic_id=topic['id'],
             topic_name=topic['name'],
             topic_description=topic['description'],
-            user_preferences=input_data.preferences
+            user_preferences=input_data.preferences,
+            cache_excerpts=cache_excerpts,
         )
         generated_content = result['content']
         metadata = {
@@ -545,7 +582,8 @@ async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutco
             example_type=ExampleType.SOLVED,
             count=count,
             difficulty_level=difficulty,
-            focus=focus
+            focus=focus,
+            cache_excerpts=cache_excerpts,
         )
         generated_content = result['examples']
         metadata = {
@@ -566,7 +604,8 @@ async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutco
             example_type=ExampleType.INTERACTIVE,
             count=count,
             difficulty_level=difficulty,
-            focus=focus
+            focus=focus,
+            cache_excerpts=cache_excerpts,
         )
         generated_content = result['examples']
         metadata = {
@@ -598,7 +637,8 @@ async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutco
             question_count=question_count,
             question_types=question_types,
             difficulty_level=difficulty,
-            focus=focus
+            focus=focus,
+            cache_excerpts=cache_excerpts,
         )
         generated_content = result['questions']
         metadata = {
@@ -678,6 +718,20 @@ async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutco
         metadata["count"] = content_record["item_count"]
 
     logger.info(f"Completed content generation: {content_type} for topic {topic['id']}")
+
+    # See app/services/generation_chain.py: the topic's next missing type (and, for a whole-course
+    # run, the next topic) gets its job row now, before this one is marked completed, and is
+    # dispatched once it has been.
+    next_job = await plan_next_job(
+        user_id=job.user_id,
+        project_id=job.project_id,
+        topic_id=topic['id'],
+        preferences=input_data.preferences,
+    )
+
+    async def queue_next():
+        await dispatch_job(next_job)
+
     return JobOutcome(
         result={
             "content_id": content_record['id'],
@@ -685,6 +739,7 @@ async def generate_content_job(payload: JobPayload, job: JobContext) -> JobOutco
             "metadata": metadata,
         },
         response={"contentId": content_record['id'], "contentType": content_type},
+        after=queue_next,
     )
 
 

@@ -18,6 +18,8 @@ export type NextAction = {
   reason: string
   priority: number
   etaMinutes: number
+  /** For study_topic: the student has already finished the notes or the examples of this topic. */
+  started?: boolean
 }
 
 type TopicSnapshot = {
@@ -37,7 +39,6 @@ type TopicSnapshot = {
   voiceAttempts: number
 }
 
-const REQUIRED_CONTENT = ['section_notes', 'solved_examples', 'interactive_examples', 'topic_quiz']
 const STALE_JOB_WINDOW_MS = 6 * 60 * 1000
 const PENDING_DISPATCH_STALE_MS = 90 * 1000
 
@@ -106,6 +107,8 @@ function summarizeTopicNames(topics: Array<{ name: string }>): string {
   if (topics.length === 2) return `${topics[0].name} and ${topics[1].name}`
   return `${topics[0].name}, ${topics[1].name}, and ${topics.length - 2} more`
 }
+
+const hasStarted = (topic: TopicSnapshot) => topic.progress.notesCompleted || topic.progress.examplesCompleted
 
 function describeMissingStudyTracks(topic: TopicSnapshot): string {
   const missing: string[] = []
@@ -285,53 +288,11 @@ export async function buildNextActionsForProject(
     }
   }
 
+  // Content is written when a student opens a topic (or by "Prepare all topics now"), so a topic
+  // with nothing written yet is simply the next one to start; there is no separate "generate" step.
   const dueTopicIds = new Set(dueTopics.map((topic) => topic.id))
-  const generationCandidates = snapshots
-    .filter((topic) => !dueTopicIds.has(topic.id))
-    .map((topic) => ({
-      topic,
-      missingCount: REQUIRED_CONTENT.filter(
-        (contentType) =>
-          !topic.contentTypes.has(contentType) &&
-          !activeGenerationKeys.has(`${topic.id}:${contentType}`)
-      ).length,
-    }))
-    .filter((entry) => entry.missingCount > 0)
-    .sort((a, b) => {
-      if (b.missingCount !== a.missingCount) return b.missingCount - a.missingCount
-      return a.topic.orderIndex - b.topic.orderIndex
-    })
-
-  if (generationCandidates.length > 0) {
-    const totalMissingBlocks = generationCandidates.reduce((sum, entry) => sum + entry.missingCount, 0)
-    if (generationCandidates.length === 1) {
-      actions.push({
-        id: `${generationCandidates[0].topic.id}-generate`,
-        type: 'generate_content',
-        topicId: generationCandidates[0].topic.id,
-        title: `Generate content for ${generationCandidates[0].topic.name}`,
-        reason: `Missing ${generationCandidates[0].missingCount} core content block(s).`,
-        priority: 1,
-        etaMinutes: 6,
-      })
-    } else {
-      actions.push({
-        id: `${projectId}-generate-batch`,
-        type: 'generate_content',
-        topicId: generationCandidates[0].topic.id,
-        title: `Generate missing content for ${generationCandidates.length} topics`,
-        reason: `${totalMissingBlocks} core blocks are missing across ${summarizeTopicNames(
-          generationCandidates.map((entry) => ({ name: entry.topic.name }))
-        )}.`,
-        priority: 1,
-        etaMinutes: Math.min(24, 8 + generationCandidates.length * 2),
-      })
-    }
-  }
-
-  const generationTopicIds = new Set(generationCandidates.map((entry) => entry.topic.id))
   const studyTopics = snapshots
-    .filter((topic) => !dueTopicIds.has(topic.id) && !generationTopicIds.has(topic.id))
+    .filter((topic) => !dueTopicIds.has(topic.id))
     .filter((topic) => !topic.progress.notesCompleted || !topic.progress.examplesCompleted)
     .sort((a, b) => a.orderIndex - b.orderIndex)
 
@@ -345,6 +306,7 @@ export async function buildNextActionsForProject(
         reason: describeMissingStudyTracks(studyTopics[0]),
         priority: 2,
         etaMinutes: 18,
+        started: hasStarted(studyTopics[0]),
       })
     } else {
       actions.push({
@@ -357,6 +319,7 @@ export async function buildNextActionsForProject(
         )}.`,
         priority: 2,
         etaMinutes: Math.min(40, 14 + studyTopics.length * 4),
+        started: hasStarted(studyTopics[0]),
       })
     }
   }
@@ -364,10 +327,7 @@ export async function buildNextActionsForProject(
   const studyTopicIds = new Set(studyTopics.map((topic) => topic.id))
   const quizTopics = snapshots
     .filter(
-      (topic) =>
-        !dueTopicIds.has(topic.id) &&
-        !generationTopicIds.has(topic.id) &&
-        !studyTopicIds.has(topic.id)
+      (topic) => !dueTopicIds.has(topic.id) && !studyTopicIds.has(topic.id)
     )
     .filter((topic) => topic.progress.notesCompleted && topic.progress.examplesCompleted)
     .filter((topic) => !topic.progress.quizCompleted || (topic.progress.quizScore ?? 0) < 70)
@@ -405,7 +365,7 @@ export async function buildNextActionsForProject(
 
   const quizTopicIds = new Set(quizTopics.map((topic) => topic.id))
   const voiceTopics = snapshots
-    .filter((topic) => !dueTopicIds.has(topic.id) && !generationTopicIds.has(topic.id) && !quizTopicIds.has(topic.id))
+    .filter((topic) => !dueTopicIds.has(topic.id) && !quizTopicIds.has(topic.id))
     // Only topics whose mastery is still low. Having no voice practice yet is not a reason:
     // mastery is scored over the sources a student has used.
     .filter((topic) => topic.mastery < 0.6)

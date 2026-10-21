@@ -28,12 +28,13 @@ from app.services.llm.base import (
     LLMUnavailableError,
     LLMUsage,
     SchemaT,
-    Tier,
     TurnDone,
     TurnEvent,
     TurnText,
     TurnToolUse,
 )
+from app.services.llm.limiter import llm_slot
+from app.services.llm.models import resolve_model
 from app.services.llm.usage import estimate_cost_usd, record_usage
 
 logger = logging.getLogger(__name__)
@@ -74,9 +75,8 @@ def _to_request_messages(
         else:
             conversation.append({"role": role, "content": [block]})
 
-    # The system prompt is the same for every call of a given kind: cache it.
-    if system:
-        system[-1]["cache_control"] = {"type": "ephemeral"}
+    # Only what a message marks with `cache` is cached (the breakpoint covers the system prompt
+    # before it): a first generation writes nothing, a regeneration caches its excerpts.
     return system, conversation
 
 
@@ -217,12 +217,38 @@ def _content_block_param(block: Any) -> Optional[Dict[str, Any]]:
     return dump(exclude_none=True) if dump else None
 
 
+# The longest wait we pass on to the dispatcher, whatever the API asked for.
+_MAX_RETRY_AFTER_SECONDS = 120.0
+
+
+def _retry_after(exc: anthropic.APIStatusError) -> Optional[float]:
+    """Seconds the API asked us to wait (retry-after-ms, then retry-after), if it said."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    if not headers:
+        return None
+    for name, scale in (("retry-after-ms", 0.001), ("retry-after", 1.0)):
+        try:
+            seconds = float(headers.get(name)) * scale
+        except (TypeError, ValueError):
+            continue
+        if seconds > 0:
+            return min(seconds, _MAX_RETRY_AFTER_SECONDS)
+    return None
+
+
 def _translate_api_error(exc: anthropic.APIError) -> Exception:
-    """Map SDK exceptions to the provider-neutral errors the job handlers classify."""
+    """Map SDK exceptions to the provider-neutral errors the job handlers classify.
+
+    A rate limit (429) or overload (529, 5xx) that survived the SDK's own retries is transient:
+    the job fails as retryable and the dispatcher tries again, after `retry_after` if the API
+    gave one.
+    """
     if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
         return LLMAuthError(f"Anthropic rejected the API key: {exc}")
     if isinstance(exc, anthropic.RateLimitError):
-        return LLMRateLimitError(f"Anthropic rate limit: {exc}")
+        error: LLMError = LLMRateLimitError(f"Anthropic rate limit: {exc}")
+        error.retry_after = _retry_after(exc)
+        return error
     if isinstance(exc, anthropic.BadRequestError):
         if "credit balance" in str(exc).lower():
             return LLMCreditError(f"Anthropic credit balance is too low: {exc}")
@@ -231,7 +257,9 @@ def _translate_api_error(exc: anthropic.APIError) -> Exception:
         return LLMUnavailableError(f"Could not reach Anthropic: {exc}")
     if isinstance(exc, anthropic.APIStatusError):
         if exc.status_code >= 500:  # includes 529 overloaded
-            return LLMUnavailableError(f"Anthropic is unavailable ({exc.status_code}): {exc}")
+            error = LLMUnavailableError(f"Anthropic is unavailable ({exc.status_code}): {exc}")
+            error.retry_after = _retry_after(exc)
+            return error
         return LLMRequestError(f"Anthropic rejected the request ({exc.status_code}): {exc}")
     return LLMUnavailableError(f"Anthropic call failed: {exc}")
 
@@ -239,44 +267,34 @@ def _translate_api_error(exc: anthropic.APIError) -> Exception:
 class AnthropicProvider(LLMProvider):
     """Claude via the Messages API, with structured outputs for every JSON call."""
 
-    def __init__(
-        self,
-        api_key: str,
-        model: str,
-        fast_model: str,
-        effort: str = "medium",
-        fast_effort: str = "low",
-        timeout: float = 180.0,
-        max_retries: int = 2,
-    ):
+    def __init__(self, api_key: str, timeout: float = 180.0, max_retries: int = 4):
         if not api_key or not api_key.strip():
             raise LLMNotConfiguredError("ANTHROPIC_API_KEY is not configured")
-        # The SDK retries connection errors, 408, 409, 429 and 5xx with backoff.
+        # The SDK retries connection errors, 408, 409, 429 and 5xx with backoff (honouring
+        # retry-after) before it raises.
         self.client = AsyncAnthropic(api_key=api_key, timeout=timeout, max_retries=max_retries)
-        self._models = {"main": model, "fast": fast_model}
-        self._efforts = {"main": effort, "fast": fast_effort}
 
-    def model_for(self, tier: Tier) -> Optional[str]:
-        return self._models[tier]
+    def model_for(self, purpose: str) -> Optional[str]:
+        return resolve_model(purpose).model
 
     async def _create(
         self,
         messages: List[LLMMessage],
         *,
-        tier: Tier,
         max_tokens: int,
         purpose: str,
         output_format: Optional[Dict[str, Any]] = None,
     ) -> tuple[str, LLMUsage, str]:
         """Make one call; return (text, usage, stop reason)."""
-        model = self._models[tier]
+        choice = resolve_model(purpose)
+        model = choice.model
         system, conversation = _to_request_messages(messages)
         if not conversation:
             raise LLMRequestError("An LLM request needs at least one user message")
 
         output_config: Dict[str, Any] = {}
-        if self._efforts[tier]:
-            output_config["effort"] = self._efforts[tier]
+        if choice.effort:
+            output_config["effort"] = choice.effort
         if output_format is not None:
             output_config["format"] = output_format
 
@@ -294,7 +312,8 @@ class AnthropicProvider(LLMProvider):
             params["fallbacks"] = "default"
 
         try:
-            response = await self.client.beta.messages.create(**params)
+            async with llm_slot():
+                response = await self.client.beta.messages.create(**params)
         except anthropic.APIError as exc:
             raise _translate_api_error(exc) from exc
 
@@ -340,13 +359,10 @@ class AnthropicProvider(LLMProvider):
         self,
         messages: List[LLMMessage],
         *,
-        tier: Tier = "main",
+        purpose: str,
         max_tokens: int = 16000,
-        purpose: str = "",
     ) -> LLMResponse:
-        text, usage, stop_reason = await self._create(
-            messages, tier=tier, max_tokens=max_tokens, purpose=purpose
-        )
+        text, usage, stop_reason = await self._create(messages, max_tokens=max_tokens, purpose=purpose)
         return LLMResponse(content=text, model=usage.model, stop_reason=stop_reason, usage=usage)
 
     async def generate_structured(
@@ -354,14 +370,12 @@ class AnthropicProvider(LLMProvider):
         messages: List[LLMMessage],
         schema: Type[SchemaT],
         *,
-        tier: Tier = "main",
+        purpose: str,
         max_tokens: int = 16000,
-        purpose: str = "",
     ) -> SchemaT:
         output_format = {"type": "json_schema", "schema": anthropic.transform_schema(schema)}
         text, _, _ = await self._create(
             messages,
-            tier=tier,
             max_tokens=max_tokens,
             purpose=purpose,
             output_format=output_format,
@@ -380,15 +394,13 @@ class AnthropicProvider(LLMProvider):
         history: List[LLMMessage],
         question: str,
         excerpts: List[Excerpt],
-        tier: Tier = "main",
-        effort: Optional[str] = None,
         max_tokens: int = 4000,
         purpose: str = "chat",
     ) -> AsyncIterator[AnswerEvent]:
         if not excerpts:
             raise LLMRequestError("A cited answer needs at least one excerpt")
-        model = self._models[tier]
-        used_effort = effort or self._efforts[tier]
+        choice = resolve_model(purpose)
+        model = choice.model
 
         params: Dict[str, Any] = {
             "model": model,
@@ -397,8 +409,8 @@ class AnthropicProvider(LLMProvider):
         }
         if system:
             params["system"] = [{"type": "text", "text": system}]
-        if used_effort:
-            params["output_config"] = {"effort": used_effort}
+        if choice.effort:
+            params["output_config"] = {"effort": choice.effort}
         if _supports_server_fallback(model):
             params["betas"] = [_SERVER_FALLBACK_BETA]
             params["fallbacks"] = "default"
@@ -409,7 +421,7 @@ class AnthropicProvider(LLMProvider):
         citations: List[AnswerCitation] = []
 
         try:
-            async with self.client.beta.messages.stream(**params) as stream:
+            async with llm_slot(), self.client.beta.messages.stream(**params) as stream:
                 async for event in stream:
                     kind = getattr(event, "type", None)
                     if kind == "content_block_start":
@@ -486,15 +498,13 @@ class AnthropicProvider(LLMProvider):
         system: str,
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]],
-        tier: Tier = "fast",
-        effort: Optional[str] = None,
         max_tokens: int = 800,
         purpose: str = "voice",
     ) -> AsyncIterator[TurnEvent]:
         if not messages:
             raise LLMRequestError("A turn needs at least one message")
-        model = self._models[tier]
-        used_effort = effort or self._efforts[tier]
+        choice = resolve_model(purpose)
+        model = choice.model
 
         params: Dict[str, Any] = {
             "model": model,
@@ -508,14 +518,14 @@ class AnthropicProvider(LLMProvider):
             # tool_choice stays auto: forced tool use is not supported on these models.
             params["tools"] = tools
             params["tool_choice"] = {"type": "auto"}
-        if used_effort:
-            params["output_config"] = {"effort": used_effort}
+        if choice.effort:
+            params["output_config"] = {"effort": choice.effort}
         if _supports_server_fallback(model):
             params["betas"] = [_SERVER_FALLBACK_BETA]
             params["fallbacks"] = "default"
 
         try:
-            async with self.client.beta.messages.stream(**params) as stream:
+            async with llm_slot(), self.client.beta.messages.stream(**params) as stream:
                 async for event in stream:
                     if getattr(event, "type", None) != "content_block_delta":
                         continue

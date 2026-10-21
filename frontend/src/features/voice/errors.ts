@@ -4,6 +4,8 @@
  * is written for any client; these lines say what the student can do about it.
  */
 
+import { resetPhrase } from '@/lib/budget/copy'
+
 export type TurnFailure = {
   /** `error.details.code` when there is one, else `error.code`, or the stream's `code`. */
   code: string
@@ -84,8 +86,8 @@ export function describeTurnFailure(failure: TurnFailure): TurnFailureView {
         fate: 'summary',
         alert: {
           tone: 'warning',
-          title: "You've reached today's AI limit",
-          text: 'Voice review is paused until it resets at midnight UTC.',
+          title: "You've used today's AI allowance",
+          text: `Voice review is paused. It resets ${resetPhrase()}.`,
           action: 'none',
         },
       }
