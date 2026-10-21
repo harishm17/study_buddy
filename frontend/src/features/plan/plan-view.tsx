@@ -113,11 +113,17 @@ function WeekSection({ courseId, week, current }: { courseId: string; week: Week
         {current ? 'This week' : weekLabel(week.start)}
         {current ? <span className="ml-2 text-small font-normal text-fg-3">{weekLabel(week.start)}</span> : null}
       </h2>
-      <ol className="flex flex-col gap-3">
-        {week.days.map((day) => (
-          <DayCard key={day.date} courseId={courseId} day={day} />
-        ))}
-      </ol>
+      {week.days.every((day) => day.items.length === 0 && !day.isToday) ? (
+        <p className="rounded-card border border-border bg-surface p-4 text-small text-fg-3">
+          Nothing planned this week. A good time to rest or catch up.
+        </p>
+      ) : (
+        <ol className="flex flex-col gap-3">
+          {week.days.map((day) => (
+            <DayCard key={day.date} courseId={courseId} day={day} />
+          ))}
+        </ol>
+      )}
     </section>
   )
 }

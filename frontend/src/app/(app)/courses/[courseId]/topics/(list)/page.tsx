@@ -74,7 +74,7 @@ export default async function TopicsPage({
           mastery: topic.mastery,
           dueAt: topic.dueAt,
           timing: reviewTiming(topic.dueAt, now),
-          path: studyPath(topic),
+          path: studyPath({ content: topic.content, progress: topic.progress, practiceDone: topic.practiceDone }),
         }))}
       />
     </Page>

@@ -11,7 +11,9 @@ import {
 import { maxUploadMb } from '@/lib/storage/upload-limits'
 import { courseMastery, masteryLevel, countMasteryLevels, type MasteryCounts } from '@/lib/mastery'
 import { readRole, type MaterialRole } from '@/lib/materials/role'
+import { parsePracticeProblems } from '@/features/topic/content'
 import { mergeSources, type SourceRef } from '@/lib/topics/sources'
+import { PRACTICE_DONE_SHARE } from '@/features/topic/practice-keys'
 import { getCourseShell, type CourseShell, type ShellTopic, type ShellUnit } from '@/server/queries/courses'
 import { getPlanData } from '@/server/queries/plan'
 
@@ -447,6 +449,8 @@ export type TopicRow = {
   dueAt: string | null
   lastReviewedAt: string | null
   progress: { notes: boolean; examples: boolean; quiz: boolean; quizScore: number | null }
+  /** At least 80% of the practice steps are solved (stored on the server). */
+  practiceDone: boolean
   content: string[]
 }
 
@@ -468,7 +472,7 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
   const course = await getCourseShell(userId, courseId)
   if (!course) return null
 
-  const [extra, sourceRows, materials, generation] = await Promise.all([
+  const [extra, sourceRows, materials, generation, practiceRows, practiceContent] = await Promise.all([
     prisma.topic.findMany({
       where: { projectId: courseId, project: { userId } },
       select: {
@@ -488,7 +492,25 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
     }),
     getMaterialsData(userId, courseId),
     getGenerationState(userId, course),
+    prisma.practiceProgress.findMany({
+      where: { userId, topic: { projectId: courseId } },
+      select: { topicId: true, contentId: true, problemIndex: true, problemTitle: true, stepsSolved: true },
+    }),
+    prisma.topicContent.findMany({
+      where: { contentType: 'interactive_examples', topic: { projectId: courseId, project: { userId } } },
+      select: { id: true, topicId: true, contentData: true, updatedAt: true },
+    }),
   ])
+  // Practice is done when 80% of the steps of the current problems are solved.
+  const practiceDone = new Set<string>()
+  for (const content of practiceContent) {
+    const problems = parsePracticeProblems(content.contentData, content.updatedAt.toISOString())?.items ?? []
+    const total = problems.reduce((sum, problem) => sum + problem.steps.length, 0)
+    const solved = practiceRows
+      .filter((row) => row.contentId === content.id && problems[row.problemIndex]?.title === row.problemTitle)
+      .reduce((sum, row) => sum + row.stepsSolved, 0)
+    if (total > 0 && solved / total >= PRACTICE_DONE_SHARE) practiceDone.add(content.topicId)
+  }
   const extraById = new Map(extra.map((row) => [row.id, row]))
   const sourcesByTopic = new Map<string, SourceRef[]>()
   for (const row of sourceRows) {
@@ -514,6 +536,7 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
     dueAt: topic.dueAt,
     lastReviewedAt: extraById.get(topic.id)?.reviewSchedules[0]?.lastReviewedAt?.toISOString() ?? null,
     progress: topic.progress,
+    practiceDone: practiceDone.has(topic.id),
     content: topic.content,
   }))
 

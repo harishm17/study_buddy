@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
+import { withPrisma } from './helpers/db'
 import { DEMO_EMAIL, DEMO_PASSWORD, FIXTURE_PDF, demoIds } from './helpers/seed-demo'
 
 // The course structure screens: units on the topics page and in the sidebar, the topic header
@@ -178,8 +179,10 @@ test.describe('the demo course', () => {
     await page.keyboard.press('Space')
     await page.getByRole('button', { name: 'Check' }).click()
     await expect(body(page).getByText('Correct', { exact: true })).toBeVisible()
-    // Leave the browser's saved progress alone for other specs.
+    // Leave the saved progress alone for other specs: the browser's cache and the server's rows.
+    await expect.poll(() => withPrisma((prisma) => prisma.practiceProgress.count({ where: { topicId: mathTopic } }))).toBeGreaterThan(0)
     await page.evaluate(() => localStorage.clear())
+    await withPrisma((prisma) => prisma.practiceProgress.deleteMany({ where: { topicId: mathTopic } }))
   })
 
   test('materials show a role badge on each file', async ({ page }) => {

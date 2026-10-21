@@ -37,6 +37,14 @@ test('the study path shows missing, ready and done blocks', () => {
   assert.deepEqual(path, { notes: 'done', examples: 'missing', practice: 'ready', quiz: 'ready', quizScore: 70 })
 })
 
+test('practice shows as done once most of its steps are solved on the server', () => {
+  const base = { content: ['interactive_examples'], progress: { notes: false, examples: false, quiz: false, quizScore: null } }
+  assert.equal(studyPath(base).practice, 'ready')
+  assert.equal(studyPath({ ...base, practiceDone: false }).practice, 'ready')
+  assert.equal(studyPath({ ...base, practiceDone: true }).practice, 'done')
+  assert.equal(studyPath({ content: [], progress: base.progress, practiceDone: false }).practice, 'missing')
+})
+
 test('"Needs work" puts due topics first, then the lowest mastery, not started included', () => {
   const now = Date.parse('2026-10-20T12:00:00Z')
   const topics = [
