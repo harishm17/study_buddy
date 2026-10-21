@@ -36,6 +36,7 @@ model User {
   voiceDrillAttempts  VoiceDrillAttempt[]
   learningSignals     LearningSignal[]
   reviewSchedules     ReviewSchedule[]
+  practiceProgress    PracticeProgress[]
   chatThreads         ChatThread[]
   llmUsageEvents      LlmUsageEvent[]
 
@@ -55,6 +56,13 @@ model Project {
   status      String   @default("setup") // setup|topics_pending|active|completed
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // The learning plan: the exam date (a calendar date, stored as midnight UTC of that date; null
+  // while unknown), the minutes the student can study on a day, and whether the student closed
+  // the "When is your exam?" card on the overview.
+  examDate            DateTime? @map("exam_date")
+  dailyMinutes        Int       @default(45) @map("daily_minutes")
+  examPromptDismissed Boolean   @default(false) @map("exam_prompt_dismissed")
 
   // Relations
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -165,6 +173,9 @@ model Topic {
   objectives         String[]
   prerequisiteIds    String[] @map("prerequisite_ids")
   estimatedMinutes   Int?     @map("estimated_minutes")
+  // The topic's concepts appear in the student's past exams (set when past exams are read). The
+  // learning plan teaches these first when time is short.
+  examRelevant       Boolean  @default(false) @map("exam_relevant")
 
   // Relations
   project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -179,6 +190,7 @@ model Topic {
   voiceDrillAttempts VoiceDrillAttempt[]
   learningSignals    LearningSignal[]
   reviewSchedules    ReviewSchedule[]
+  practiceProgress   PracticeProgress[]
 
   @@index([projectId, orderIndex])
   @@index([unitId])
@@ -283,6 +295,9 @@ model TopicQuiz {
   id        String   @id @default(uuid())
   topicId   String   @map("topic_id")
   questions Json
+  // standard: written by the AI service. retry: the questions a student missed in their last two
+  // attempts, copied from the sets they came from (no model call).
+  kind      String   @default("standard")
   createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
@@ -415,7 +430,7 @@ model LearningSignal {
   userId     String   @map("user_id")
   projectId  String   @map("project_id")
   topicId    String?  @map("topic_id")
-  source     String   // quiz|voice|exam
+  source     String   // quiz|voice|exam|practice
   score      Float
   confidence Int?
   metadata   Json?
@@ -429,6 +444,38 @@ model LearningSignal {
   @@index([userId, topicId, source, createdAt])
   @@index([source, createdAt])
   @@map("learning_signals")
+}
+
+// ============================================
+// Practice progress (solved steps per practice problem, so it follows the student across devices)
+// ============================================
+
+model PracticeProgress {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  topicId       String    @map("topic_id")
+  // The topic's interactive_examples content row the problem belongs to.
+  contentId     String    @map("content_id")
+  problemIndex  Int       @map("problem_index")
+  // The problem's title when the progress was stored: a rewrite with new titles starts clean.
+  problemTitle  String    @map("problem_title")
+  stepsSolved   Int       @default(0) @map("steps_solved")
+  stepsTotal    Int       @map("steps_total")
+  hintsUsed     Int       @default(0) @map("hints_used")
+  // Step positions (0-based) that were solved, answer-shown or helped by a hint.
+  solvedSteps   Int[]     @map("solved_steps")
+  revealedSteps Int[]     @map("revealed_steps")
+  hintedSteps   Int[]     @map("hinted_steps")
+  // Set when every step is solved or shown; the practice signal is recorded at that moment.
+  completedAt   DateTime? @map("completed_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId, problemIndex])
+  @@index([userId, topicId])
+  @@map("practice_progress")
 }
 
 // ============================================
@@ -537,6 +584,11 @@ model ExamSubmission {
   // Relations
   sampleExam SampleExam @relation(fields: [sampleExamId], references: [id], onDelete: Cascade)
   user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // When the graded result was first applied to the student's mastery and review schedules (the
+  // results page does it the first time it sees the grading). A regrade clears it, so the new
+  // grading is applied once more.
+  reviewAppliedAt DateTime? @map("review_applied_at")
 
   @@index([userId])
   @@index([sampleExamId, userId, submittedAt])
