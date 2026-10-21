@@ -2,7 +2,7 @@
   "label": "structure",
   "date": "2026-10-21",
   "code": {
-    "commit": "21ea117daaf3573e915ef0006110aa3ab3ebe603",
+    "commit": "2f592c383a9a48480d500b2708030ea67684d0d7",
     "branch": "feat/course-structure",
     "app_dirty": false
   },
@@ -527,9 +527,9 @@
   "spend": {
     "generation": 4.6791,
     "topics": 0.1552,
-    "judge": 2.1737,
-    "max_usd": 10.0,
-    "max_judge_usd": 3.0
+    "judge": 2.1592,
+    "max_usd": 12.0,
+    "max_judge_usd": 4.0
   },
   "stopped": null,
   "models": {
@@ -1642,16 +1642,16 @@
       "opus-medium": {
         "means": {
           "all": {
-            "correctness": 4.66,
+            "correctness": 4.88,
             "grounding": 4.91,
-            "teaching": 4.69,
+            "teaching": 4.78,
             "question_quality": 4.5,
             "n": 32
           },
           "interactive": {
-            "correctness": 3.88,
+            "correctness": 4.75,
             "grounding": 4.88,
-            "teaching": 4.12,
+            "teaching": 4.5,
             "question_quality": null,
             "n": 8
           },
@@ -1681,14 +1681,6 @@
           {
             "corpus": "mit-18.05",
             "topic": "t00-sets-and-counting-principles",
-            "type": "interactive",
-            "kind": "ambiguous_key",
-            "where": "Practice problem 2, Step 1 (multiple_choice)",
-            "description": "The step is labeled multiple choice with the key 'B', but no answer options are shown to the student. The student cannot tell what 'B' refers to. It is also easy to confuse with a set name, since the course uses A and B for sets. The guidance mentions 'all of both circles shaded', which suggests the options were meant to be Venn diagram shadings. The options (for example A: T\u2229P, B: T\u222aP, C: (T\u222aP)^c) must be listed for the key to make sense."
-          },
-          {
-            "corpus": "mit-18.05",
-            "topic": "t00-sets-and-counting-principles",
             "type": "notes",
             "kind": "other",
             "where": "Key concepts, Venn diagrams ASCII figure",
@@ -1699,48 +1691,8 @@
             "topic": "t03-independence-of-events",
             "type": "interactive",
             "kind": "ambiguous_key",
-            "where": "Problem 1, Steps 3 and 5",
-            "description": "Both questions ask 'Are X and Y independent?' and both have key 'A', but the correct verdicts are opposite: A and B are independent, while A and C are not. The options are not shown. If both steps use the same option list, one key is wrong. The other multiple-choice keys (Problem 2 Step 3 = C, Problem 3 Steps 2 and 4) also cannot be checked without their options."
-          },
-          {
-            "corpus": "mit-18.05",
-            "topic": "t03-independence-of-events",
-            "type": "interactive",
-            "kind": "unsupported_by_excerpts",
-            "where": "Problem 3, Steps 3-4",
-            "description": "The disjoint-versus-independent contrast is not in the excerpts. It is standard and correct, and it follows directly from the formal definition, so this is a minor point."
-          },
-          {
-            "corpus": "mit-18.05",
-            "topic": "t05-random-variables-pmf-and-cdf",
-            "type": "interactive",
-            "kind": "ambiguous_key",
-            "where": "Problem 2, Step 1 (multiple_choice)",
-            "description": "The key says 'B', but no answer options are listed anywhere. The student cannot see what B refers to, and the key cannot be verified. The explanation suggests the intended option is 'a function from the sample space to the reals', but the lettered choices are missing."
-          },
-          {
-            "corpus": "mit-18.05",
-            "topic": "t05-random-variables-pmf-and-cdf",
-            "type": "interactive",
-            "kind": "ambiguous_key",
-            "where": "Problem 2, Step 2 (multiple_choice)",
-            "description": "The key says 'C', but no options are given. From the explanation, the intended answer is {-3,-1,1,3}, but the student is never shown which lettered option that is."
-          },
-          {
-            "corpus": "mit-18.05",
-            "topic": "t05-random-variables-pmf-and-cdf",
-            "type": "interactive",
-            "kind": "ambiguous_key",
-            "where": "Problem 3, Step 3 (multiple_choice)",
-            "description": "The key says 'C' and the guidance refers to distractors (spikes, a straight line, a graph falling back toward 0). None of these choices are actually presented, so the question cannot be answered as written."
-          },
-          {
-            "corpus": "mit-18.05",
-            "topic": "t05-random-variables-pmf-and-cdf",
-            "type": "interactive",
-            "kind": "ambiguous_key",
-            "where": "Problem 3, Step 4 (multiple_choice)",
-            "description": "The key says 'C' (the non-decreasing property), but the list of properties to choose from is not shown, so the lettered answer is unverifiable."
+            "where": "Problem 3, Step 1 (text)",
+            "description": "The free-text answer key is 'A', with alternates 'the event A' and 'A itself'. A correct response written as 'A\u2229A = A', or with set notation, may not match, so the student could be marked wrong for a right answer. The mathematics itself is correct."
           },
           {
             "corpus": "mit-18.05",
@@ -1748,55 +1700,23 @@
             "type": "interactive",
             "kind": "ambiguous_key",
             "where": "Problem 1, Step 5",
-            "description": "The answer key is 'C', but no answer options are listed. The explanation and guidance say the fair coin, type A, has the highest posterior (\u22480.467, versus B \u22480.449 and C \u22480.084). Since the hypotheses are themselves labeled A, B and C, a student will read key 'C' as 'type C', which is the lowest posterior. The key either contradicts the explanation or depends on hidden option lettering; it should identify type A."
-          },
-          {
-            "corpus": "mit-18.05",
-            "topic": "t08-repeated-updating-and-screening-example",
-            "type": "interactive",
-            "kind": "ambiguous_key",
-            "where": "Problem 3, Step 3",
-            "description": "This multiple-choice step gives the key as 'C' without showing the options. The guidance mentions the original prevalence, the sensitivity, the normalizing constant 0.1085 and the first posterior, but there is no visible way to tell which option letter maps to 'first posterior'."
+            "description": "The option letters A/B/C collide with the coin type names A/B/C. Option A is 'Type C', and the key 'C' means 'Type A'. The key is correct, since Type A has the highest posterior at about 0.467. However, the labeling invites a student to answer 'A' meaning Type A and be marked wrong. Use distinct labels or matching order."
           },
           {
             "corpus": "mit-18.05",
             "topic": "t08-repeated-updating-and-screening-example",
             "type": "interactive",
             "kind": "other",
-            "where": "Problem 3, Step 2",
-            "description": "The accepted-answer list repeats 0.0876, which is also the main answer. This is harmless but sloppy."
-          },
-          {
-            "corpus": "mit-6.006",
-            "topic": "t00-comparison-model-search-lower-bound",
-            "type": "interactive",
-            "kind": "other",
-            "where": "Problem 1 Step 4; Problem 2 Steps 1\u20132; Problem 3 Steps 1 and 4 (all multiple_choice steps)",
-            "description": "The answer keys give letters (C, D, C, D, C) but the answer options are never shown. The keys cannot be checked against any choices, and a student would not know what they are picking between. The explanations do make the intended answers clear, and those answers are correct."
-          },
-          {
-            "corpus": "mit-6.006",
-            "topic": "t02-priority-queues-and-pq-sort",
-            "type": "interactive",
-            "kind": "other",
-            "where": "All multiple_choice steps (P1 S1, P1 S4, P2 S1, P2 S4, P3 S2\u2013S4)",
-            "description": "The answer keys are given only as letters (B, A, C, D, D, D, B), but the option texts are never shown. A student cannot answer these steps, and the keys cannot be checked against the choices. The explanations do make the intended answers clear: Set interface; delete_max then reinsert; [5,2,7,1]; selection sort; O(n^2); O(n log n); AVL not in-place."
+            "where": "Problem 1, Step 4",
+            "description": "The step asks for 3 decimal places, but 0.08 is also accepted. This is a minor inconsistency in the accepted forms; the value 0.084 itself is correct."
           },
           {
             "corpus": "mit-6.006",
             "topic": "t04-heap-sort-and-linear-build",
             "type": "interactive",
-            "kind": "factual",
+            "kind": "mathematical",
             "where": "Problem 2, Step 4 (feedback and explanation)",
-            "description": "The feedback says the total number of swaps is 'about 1.44n'. The constant lg e \u2248 1.443 comes only from the rough approximation height(i) \u2248 lg n \u2212 lg i. The true worst-case number of swaps in a bottom-up build is the sum of node heights, which is at most n \u2212 1. The candidate's own n = 8 case gives 7, while the approximation predicts about 10. The O(n) conclusion is right, and lg e is a fine answer to the approximation question as posed, but presenting 1.44n as the actual swap count is misleading."
-          },
-          {
-            "corpus": "mit-6.006",
-            "topic": "t04-heap-sort-and-linear-build",
-            "type": "interactive",
-            "kind": "other",
-            "where": "Problem 1 Steps 2, 3, 5; Problem 2 Steps 2, 3, 5; Problem 3 Steps 1, 3, 4",
-            "description": "Every multiple-choice step gives a letter key (A, B, C or D), but the answer options are never shown. A student cannot answer these steps, and a reviewer cannot confirm that the letters match the explanations. The explanations themselves are correct."
+            "description": "The feedback says the build makes 'about 1.44n' swaps in total. That figure comes from the approximation height(i) \u2248 lg n \u2212 lg i, which overestimates the real heights. The exact sum of node heights in a complete binary tree is at most n \u2212 1; Step 1's n = 8 case already shows this, with a sum of 7. The \u0398(n) conclusion is correct. The constant 1.44 should be presented as an artifact of the approximation, not as the actual swap count."
           },
           {
             "corpus": "mit-6.006",
@@ -1805,14 +1725,6 @@
             "kind": "mathematical",
             "where": "Key concepts > Why one-by-one building is \u03a9(n lg n), example with n = 16",
             "description": "The note says indices 8 to 15 sit at depth 3. With 0-indexed heap storage, depth(i) = floor(lg(i+1)), so depth 3 holds indices 7 to 14, and index 15 is at depth 4. The count of 8 items (half of n) is right, but the index range is off by one."
-          },
-          {
-            "corpus": "mit-6.006",
-            "topic": "t06-lis-and-alternating-coin-game",
-            "type": "interactive",
-            "kind": "ambiguous_key",
-            "where": "Problem 1 Step 5; Problem 2 Step 5; Problem 3 Steps 1, 2, 4 (all multiple_choice steps)",
-            "description": "Each multiple-choice step gives an answer key letter (B, A, D, C, A), but no answer options are shown. A student cannot answer or check these steps. The explanations show the intended content, but the letter keys cannot be verified."
           },
           {
             "corpus": "mit-6.006",
@@ -1831,9 +1743,9 @@
             "description": "The explanation says that starting from 2 the 'only increasing chains that follow are 3, 6, 9 or 3, 6, 7'. Taken literally this is false: 2, 8, 9 and 2, 6, 9 are also increasing chains starting from 2. It should say these are the longest chains from 2. The argument also never explicitly rules out starting points other than 2 and 5, though those are obviously shorter. The answer key of 4 is still correct."
           }
         ],
-        "mathematical_errors": 1,
+        "mathematical_errors": 2,
         "mathematical_errors_by_type": {
-          "interactive": 0,
+          "interactive": 1,
           "notes": 1,
           "quiz": 0
         }

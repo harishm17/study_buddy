@@ -1,11 +1,11 @@
 # Generation eval: structure
 
-- Date: 2026-10-21. Code: `21ea117daa`, branch `feat/course-structure`.
+- Date: 2026-10-21. Code: `2f592c383a`, branch `feat/course-structure`.
 - Corpora and topics generated: mit-18.05 4, mit-6.006 4. Topics came from: the app's course planner.
 - Models: opus:medium. Content types: notes, solved, interactive, quiz.
 - Requested per topic: 3 examples of each kind, 10 quiz questions, medium difficulty, comprehensive notes.
 - Judge: opus:medium.
-- Spend: $4.68 generation, $0.16 topic extraction, $2.17 judge; total $7.01 (caps: $10.00 total, $3.00 judge).
+- Spend: $4.68 generation, $0.16 topic extraction, $2.16 judge; total $6.99 (caps: $12.00 total, $4.00 judge).
 
 ## Cost and latency
 
@@ -47,37 +47,26 @@ Judged 32 (topic, type) pairs with opus:medium. Each call saw the excerpts and e
 
 | Model | Correctness | Grounding | Teaching | Question quality (quiz) | Mathematical errors | All errors |
 |---|---|---|---|---|---|---|
-| opus:medium | 4.66 | 4.91 | 4.69 | 4.50 | 1 | 19 |
+| opus:medium | 4.88 | 4.91 | 4.78 | 4.50 | 2 | 8 |
 
 By content type (correctness / teaching, plus question quality for quizzes):
 
 | Model | Notes | Worked examples | Practice problems | Quiz |
 |---|---|---|---|---|
-| opus:medium | 4.88 / 5.00 (1 math err) | 5.00 / 4.88 | 3.88 / 4.12 | 4.88 / 4.75 / 4.50 |
+| opus:medium | 4.88 / 5.00 (1 math err) | 5.00 / 4.88 | 4.75 / 4.50 (1 math err) | 4.88 / 4.75 / 4.50 |
 
 ### Errors the judge listed
 
 Every error the judge reported, by model. The judge can be wrong; check an error before relying on it.
 
-**opus:medium** (19 errors, 1 mathematical)
+**opus:medium** (8 errors, 2 mathematical)
 
-- [mit-18.05 / t00-sets-and-counting-principles / interactive] ambiguous_key, Practice problem 2, Step 1 (multiple_choice): The step is labeled multiple choice with the key 'B', but no answer options are shown to the student. The student cannot tell what 'B' refers to. It is also easy to confuse with a set name, since the course uses A and B for sets. The guidance mentions 'all of both circles shaded', which suggests the options were meant to be Venn diagram shadings. The options (for example A: T∩P, B: T∪P, C: (T∪P)^c) must be listed for the key to make sense.
 - [mit-18.05 / t00-sets-and-counting-principles / notes] other, Key concepts, Venn diagrams ASCII figure: The text diagram draws two separate, non-overlapping circles with an '(overlap)' label between them, so it does not actually show L ∩ R as a shared region. The shading rules in the text are correct, but the picture could confuse a first-time reader.
-- [mit-18.05 / t03-independence-of-events / interactive] ambiguous_key, Problem 1, Steps 3 and 5: Both questions ask 'Are X and Y independent?' and both have key 'A', but the correct verdicts are opposite: A and B are independent, while A and C are not. The options are not shown. If both steps use the same option list, one key is wrong. The other multiple-choice keys (Problem 2 Step 3 = C, Problem 3 Steps 2 and 4) also cannot be checked without their options.
-- [mit-18.05 / t03-independence-of-events / interactive] unsupported_by_excerpts, Problem 3, Steps 3-4: The disjoint-versus-independent contrast is not in the excerpts. It is standard and correct, and it follows directly from the formal definition, so this is a minor point.
-- [mit-18.05 / t05-random-variables-pmf-and-cdf / interactive] ambiguous_key, Problem 2, Step 1 (multiple_choice): The key says 'B', but no answer options are listed anywhere. The student cannot see what B refers to, and the key cannot be verified. The explanation suggests the intended option is 'a function from the sample space to the reals', but the lettered choices are missing.
-- [mit-18.05 / t05-random-variables-pmf-and-cdf / interactive] ambiguous_key, Problem 2, Step 2 (multiple_choice): The key says 'C', but no options are given. From the explanation, the intended answer is {-3,-1,1,3}, but the student is never shown which lettered option that is.
-- [mit-18.05 / t05-random-variables-pmf-and-cdf / interactive] ambiguous_key, Problem 3, Step 3 (multiple_choice): The key says 'C' and the guidance refers to distractors (spikes, a straight line, a graph falling back toward 0). None of these choices are actually presented, so the question cannot be answered as written.
-- [mit-18.05 / t05-random-variables-pmf-and-cdf / interactive] ambiguous_key, Problem 3, Step 4 (multiple_choice): The key says 'C' (the non-decreasing property), but the list of properties to choose from is not shown, so the lettered answer is unverifiable.
-- [mit-18.05 / t08-repeated-updating-and-screening-example / interactive] ambiguous_key, Problem 1, Step 5: The answer key is 'C', but no answer options are listed. The explanation and guidance say the fair coin, type A, has the highest posterior (≈0.467, versus B ≈0.449 and C ≈0.084). Since the hypotheses are themselves labeled A, B and C, a student will read key 'C' as 'type C', which is the lowest posterior. The key either contradicts the explanation or depends on hidden option lettering; it should identify type A.
-- [mit-18.05 / t08-repeated-updating-and-screening-example / interactive] ambiguous_key, Problem 3, Step 3: This multiple-choice step gives the key as 'C' without showing the options. The guidance mentions the original prevalence, the sensitivity, the normalizing constant 0.1085 and the first posterior, but there is no visible way to tell which option letter maps to 'first posterior'.
-- [mit-18.05 / t08-repeated-updating-and-screening-example / interactive] other, Problem 3, Step 2: The accepted-answer list repeats 0.0876, which is also the main answer. This is harmless but sloppy.
-- [mit-6.006 / t00-comparison-model-search-lower-bound / interactive] other, Problem 1 Step 4; Problem 2 Steps 1–2; Problem 3 Steps 1 and 4 (all multiple_choice steps): The answer keys give letters (C, D, C, D, C) but the answer options are never shown. The keys cannot be checked against any choices, and a student would not know what they are picking between. The explanations do make the intended answers clear, and those answers are correct.
-- [mit-6.006 / t02-priority-queues-and-pq-sort / interactive] other, All multiple_choice steps (P1 S1, P1 S4, P2 S1, P2 S4, P3 S2–S4): The answer keys are given only as letters (B, A, C, D, D, D, B), but the option texts are never shown. A student cannot answer these steps, and the keys cannot be checked against the choices. The explanations do make the intended answers clear: Set interface; delete_max then reinsert; [5,2,7,1]; selection sort; O(n^2); O(n log n); AVL not in-place.
-- [mit-6.006 / t04-heap-sort-and-linear-build / interactive] factual, Problem 2, Step 4 (feedback and explanation): The feedback says the total number of swaps is 'about 1.44n'. The constant lg e ≈ 1.443 comes only from the rough approximation height(i) ≈ lg n − lg i. The true worst-case number of swaps in a bottom-up build is the sum of node heights, which is at most n − 1. The candidate's own n = 8 case gives 7, while the approximation predicts about 10. The O(n) conclusion is right, and lg e is a fine answer to the approximation question as posed, but presenting 1.44n as the actual swap count is misleading.
-- [mit-6.006 / t04-heap-sort-and-linear-build / interactive] other, Problem 1 Steps 2, 3, 5; Problem 2 Steps 2, 3, 5; Problem 3 Steps 1, 3, 4: Every multiple-choice step gives a letter key (A, B, C or D), but the answer options are never shown. A student cannot answer these steps, and a reviewer cannot confirm that the letters match the explanations. The explanations themselves are correct.
+- [mit-18.05 / t03-independence-of-events / interactive] ambiguous_key, Problem 3, Step 1 (text): The free-text answer key is 'A', with alternates 'the event A' and 'A itself'. A correct response written as 'A∩A = A', or with set notation, may not match, so the student could be marked wrong for a right answer. The mathematics itself is correct.
+- [mit-18.05 / t08-repeated-updating-and-screening-example / interactive] ambiguous_key, Problem 1, Step 5: The option letters A/B/C collide with the coin type names A/B/C. Option A is 'Type C', and the key 'C' means 'Type A'. The key is correct, since Type A has the highest posterior at about 0.467. However, the labeling invites a student to answer 'A' meaning Type A and be marked wrong. Use distinct labels or matching order.
+- [mit-18.05 / t08-repeated-updating-and-screening-example / interactive] other, Problem 1, Step 4: The step asks for 3 decimal places, but 0.08 is also accepted. This is a minor inconsistency in the accepted forms; the value 0.084 itself is correct.
+- [mit-6.006 / t04-heap-sort-and-linear-build / interactive] mathematical, Problem 2, Step 4 (feedback and explanation): The feedback says the build makes 'about 1.44n' swaps in total. That figure comes from the approximation height(i) ≈ lg n − lg i, which overestimates the real heights. The exact sum of node heights in a complete binary tree is at most n − 1; Step 1's n = 8 case already shows this, with a sum of 7. The Θ(n) conclusion is correct. The constant 1.44 should be presented as an artifact of the approximation, not as the actual swap count.
 - [mit-6.006 / t04-heap-sort-and-linear-build / notes] mathematical, Key concepts > Why one-by-one building is Ω(n lg n), example with n = 16: The note says indices 8 to 15 sit at depth 3. With 0-indexed heap storage, depth(i) = floor(lg(i+1)), so depth 3 holds indices 7 to 14, and index 15 is at depth 4. The count of 8 items (half of n) is right, but the index range is off by one.
-- [mit-6.006 / t06-lis-and-alternating-coin-game / interactive] ambiguous_key, Problem 1 Step 5; Problem 2 Step 5; Problem 3 Steps 1, 2, 4 (all multiple_choice steps): Each multiple-choice step gives an answer key letter (B, A, D, C, A), but no answer options are shown. A student cannot answer or check these steps. The explanations show the intended content, but the letter keys cannot be verified.
 - [mit-6.006 / t06-lis-and-alternating-coin-game / notes] unsupported_by_excerpts, The idea, opening sentence: The notes say 'In SRTBOT and longest common subsequence, the natural subproblems... were already enough.' Longest common subsequence and prior SRTBOT examples do not appear in the excerpts. This is a minor reference to course content outside what was provided.
 - [mit-6.006 / t06-lis-and-alternating-coin-game / quiz] other, Question 1 explanation: The explanation says that starting from 2 the 'only increasing chains that follow are 3, 6, 9 or 3, 6, 7'. Taken literally this is false: 2, 8, 9 and 2, 6, 9 are also increasing chains starting from 2. It should say these are the longest chains from 2. The argument also never explicitly rules out starting points other than 2 and 5, though those are obviously shorter. The answer key of 4 is still correct.
 

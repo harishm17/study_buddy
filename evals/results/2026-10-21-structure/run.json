@@ -2,7 +2,7 @@
   "label": "structure",
   "date": "2026-10-21",
   "code": {
-    "commit": "21ea117daaf3573e915ef0006110aa3ab3ebe603",
+    "commit": "2f592c383a9a48480d500b2708030ea67684d0d7",
     "branch": "feat/course-structure",
     "app_dirty": false
   },
@@ -33,8 +33,8 @@
   "judge": "opus:medium",
   "mock": false,
   "seed": 0,
-  "max_usd": 10.0,
-  "max_judge_usd": 3.0,
+  "max_usd": 12.0,
+  "max_judge_usd": 4.0,
   "notes_sections": [
     "What you'll learn",
     "The idea",
@@ -52,6 +52,6 @@
   "spend": {
     "generation": 4.6791,
     "topics": 0.1552,
-    "judge": 2.1737
+    "judge": 2.1592
   }
 }
