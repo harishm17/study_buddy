@@ -37,7 +37,10 @@ export default async function TopicsPage({
             keywords: topic.keywords,
             orderIndex: topic.orderIndex,
             confirmed: topic.confirmed,
+            unitId: topic.unitId,
+            sources: topic.sources,
           }))}
+          units={data.units}
           extractJob={data.extractJob}
           extractFailure={data.extractFailure}
           filesReady={data.materialsReady}

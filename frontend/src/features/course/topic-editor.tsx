@@ -7,10 +7,9 @@ import {
   ArrowDown,
   ArrowsClockwise,
   ArrowUp,
-  DotsSixVertical,
   DotsThree,
   Files,
-  GitMerge,
+  FolderSimplePlus,
   ListBullets,
   PencilSimple,
   Plus,
@@ -24,10 +23,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -35,273 +32,41 @@ import { IconButton } from '@/components/ui/icon-button'
 import { InlineAlert } from '@/components/ui/inline-alert'
 import { Input } from '@/components/ui/input'
 import { JobStatus } from '@/components/ui/job-status'
+import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/toaster'
-import { Tooltip } from '@/components/ui/tooltip'
 import { apiFetch, isApiError } from '@/lib/api/client'
 import { pluralize } from '@/lib/format'
 import { moveInOrder } from '@/lib/topics/ordering'
-import { cn } from '@/lib/utils'
-import type { JobRef, TopicRow } from '@/server/queries/course'
+import { groupTopicsByUnit } from '@/lib/topics/units'
+import type { JobRef } from '@/server/queries/course'
+import type { ShellUnit } from '@/server/queries/courses'
+import { MoveTopicDialog, UnitDialog } from './editor-dialogs'
 import { useExtraction } from './extraction'
+import { TopicEditorRow, type EditorTopic, type MergeGroup } from './topic-editor-row'
 
-type EditorTopic = Pick<TopicRow, 'id' | 'name' | 'description' | 'keywords' | 'orderIndex' | 'confirmed'>
+const NO_UNIT = 'none'
+const LAST = Number.MAX_SAFE_INTEGER
 
-const byOrder = (topics: EditorTopic[]) => [...topics].sort((a, b) => a.orderIndex - b.orderIndex)
+const byOrder = <T extends { orderIndex: number }>(list: T[]) => [...list].sort((a, b) => a.orderIndex - b.orderIndex)
+
+/** Gives every topic its place in the course order: units in order, each unit's topics, then the rest. */
+function renumber(topics: EditorTopic[], units: ShellUnit[]): EditorTopic[] {
+  const position = new Map(groupTopicsByUnit(topics, units).flatMap((group) => group.topics).map((topic, index) => [topic.id, index]))
+  return topics.map((topic) => ({ ...topic, orderIndex: position.get(topic.id) ?? topic.orderIndex }))
+}
 
 type TopicEditorProps = {
   courseId: string
   topics: EditorTopic[]
+  /** In course order; empty for a flat course, which is edited as one plain list. */
+  units: ShellUnit[]
   extractJob: JobRef | null
   extractFailure: string | null
   filesReady: number
   filesProcessing: number
   /** Every topic is confirmed: the editor was opened with ?edit=1. */
   allConfirmed: boolean
-}
-
-function Keywords({ keywords }: { keywords: string[] }) {
-  if (keywords.length === 0) return null
-  const shown = keywords.slice(0, 3)
-  const rest = keywords.slice(3)
-  return (
-    <span className="flex flex-wrap items-center gap-1.5">
-      {shown.map((keyword) => (
-        <Badge key={keyword} className="max-w-[160px] truncate">
-          {keyword}
-        </Badge>
-      ))}
-      {rest.length > 0 ? (
-        <Tooltip content={rest.join(', ')}>
-          <Badge tabIndex={0} className="cursor-default">{`+${rest.length}`}</Badge>
-        </Tooltip>
-      ) : null}
-    </span>
-  )
-}
-
-type RowProps = {
-  topic: EditorTopic
-  index: number
-  total: number
-  others: EditorTopic[]
-  editing: boolean
-  dragging: boolean
-  indicator: 'before' | 'after' | null
-  armed: boolean
-  onStartEdit: () => void
-  onCancelEdit: () => void
-  onSave: (name: string, description: string) => void
-  onMove: (to: number) => void
-  onMerge: (target: EditorTopic) => void
-  onDelete: () => void
-  onArm: (armed: boolean) => void
-  onDragStart: (event: React.DragEvent) => void
-  onDragOver: (event: React.DragEvent) => void
-  onDrop: (event: React.DragEvent) => void
-  onDragEnd: () => void
-}
-
-function EditFields({
-  topic,
-  onSave,
-  onCancel,
-}: {
-  topic: EditorTopic
-  onSave: (name: string, description: string) => void
-  onCancel: () => void
-}) {
-  const [name, setName] = React.useState(topic.name)
-  const [description, setDescription] = React.useState(topic.description ?? '')
-  const formRef = React.useRef<HTMLDivElement>(null)
-  const finished = React.useRef(false)
-
-  function commit() {
-    if (finished.current) return
-    finished.current = true
-    onSave(name, description)
-  }
-  function cancel() {
-    if (finished.current) return
-    finished.current = true
-    onCancel()
-  }
-  const keys = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter') {
-      event.preventDefault()
-      commit()
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      cancel()
-    }
-  }
-
-  return (
-    <div
-      ref={formRef}
-      className="flex flex-col gap-2"
-      onBlur={(event) => {
-        if (!formRef.current?.contains(event.relatedTarget as Node | null)) commit()
-      }}
-    >
-      <Input
-        autoFocus
-        aria-label="Topic name"
-        maxLength={255}
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-        onKeyDown={keys}
-      />
-      <Input
-        aria-label="Description"
-        placeholder="Description (optional)"
-        value={description}
-        onChange={(event) => setDescription(event.target.value)}
-        onKeyDown={keys}
-      />
-    </div>
-  )
-}
-
-function TopicEditorRow({
-  topic,
-  index,
-  total,
-  others,
-  editing,
-  dragging,
-  indicator,
-  armed,
-  onStartEdit,
-  onCancelEdit,
-  onSave,
-  onMove,
-  onMerge,
-  onDelete,
-  onArm,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
-}: RowProps) {
-  const renameRequested = React.useRef(false)
-
-  function onHandleKey(event: React.KeyboardEvent) {
-    if (event.key === 'ArrowUp' && index > 0) {
-      event.preventDefault()
-      onMove(index - 1)
-    } else if (event.key === 'ArrowDown' && index < total - 1) {
-      event.preventDefault()
-      onMove(index + 1)
-    }
-  }
-
-  return (
-    <li
-      draggable={armed}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      className={cn('relative flex items-start gap-2 py-3 max-sm:gap-1.5', dragging && 'opacity-40')}
-    >
-      {indicator ? (
-        <span
-          aria-hidden="true"
-          className={cn('absolute inset-x-0 h-0.5 rounded-full bg-accent', indicator === 'before' ? '-top-px' : '-bottom-px')}
-        />
-      ) : null}
-      <button
-        type="button"
-        data-handle={topic.id}
-        aria-label={`Reorder ${topic.name}. Use the up and down arrow keys to move it.`}
-        onKeyDown={onHandleKey}
-        onPointerDown={() => onArm(true)}
-        onPointerUp={() => onArm(false)}
-        className="mt-0.5 inline-flex size-6 shrink-0 cursor-grab items-center justify-center rounded-chip text-fg-3 hover:bg-surface-2 hover:text-fg active:cursor-grabbing max-sm:size-8"
-      >
-        <DotsSixVertical aria-hidden="true" weight="bold" className="size-4" />
-      </button>
-      <span className="mt-0.5 w-6 shrink-0 text-right text-small tabular text-fg-3">{index + 1}</span>
-
-      <div className="min-w-0 flex-1 pl-1">
-        {editing ? (
-          <EditFields topic={topic} onSave={onSave} onCancel={onCancelEdit} />
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={onStartEdit}
-              aria-label={`Rename ${topic.name}`}
-              className="block max-w-full truncate rounded-chip text-left text-body-strong text-fg hover:underline"
-            >
-              {topic.name}
-            </button>
-            {topic.description ? (
-              <p className="mt-0.5 truncate text-small text-fg-2" title={topic.description}>
-                {topic.description}
-              </p>
-            ) : null}
-            {topic.keywords.length > 0 ? (
-              <div className="mt-1.5">
-                <Keywords keywords={topic.keywords} />
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <IconButton label={`Actions for ${topic.name}`} icon={<DotsThree weight="bold" />} size="sm" noTooltip />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="min-w-[200px]"
-          onCloseAutoFocus={(event) => {
-            // Rename opens an input that has focus; the menu must not take it back.
-            if (renameRequested.current) {
-              event.preventDefault()
-              renameRequested.current = false
-            }
-          }}
-        >
-          <DropdownMenuItem
-            icon={<PencilSimple />}
-            onSelect={() => {
-              renameRequested.current = true
-              onStartEdit()
-            }}
-          >
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger icon={<GitMerge />} disabled={others.length === 0}>
-              Merge into...
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-              {others.map((other) => (
-                <DropdownMenuItem key={other.id} onSelect={() => onMerge(other)}>
-                  {other.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-          <DropdownMenuItem icon={<ArrowUp />} disabled={index === 0} onSelect={() => onMove(index - 1)}>
-            Move up
-          </DropdownMenuItem>
-          <DropdownMenuItem icon={<ArrowDown />} disabled={index === total - 1} onSelect={() => onMove(index + 1)}>
-            Move down
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem icon={<Trash />} destructive onSelect={onDelete}>
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </li>
-  )
 }
 
 function SkeletonRows() {
@@ -320,13 +85,71 @@ function SkeletonRows() {
   )
 }
 
+
+/** The unit's title row: title, week, size, and its menu (edit, move, delete). */
+function UnitHeader({
+  unit,
+  count,
+  index,
+  total,
+  onEdit,
+  onMove,
+  onDelete,
+}: {
+  unit: ShellUnit
+  count: number
+  index: number
+  total: number
+  onEdit: () => void
+  onMove: (to: number) => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="flex items-center gap-x-3 gap-y-1 pb-1">
+      <h2 className="min-w-0 truncate text-heading text-fg">{unit.title}</h2>
+      {unit.weekLabel ? <Badge>{unit.weekLabel}</Badge> : null}
+      <span className="shrink-0 text-small tabular text-fg-3">{pluralize(count, 'topic')}</span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <IconButton
+            label={`Actions for unit ${unit.title}`}
+            icon={<DotsThree weight="bold" />}
+            size="sm"
+            noTooltip
+            className="ml-auto"
+          />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[200px]">
+          <DropdownMenuItem icon={<PencilSimple />} onSelect={onEdit}>
+            Edit unit
+          </DropdownMenuItem>
+          <DropdownMenuItem icon={<ArrowUp />} disabled={index === 0} onSelect={() => onMove(index - 1)}>
+            Move unit up
+          </DropdownMenuItem>
+          <DropdownMenuItem icon={<ArrowDown />} disabled={index === total - 1} onSelect={() => onMove(index + 1)}>
+            Move unit down
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem icon={<Trash />} destructive disabled={count > 0} onSelect={onDelete}>
+            Delete unit
+          </DropdownMenuItem>
+          {count > 0 ? <DropdownMenuLabel className="max-w-[220px] whitespace-normal">Move or delete its topics first.</DropdownMenuLabel> : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
 /**
- * The topic editor: rename, reorder (drag or keyboard), merge, delete, add, find again, and
- * confirm. Changes are applied at once and put back if the server refuses them.
+ * The topic editor: units with their topics (a flat course is one plain list). Rename, reorder
+ * (drag or keyboard, inside a unit), move to another unit, merge, delete and add topics; add, edit,
+ * move and delete units; find again; and confirm. Changes are applied at once and put back if the
+ * server refuses them. Each topic shows the files it is taught from, read-only.
  */
 export function TopicEditor({
   courseId,
   topics: serverTopics,
+  units: serverUnits,
   extractJob,
   extractFailure,
   filesReady,
@@ -337,26 +160,44 @@ export function TopicEditor({
   const extraction = useExtraction(courseId, extractJob)
 
   const [items, setItems] = React.useState(() => byOrder(serverTopics))
-  const [seen, setSeen] = React.useState(serverTopics)
-  if (serverTopics !== seen) {
-    setSeen(serverTopics)
+  const [unitItems, setUnitItems] = React.useState(() => byOrder(serverUnits))
+  const [seen, setSeen] = React.useState({ topics: serverTopics, units: serverUnits })
+  if (serverTopics !== seen.topics || serverUnits !== seen.units) {
+    setSeen({ topics: serverTopics, units: serverUnits })
     setItems(byOrder(serverTopics))
+    setUnitItems(byOrder(serverUnits))
   }
 
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [armed, setArmed] = React.useState<string | null>(null)
-  const [dragId, setDragId] = React.useState<string | null>(null)
+  const [drag, setDrag] = React.useState<{ id: string; group: string } | null>(null)
   const [overIndex, setOverIndex] = React.useState<number | null>(null)
   const [announcement, setAnnouncement] = React.useState('')
   const [mergePair, setMergePair] = React.useState<{ source: EditorTopic; target: EditorTopic } | null>(null)
   const [deleting, setDeleting] = React.useState<EditorTopic | null>(null)
+  const [moving, setMoving] = React.useState<EditorTopic | null>(null)
+  const [unitDialog, setUnitDialog] = React.useState<{ unit: ShellUnit | null } | null>(null)
+  const [deletingUnit, setDeletingUnit] = React.useState<ShellUnit | null>(null)
   const [findAgainOpen, setFindAgainOpen] = React.useState(false)
   const [newName, setNewName] = React.useState('')
+  const [newUnit, setNewUnit] = React.useState<string | null>(null)
   const [adding, setAdding] = React.useState(false)
   const [confirming, setConfirming] = React.useState(false)
   const addRef = React.useRef<HTMLInputElement>(null)
   const refocus = React.useRef<string | null>(null)
   const queue = React.useRef<Promise<unknown>>(Promise.resolve())
+
+  const groups = React.useMemo(() => groupTopicsByUnit(items, unitItems, { includeEmpty: true }), [items, unitItems])
+  const hasUnits = unitItems.length > 0
+  const numbers = React.useMemo(
+    () => new Map(groups.flatMap((group) => group.topics).map((topic, index) => [topic.id, index + 1])),
+    [groups]
+  )
+  const mergeGroupsFor = (topic: EditorTopic): MergeGroup[] =>
+    groups.map((group) => ({
+      label: hasUnits ? (group.unit ? group.unit.title : 'No unit') : null,
+      topics: group.topics.filter((other) => other.id !== topic.id),
+    }))
 
   // After a keyboard move the list re-renders in the new order; put focus back on the handle.
   React.useEffect(() => {
@@ -367,22 +208,32 @@ export function TopicEditor({
 
   const running = extraction.running
 
+  /** Requests go one after another so quick key presses reach the server in order. */
+  function enqueue(task: () => Promise<void>) {
+    queue.current = queue.current.then(task)
+  }
+
   function move(id: string, to: number, viaKeyboard = false) {
-    const ids = items.map((item) => item.id)
-    const slots = items.map((item) => item.orderIndex)
+    const group = groups.find((item) => item.topics.some((topic) => topic.id === id))
+    if (!group) return
+    const ids = group.topics.map((topic) => topic.id)
     const nextIds = moveInOrder(ids, id, to)
     if (nextIds.every((value, position) => value === ids[position])) return
     const before = items
     const byId = new Map(items.map((item) => [item.id, item]))
-    setItems(nextIds.map((value, position) => ({ ...byId.get(value)!, orderIndex: slots[position] })))
+    const reordered = groups.flatMap((item) =>
+      item === group ? nextIds.map((value) => byId.get(value) as EditorTopic) : item.topics
+    )
+    const position = reordered.findIndex((topic) => topic.id === id)
+    setItems(reordered.map((topic, index) => ({ ...topic, orderIndex: index })))
     const moved = byId.get(id)!
-    setAnnouncement(`Moved ${moved.name} to position ${nextIds.indexOf(id) + 1} of ${items.length}`)
+    setAnnouncement(`Moved ${moved.name} to position ${nextIds.indexOf(id) + 1} of ${nextIds.length}`)
     if (viaKeyboard) refocus.current = id
 
-    // Requests go one after another so quick key presses reach the server in order.
-    queue.current = queue.current.then(async () => {
+    enqueue(async () => {
       try {
-        await apiFetch(`/api/topics/${id}`, { method: 'PATCH', json: { orderIndex: to } })
+        // The route takes the place in the whole course order (units and topics listed in order).
+        await apiFetch(`/api/topics/${id}`, { method: 'PATCH', json: { orderIndex: position } })
         // A refresh that was already on its way (after adding a topic, say) can land after the
         // optimistic move and put the old order back; this one brings the saved order.
         router.refresh()
@@ -391,6 +242,22 @@ export function TopicEditor({
         toast.error("Couldn't move the topic. Try again.")
       }
     })
+  }
+
+  async function moveToUnit(topic: EditorTopic, unitId: string | null) {
+    const before = items
+    setItems(renumber(items.map((item) => (item.id === topic.id ? { ...item, unitId, orderIndex: LAST } : item)), unitItems))
+    try {
+      await apiFetch(`/api/topics/${topic.id}`, { method: 'PATCH', json: { unitId } })
+    } catch {
+      setItems(before)
+      toast.error("Couldn't move the topic. Try again.")
+      throw new Error('move failed')
+    }
+    const target = unitItems.find((unit) => unit.id === unitId)
+    setAnnouncement(`Moved ${topic.name} to ${target ? target.title : 'no unit'}`)
+    toast.success(target ? `Moved to ${target.title}` : 'Taken out of its unit')
+    router.refresh()
   }
 
   async function save(topic: EditorTopic, nameInput: string, descriptionInput: string) {
@@ -420,7 +287,7 @@ export function TopicEditor({
       toast.error(isApiError(error) ? error.message : "Couldn't merge the topics. Try again.")
       throw error
     }
-    setItems((current) => current.filter((item) => item.id !== mergePair.source.id))
+    setItems((current) => renumber(current.filter((item) => item.id !== mergePair.source.id), unitItems))
     toast.success(`Merged into ${mergePair.target.name}`)
     router.refresh()
   }
@@ -433,33 +300,44 @@ export function TopicEditor({
       toast.error("Couldn't delete the topic. Try again.")
       throw new Error('delete failed')
     }
-    setItems((current) => current.filter((item) => item.id !== deleting.id))
+    setItems((current) => renumber(current.filter((item) => item.id !== deleting.id), unitItems))
     toast.success('Topic deleted')
     router.refresh()
   }
+
+  // The unit a new topic goes to: the student's pick while it still exists, else the last unit.
+  const addTarget = newUnit && unitItems.some((unit) => unit.id === newUnit) ? newUnit : (unitItems[unitItems.length - 1]?.id ?? NO_UNIT)
 
   async function addTopic(event: React.FormEvent) {
     event.preventDefault()
     const name = newName.trim()
     if (!name || adding) return
     setAdding(true)
+    const unitId = hasUnits && addTarget !== NO_UNIT ? addTarget : null
     try {
-      const result = await apiFetch<{ topic: { id: string; name: string; description: string | null; keywords: string[]; orderIndex: number; userConfirmed: boolean } }>(
+      const result = await apiFetch<{ topic: { id: string; name: string; description: string | null; keywords: string[]; orderIndex: number; userConfirmed: boolean; unitId?: string | null } }>(
         `/api/projects/${courseId}/topics`,
-        { method: 'POST', json: { name } }
+        { method: 'POST', json: unitId ? { name, unitId } : { name } }
       )
       const topic = result.topic
-      setItems((current) => [
-        ...current,
-        {
-          id: topic.id,
-          name: topic.name,
-          description: topic.description,
-          keywords: topic.keywords ?? [],
-          orderIndex: topic.orderIndex,
-          confirmed: topic.userConfirmed,
-        },
-      ])
+      setItems((current) =>
+        renumber(
+          [
+            ...current,
+            {
+              id: topic.id,
+              name: topic.name,
+              description: topic.description,
+              keywords: topic.keywords ?? [],
+              orderIndex: LAST,
+              confirmed: topic.userConfirmed,
+              unitId: topic.unitId ?? unitId,
+              sources: [],
+            },
+          ],
+          unitItems
+        )
+      )
       setNewName('')
       router.refresh()
       addRef.current?.focus()
@@ -468,6 +346,60 @@ export function TopicEditor({
     } finally {
       setAdding(false)
     }
+  }
+
+  async function submitUnit(unit: ShellUnit | null, values: { title: string; weekLabel: string | null }) {
+    try {
+      if (unit) {
+        await apiFetch(`/api/units/${unit.id}`, { method: 'PATCH', json: values })
+        setUnitItems((current) => current.map((item) => (item.id === unit.id ? { ...item, ...values } : item)))
+        toast.success('Unit saved')
+      } else {
+        const result = await apiFetch<{ unit: ShellUnit }>(`/api/projects/${courseId}/units`, { method: 'POST', json: values })
+        setUnitItems((current) => [...current, result.unit])
+        setNewUnit(result.unit.id)
+        toast.success('Unit added')
+      }
+      router.refresh()
+    } catch (error) {
+      toast.error(isApiError(error) ? error.message : "Couldn't save the unit. Try again.")
+      throw error
+    }
+  }
+
+  function moveUnit(unit: ShellUnit, to: number) {
+    const ids = unitItems.map((item) => item.id)
+    const nextIds = moveInOrder(ids, unit.id, to)
+    if (nextIds.every((value, position) => value === ids[position])) return
+    const before = { items, unitItems }
+    const byId = new Map(unitItems.map((item) => [item.id, item]))
+    const nextUnits = nextIds.map((id, index) => ({ ...(byId.get(id) as ShellUnit), orderIndex: index }))
+    setUnitItems(nextUnits)
+    setItems(renumber(items, nextUnits))
+    setAnnouncement(`Moved ${unit.title} to position ${nextIds.indexOf(unit.id) + 1} of ${nextIds.length}`)
+    enqueue(async () => {
+      try {
+        await apiFetch(`/api/units/${unit.id}`, { method: 'PATCH', json: { orderIndex: nextIds.indexOf(unit.id) } })
+        router.refresh()
+      } catch {
+        setUnitItems(before.unitItems)
+        setItems(before.items)
+        toast.error("Couldn't move the unit. Try again.")
+      }
+    })
+  }
+
+  async function deleteUnit() {
+    if (!deletingUnit) return
+    try {
+      await apiFetch(`/api/units/${deletingUnit.id}`, { method: 'DELETE' })
+    } catch (error) {
+      toast.error(isApiError(error) ? error.message : "Couldn't delete the unit. Try again.")
+      throw error
+    }
+    setUnitItems((current) => current.filter((unit) => unit.id !== deletingUnit.id))
+    toast.success('Unit deleted')
+    router.refresh()
   }
 
   async function confirmTopics() {
@@ -482,23 +414,30 @@ export function TopicEditor({
     }
   }
 
-  // Drag and drop (mouse). Touch and keyboard use the handle keys and the row menu.
+  // Drag and drop (mouse), inside a unit. Touch and keyboard use the handle keys and the row menu.
   function dropAt(position: number) {
-    if (!dragId) return
-    const from = items.findIndex((item) => item.id === dragId)
+    if (!drag) return
+    const group = groups.find((item) => item.topics.some((topic) => topic.id === drag.id))
+    const from = group ? group.topics.findIndex((topic) => topic.id === drag.id) : -1
     const to = position > from ? position - 1 : position
-    if (from !== -1) move(dragId, to)
+    if (from !== -1) move(drag.id, to)
   }
   function endDrag() {
-    setDragId(null)
+    setDrag(null)
     setOverIndex(null)
     setArmed(null)
   }
 
   const title = allConfirmed ? 'Edit topics' : 'Check the topics'
-  const description = allConfirmed
-    ? 'Rename, reorder, merge or remove topics. Changes save as you go.'
-    : 'We found these in your materials. Rename, merge or remove any. You can change them later.'
+  const description = hasUnits
+    ? allConfirmed
+      ? 'Rename, move, merge or remove topics and units. Changes save as you go.'
+      : 'We grouped what we found into units. Rename, move, merge or remove any. You can change them later.'
+    : allConfirmed
+      ? 'Rename, reorder, merge or remove topics. Changes save as you go.'
+      : 'We found these in your materials. Rename, merge or remove any. You can change them later.'
+
+  const unitIndex = (unit: ShellUnit) => unitItems.findIndex((item) => item.id === unit.id)
 
   return (
     <div className="flex min-h-[calc(100dvh-8.5rem)] flex-col">
@@ -514,6 +453,9 @@ export function TopicEditor({
               onClick={() => setFindAgainOpen(true)}
             >
               Find again
+            </Button>
+            <Button variant="secondary" icon={<FolderSimplePlus />} onClick={() => setUnitDialog({ unit: null })}>
+              Add unit
             </Button>
             <Button
               variant="secondary"
@@ -563,7 +505,7 @@ export function TopicEditor({
         </InlineAlert>
       ) : null}
 
-      {!running && items.length === 0 && !extractFailure ? (
+      {!running && items.length === 0 && !hasUnits && !extractFailure ? (
         <EmptyState
           icon={<ListBullets />}
           title="No topics yet"
@@ -587,58 +529,101 @@ export function TopicEditor({
         </EmptyState>
       ) : null}
 
-      {!running && items.length > 0 ? (
-        <ul
-          aria-label="Topics"
-          className="divide-y divide-border border-y border-border"
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOverIndex(null)
-          }}
-        >
-          {items.map((topic, index) => (
-            <TopicEditorRow
-              key={topic.id}
-              topic={topic}
-              index={index}
-              total={items.length}
-              others={items.filter((item) => item.id !== topic.id)}
-              editing={editingId === topic.id}
-              dragging={dragId === topic.id}
-              indicator={
-                dragId && overIndex === index ? 'before' : dragId && overIndex === items.length && index === items.length - 1 ? 'after' : null
-              }
-              armed={armed === topic.id}
-              onStartEdit={() => setEditingId(topic.id)}
-              onCancelEdit={() => setEditingId(null)}
-              onSave={(name, desc) => save(topic, name, desc)}
-              onMove={(to) => move(topic.id, to, true)}
-              onMerge={(target) => setMergePair({ source: topic, target })}
-              onDelete={() => setDeleting(topic)}
-              onArm={(value) => setArmed(value ? topic.id : null)}
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = 'move'
-                event.dataTransfer.setData('text/plain', topic.id)
-                setDragId(topic.id)
-              }}
-              onDragOver={(event) => {
-                if (!dragId) return
-                event.preventDefault()
-                const rect = event.currentTarget.getBoundingClientRect()
-                setOverIndex(index + (event.clientY > rect.top + rect.height / 2 ? 1 : 0))
-              }}
-              onDrop={(event) => {
-                event.preventDefault()
-                if (overIndex !== null) dropAt(overIndex)
-                endDrag()
-              }}
-              onDragEnd={endDrag}
-            />
-          ))}
-        </ul>
+      {!running && (items.length > 0 || hasUnits) ? (
+        <div className={hasUnits ? 'flex flex-col gap-8' : undefined}>
+          {groups.map((group) => {
+            const key = group.unit?.id ?? 'loose'
+            const label = group.unit ? `Topics in ${group.unit.title}` : 'Topics'
+            return (
+              <div key={key}>
+                {hasUnits && group.unit ? (
+                  <UnitHeader
+                    unit={group.unit}
+                    count={group.topics.length}
+                    index={unitIndex(group.unit)}
+                    total={unitItems.length}
+                    onEdit={() => setUnitDialog({ unit: group.unit })}
+                    onMove={(to) => moveUnit(group.unit as ShellUnit, to)}
+                    onDelete={() => setDeletingUnit(group.unit)}
+                  />
+                ) : hasUnits ? (
+                  <div className="flex items-center gap-3 pb-1">
+                    <h2 className="text-heading text-fg">Topics</h2>
+                    <span className="text-small tabular text-fg-3">{pluralize(group.topics.length, 'topic')}</span>
+                  </div>
+                ) : null}
+                {group.topics.length === 0 ? (
+                  <p className="border-y border-border py-4 text-small text-fg-3">
+                    No topics in this unit yet. Move one here from its menu, or add a topic below.
+                  </p>
+                ) : (
+                  <ul
+                    aria-label={label}
+                    className="divide-y divide-border border-y border-border"
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOverIndex(null)
+                    }}
+                  >
+                    {group.topics.map((topic, index) => {
+                      const inDragGroup = drag?.group === key
+                      return (
+                        <TopicEditorRow
+                          key={topic.id}
+                          topic={topic}
+                          number={numbers.get(topic.id) ?? index + 1}
+                          index={index}
+                          total={group.topics.length}
+                          mergeGroups={mergeGroupsFor(topic)}
+                          hasUnits={hasUnits}
+                          editing={editingId === topic.id}
+                          dragging={drag?.id === topic.id}
+                          indicator={
+                            inDragGroup && overIndex === index
+                              ? 'before'
+                              : inDragGroup && overIndex === group.topics.length && index === group.topics.length - 1
+                                ? 'after'
+                                : null
+                          }
+                          armed={armed === topic.id}
+                          onStartEdit={() => setEditingId(topic.id)}
+                          onCancelEdit={() => setEditingId(null)}
+                          onSave={(name, desc) => save(topic, name, desc)}
+                          onMove={(to) => move(topic.id, to, true)}
+                          onMoveToUnit={() => setMoving(topic)}
+                          onMerge={(target) => setMergePair({ source: topic, target })}
+                          onDelete={() => setDeleting(topic)}
+                          onArm={(value) => setArmed(value ? topic.id : null)}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move'
+                            event.dataTransfer.setData('text/plain', topic.id)
+                            setDrag({ id: topic.id, group: key })
+                          }}
+                          onDragOver={(event) => {
+                            // Only inside the unit it came from: other units are reached from the row menu.
+                            if (!drag || drag.group !== key) return
+                            event.preventDefault()
+                            const rect = event.currentTarget.getBoundingClientRect()
+                            setOverIndex(index + (event.clientY > rect.top + rect.height / 2 ? 1 : 0))
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault()
+                            if (overIndex !== null) dropAt(overIndex)
+                            endDrag()
+                          }}
+                          onDragEnd={endDrag}
+                        />
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
+        </div>
       ) : null}
 
       {!running ? (
-        <form onSubmit={addTopic} className="mt-3">
+        <form onSubmit={addTopic} className="mt-3 flex flex-wrap items-center gap-2">
           <Input
             ref={addRef}
             aria-label="Add a topic"
@@ -648,14 +633,29 @@ export function TopicEditor({
             value={newName}
             disabled={adding}
             onChange={(event) => setNewName(event.target.value)}
-            containerClassName="border-dashed"
+            containerClassName="min-w-0 flex-1 basis-56 border-dashed"
           />
+          {hasUnits ? (
+            <div className="w-full sm:w-56">
+              <Select
+                aria-label="Unit for the new topic"
+                value={addTarget}
+                onValueChange={setNewUnit}
+                options={[
+                  ...unitItems.map((unit) => ({ value: unit.id, label: unit.title, hint: unit.weekLabel })),
+                  { value: NO_UNIT, label: 'No unit' },
+                ]}
+              />
+            </div>
+          ) : null}
         </form>
       ) : null}
 
       <div className="sticky bottom-0 z-sticky -mx-4 -mb-16 mt-auto border-t border-border bg-surface px-4 py-3 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
         <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-4">
-          <p className="text-small tabular text-fg-2">{running ? 'Finding topics' : pluralize(items.length, 'topic')}</p>
+          <p className="text-small tabular text-fg-2">
+            {running ? 'Finding topics' : hasUnits ? `${pluralize(items.length, 'topic')} in ${pluralize(unitItems.length, 'unit')}` : pluralize(items.length, 'topic')}
+          </p>
           {allConfirmed ? (
             <Button asChild variant="primary">
               <Link href={`/courses/${courseId}/topics`}>Done</Link>
@@ -668,6 +668,18 @@ export function TopicEditor({
         </div>
       </div>
 
+      <UnitDialog
+        open={!!unitDialog}
+        onOpenChange={(open) => !open && setUnitDialog(null)}
+        unit={unitDialog?.unit ?? null}
+        onSubmit={(values) => submitUnit(unitDialog?.unit ?? null, values)}
+      />
+      <MoveTopicDialog
+        topic={moving}
+        units={unitItems}
+        onOpenChange={(open) => !open && setMoving(null)}
+        onMove={(unitId) => (moving ? moveToUnit(moving, unitId) : Promise.resolve())}
+      />
       <ConfirmDialog
         open={findAgainOpen}
         onOpenChange={setFindAgainOpen}
@@ -692,6 +704,15 @@ export function TopicEditor({
         confirmLabel="Delete topic"
         destructive
         onConfirm={deleteTopic}
+      />
+      <ConfirmDialog
+        open={!!deletingUnit}
+        onOpenChange={(open) => !open && setDeletingUnit(null)}
+        title={deletingUnit ? `Delete ${deletingUnit.title}?` : 'Delete unit?'}
+        description="The unit has no topics. Only the heading goes."
+        confirmLabel="Delete unit"
+        destructive
+        onConfirm={deleteUnit}
       />
     </div>
   )
