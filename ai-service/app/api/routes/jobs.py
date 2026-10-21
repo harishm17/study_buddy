@@ -454,6 +454,28 @@ async def _skip_failed_topic(job: JobContext, input_data: ContentGenerationInput
         logger.exception("Could not continue the generation run after topic %s failed", topic["id"])
 
 
+def _prerequisite_question_count(preferences: dict) -> int:
+    try:
+        return min(max(int(preferences.get("prerequisite_questions", 2)), 1), 2)
+    except (TypeError, ValueError):
+        return 2
+
+
+async def _usable_prerequisite_id(topic, preferences: dict) -> str | None:
+    """The `prerequisite_topic_id` preference when it names another topic of the same project."""
+    prerequisite_id = preferences.get("prerequisite_topic_id")
+    if not isinstance(prerequisite_id, str) or not prerequisite_id:
+        return None
+    if prerequisite_id == topic["id"]:
+        logger.info("Ignoring prerequisite %s for topic %s: it is the topic itself", prerequisite_id, topic["id"])
+        return None
+    row = await execute_one("SELECT project_id FROM topics WHERE id = $1", prerequisite_id)
+    if not row or row["project_id"] != topic["project_id"]:
+        logger.info("Ignoring prerequisite %s for topic %s: not in the same project", prerequisite_id, topic["id"])
+        return None
+    return prerequisite_id
+
+
 async def _generate_and_store_content(job: JobContext, input_data: ContentGenerationInput, topic) -> JobOutcome:
     # Nothing is cached the first time a type is generated; regenerating one (more examples,
     # a new quiz set, a regenerated note) caches the excerpt block (see content_generator/context.py).
@@ -539,6 +561,8 @@ async def _generate_and_store_content(job: JobContext, input_data: ContentGenera
             if parsed:
                 question_types = parsed
 
+        prerequisite_id = await _usable_prerequisite_id(topic, input_data.preferences)
+
         result = await generator.generate_quiz(
             topic_id=topic['id'],
             topic_name=topic['name'],
@@ -548,6 +572,8 @@ async def _generate_and_store_content(job: JobContext, input_data: ContentGenera
             difficulty_level=difficulty,
             focus=focus,
             cache_excerpts=cache_excerpts,
+            prerequisite_topic_id=prerequisite_id,
+            prerequisite_questions=_prerequisite_question_count(input_data.preferences),
         )
         generated_content = result['questions']
         metadata = {
@@ -775,7 +801,8 @@ async def grade_exam_job(payload: JobPayload, job: JobContext) -> JobOutcome:
             UPDATE exam_submissions
             SET ai_grading = $1,
                 ai_feedback = $2,
-                graded_at = {UTC_NOW}
+                graded_at = {UTC_NOW},
+                review_applied_at = NULL
             WHERE id = $3
             """,
             json.dumps(grading_result),

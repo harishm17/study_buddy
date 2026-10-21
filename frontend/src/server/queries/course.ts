@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { examTitle } from '@/lib/exams/display'
-import { buildNextActionsForProject } from '@/lib/learning/planner'
+import { upNextFromPlan, type UpNextData } from '@/lib/learning/plan-copy'
 import { ACTIVE_JOB_STATUSES } from '@/lib/jobs/active-jobs'
 import {
   contentTypeLabel,
@@ -8,12 +8,14 @@ import {
   pickGenerationFailures,
   type GenerationJobRow,
 } from '@/lib/jobs/failure-message'
-import { describeNextAction, type DescribedAction } from '@/lib/next-action'
 import { maxUploadMb } from '@/lib/storage/upload-limits'
 import { courseMastery, masteryLevel, countMasteryLevels, type MasteryCounts } from '@/lib/mastery'
 import { readRole, type MaterialRole } from '@/lib/materials/role'
+import { parsePracticeProblems } from '@/features/topic/content'
 import { mergeSources, type SourceRef } from '@/lib/topics/sources'
+import { PRACTICE_DONE_SHARE } from '@/features/topic/practice-keys'
 import { getCourseShell, type CourseShell, type ShellTopic, type ShellUnit } from '@/server/queries/courses'
+import { getPlanData } from '@/server/queries/plan'
 
 /**
  * Read models for the course pages: overview (setup guide and Today view), materials and
@@ -283,7 +285,18 @@ export type TodayData = {
   /** Course mastery (0..1): mean over all topics, not-started ones counting as 0. Null with no topics. */
   averageMastery: number | null
   tiles: TodayTopic[]
-  upNext: DescribedAction[]
+  /** Today's items from the study plan: still to do, done, and the next day's first item when today is clear. */
+  upNext: UpNextData
+  /** The plan in a line: days to the exam, and the warning when time is short. */
+  planSummary: {
+    examDate: string | null
+    daysToExam: number | null
+    short: boolean
+    shortMessage: string | null
+    notScheduledCount: number
+  }
+  /** Ask "When is your exam?": no date yet and the card was not dismissed. */
+  examPrompt: boolean
   recentExams: RecentExam[]
   generation: GenerationState
   /** Confirmed topics with some content not written yet, for "Prepare all topics now". */
@@ -325,7 +338,11 @@ export function summarizeTopics(topics: ShellTopic[]) {
 }
 
 /** The Today view or the setup guide for a course, with everything either needs. Null if not theirs. */
-export async function getCourseOverview(userId: string, courseId: string): Promise<CourseOverview | null> {
+export async function getCourseOverview(
+  userId: string,
+  courseId: string,
+  timeZone: string
+): Promise<CourseOverview | null> {
   const course = await getCourseShell(userId, courseId)
   if (!course) return null
 
@@ -351,8 +368,8 @@ export async function getCourseOverview(userId: string, courseId: string): Promi
     }
   }
 
-  const [actions, generation, submissions] = await Promise.all([
-    buildNextActionsForProject(userId, courseId),
+  const [planData, generation, submissions] = await Promise.all([
+    getPlanData(userId, courseId, timeZone),
     getGenerationState(userId, course),
     prisma.examSubmission.findMany({
       where: { userId, status: 'submitted', sampleExam: { projectId: courseId, project: { userId } } },
@@ -367,12 +384,8 @@ export async function getCourseOverview(userId: string, courseId: string): Promi
     }),
   ])
 
-  const names = new Map(course.topics.map((topic) => [topic.id, topic.name]))
-  const upNext = actions
-    // The "writing your content" row is shown by the building panel instead.
-    .map((action) => describeNextAction(action, courseId, action.topicId ? names.get(action.topicId) : null))
-    .filter((action) => !action.isGenerating)
-    .slice(0, 4)
+  if (!planData) return null
+  const { plan } = planData
 
   const summary = summarizeTopics(course.topics)
   return {
@@ -384,7 +397,15 @@ export async function getCourseOverview(userId: string, courseId: string): Promi
         .filter((topic) => topic.confirmed)
         .slice(0, 8)
         .map((topic) => ({ id: topic.id, name: topic.name, mastery: topic.mastery, dueAt: topic.dueAt })),
-      upNext,
+      upNext: upNextFromPlan(plan, courseId),
+      planSummary: {
+        examDate: plan.examDate,
+        daysToExam: plan.daysToExam,
+        short: plan.short,
+        shortMessage: plan.shortMessage,
+        notScheduledCount: plan.notScheduled?.topics.length ?? 0,
+      },
+      examPrompt: course.examDate === null && !course.examPromptDismissed,
       generation,
       topicsToPrepare: course.topics.filter(
         (topic) => topic.confirmed && CORE_CONTENT_TYPES.some((type) => !topic.content.includes(type))
@@ -419,6 +440,8 @@ export type TopicRow = {
   /** Topics (ids, same course, earlier in the order) this one builds on. */
   prerequisiteIds: string[]
   estimatedMinutes: number | null
+  /** The topic's concepts appear on the student's past exams. */
+  examRelevant: boolean
   /** What the topic is taught from, one entry per file and page range, in document order. Empty for topics added by hand. */
   sources: SourceRef[]
   confirmed: boolean
@@ -426,6 +449,8 @@ export type TopicRow = {
   dueAt: string | null
   lastReviewedAt: string | null
   progress: { notes: boolean; examples: boolean; quiz: boolean; quizScore: number | null }
+  /** At least 80% of the practice steps are solved (stored on the server). */
+  practiceDone: boolean
   content: string[]
 }
 
@@ -447,7 +472,7 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
   const course = await getCourseShell(userId, courseId)
   if (!course) return null
 
-  const [extra, sourceRows, materials, generation] = await Promise.all([
+  const [extra, sourceRows, materials, generation, practiceRows, practiceContent] = await Promise.all([
     prisma.topic.findMany({
       where: { projectId: courseId, project: { userId } },
       select: {
@@ -456,6 +481,7 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
         objectives: true,
         prerequisiteIds: true,
         estimatedMinutes: true,
+        examRelevant: true,
         reviewSchedules: { where: { userId }, take: 1, select: { lastReviewedAt: true } },
       },
     }),
@@ -466,7 +492,25 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
     }),
     getMaterialsData(userId, courseId),
     getGenerationState(userId, course),
+    prisma.practiceProgress.findMany({
+      where: { userId, topic: { projectId: courseId } },
+      select: { topicId: true, contentId: true, problemIndex: true, problemTitle: true, stepsSolved: true },
+    }),
+    prisma.topicContent.findMany({
+      where: { contentType: 'interactive_examples', topic: { projectId: courseId, project: { userId } } },
+      select: { id: true, topicId: true, contentData: true, updatedAt: true },
+    }),
   ])
+  // Practice is done when 80% of the steps of the current problems are solved.
+  const practiceDone = new Set<string>()
+  for (const content of practiceContent) {
+    const problems = parsePracticeProblems(content.contentData, content.updatedAt.toISOString())?.items ?? []
+    const total = problems.reduce((sum, problem) => sum + problem.steps.length, 0)
+    const solved = practiceRows
+      .filter((row) => row.contentId === content.id && problems[row.problemIndex]?.title === row.problemTitle)
+      .reduce((sum, row) => sum + row.stepsSolved, 0)
+    if (total > 0 && solved / total >= PRACTICE_DONE_SHARE) practiceDone.add(content.topicId)
+  }
   const extraById = new Map(extra.map((row) => [row.id, row]))
   const sourcesByTopic = new Map<string, SourceRef[]>()
   for (const row of sourceRows) {
@@ -485,12 +529,14 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
     objectives: extraById.get(topic.id)?.objectives ?? [],
     prerequisiteIds: extraById.get(topic.id)?.prerequisiteIds ?? [],
     estimatedMinutes: extraById.get(topic.id)?.estimatedMinutes ?? null,
+    examRelevant: extraById.get(topic.id)?.examRelevant ?? false,
     sources: mergeSources(sourcesByTopic.get(topic.id) ?? []),
     confirmed: topic.confirmed,
     mastery: topic.mastery,
     dueAt: topic.dueAt,
     lastReviewedAt: extraById.get(topic.id)?.reviewSchedules[0]?.lastReviewedAt?.toISOString() ?? null,
     progress: topic.progress,
+    practiceDone: practiceDone.has(topic.id),
     content: topic.content,
   }))
 

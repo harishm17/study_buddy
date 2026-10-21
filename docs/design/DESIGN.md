@@ -53,11 +53,20 @@ density 5 (daily app). Landing page only: variance 7, motion 4, density 3.
 | SampleExam | **Mock exam** |
 | chat | **Ask** (page title "Ask your materials") |
 | voice coach | **Voice review** |
-| next actions | **Up next** |
+| next actions (today's items of the plan) | **Up next** |
+| study plan | **Plan** (days, "Today", "Not scheduled: N topics") |
+| Project.examDate / dailyMinutes | **Exam date**, **Time to study each day** |
 | review schedule due | **Due for review** |
+| missed questions quiz | **Retry what you missed** |
+| new review set | **Fresh review** |
+| Topic.examRelevant | a small **On past exams** tag |
 
 Mastery labels (from `ReviewSchedule.mastery`, 0..1; no row = no signal):
 Not started (no data), Learning (< 0.40), Getting there (0.40 to 0.79), Strong (>= 0.80).
+The value shown everywhere is the **displayed mastery**: a topic whose review is overdue fades
+(`mastery * 0.5^(overdueDays / (2 * intervalDays))`, never below half), worked out when it is read.
+Mastery is blended from quizzes (45%), mock exams (25%), voice review (15%) and practice (15%),
+over the sources the student has used.
 
 ---
 
@@ -230,6 +239,7 @@ listing them. Feature components live in `src/features/<area>/*`.
 | `/home` | Home | All courses, continue card, due reviews. |
 | `/courses/new` | Create course | |
 | `/courses/[courseId]` | Course overview | Setup guide until the course is active, then "Today". |
+| `/courses/[courseId]/plan` | Plan | The study plan by week; today highlighted. |
 | `/courses/[courseId]/materials` | Materials | Upload + list. |
 | `/courses/[courseId]/topics` | Topics | List, or the topic editor while topics are unconfirmed (`?edit=1` forces the editor). |
 | `/courses/[courseId]/topics/[topicId]` | Topic | `?view=notes|examples|practice|quiz|voice` (default: first incomplete view, or notes). |
@@ -239,8 +249,8 @@ listing them. Feature components live in `src/features/<area>/*`.
 | `/courses/[courseId]/exams/[examId]` | Exam lobby | Start/resume, attempt history. |
 | `/courses/[courseId]/exams/[examId]/take` | Taking the exam | Focus layout (no sidebar). |
 | `/courses/[courseId]/exams/[examId]/results/[submissionId]` | Results | |
-| `/courses/[courseId]/review` | Voice review sprint | Topic voice review lives in the topic page. |
-| `/courses/[courseId]/settings` | Course settings | Rename, description, delete. |
+| `/courses/[courseId]/review` | Review | Topics due (Retry what you missed, Fresh review), coming up, then the voice sprint. Topic voice review lives in the topic page. |
+| `/courses/[courseId]/settings` | Course settings | Rename, description, exam date, daily time, delete. |
 
 Old URLs redirect permanently in `next.config.js`: `/dashboard` to `/home`,
 `/projects/:id` to `/courses/:id`, `/projects/:id/:rest*` to `/courses/:id/:rest*` where the
@@ -435,8 +445,8 @@ Courses
 ### 6.4 Create course (`/courses/new`)
 
 Centred column 520px. Title "New course". Fields: Course name (placeholder "e.g. CS 161
-Algorithms"), Description (optional, textarea 2 rows, hint "What are you preparing for?").
-Primary "Create course", secondary "Cancel". With `?welcome=1` the title is "Let's set up your
+Algorithms"), Description (optional, textarea 2 rows, hint "What are you preparing for?"), Exam date
+(optional, a date Input) and Time to study each day (Select, default 45 minutes). Primary "Create course", secondary "Cancel". With `?welcome=1` the title is "Let's set up your
 first course" and a one-line explainer sits under it. On success go to `/courses/[id]` (the setup
 guide).
 
@@ -511,14 +521,23 @@ Recent mock exams                          Building content (only while jobs run
 - Header meta line is plain text with commas: "12 topics, 4 strong, 2 due for review". (The dots
   in these wireframes are only sketch separators; meta rows never use middle dots. Separate
   meta items with commas or 16px gaps.)
-- Up next card: the first action large (title heading, reason small fg-2, ETA caption, primary
-  button with the action verb: "Start", "Continue", "Review", "Take quiz", "Upload"). Below, up to
-  3 more actions as compact rows (title, ETA, arrow), each a link. Action routing per type:
-  upload_materials -> materials; extract_topics / confirm_topics -> topics?edit=1;
-  study_topic -> topic notes ("Start <topic>", or "Continue <topic>" once its notes or examples
-  are done); review_topic -> topic quiz; take_quiz -> topic quiz; voice_drill -> topic voice;
-  take_exam -> exams. The planner no longer produces a "generate" action. Data: the next-actions
-  logic, rendered on the server; refreshed with `router.refresh()` on window focus.
+- Up next card: **today's items from the study plan** (section 6.13), not a separate planner. The
+  first item still to do is large (title heading, reason small fg-2, "Part 1 of 2" and ETA caption,
+  primary button with the verb: "Start", "Continue", "Take quiz", "Review", "Create"). Below, up to
+  3 more of today's items as compact rows (title, ETA, arrow), each a link; a caption says how many
+  are done today and how long is left. The heading stays "Up next". "See the plan" is a quiet link in
+  the card's top right. When today is clear the card says "You're done for today" (or "Nothing planned
+  for today") and names the next day's first item ("Next: Quiz: Sorting, Thu, Oct 22."); with nothing
+  planned at all it offers "New mock exam". When the plan is short on time the card ends with a
+  warning InlineAlert (title "Time is short", the plan's sentence, "See the plan"). Item routing:
+  learn -> the topic ("Continue" once started); quiz -> the topic's quiz; review -> `/review#review-<topic>`;
+  unit mock / full mock -> the new exam form with the topics ticked. Data: `getPlanData`, rendered on
+  the server in the student's time zone; refreshed with `router.refresh()` on window focus.
+- "When is your exam?" card (above Up next, only while the course has no exam date and the card was
+  not dismissed): Card with a heading, one sentence ("Margins plans your days up to it, and tells you
+  if time is short."), a date Input labelled "Exam date", "Save date" (primary) and "Not now" (ghost).
+  Saving or dismissing hides it at once and stores the choice on the course (it stays closed on every
+  device).
 - Course mastery card: big ProgressRing (mean mastery over all topics, not-started ones counting
   as 0; label "Course mastery"), and the four mastery buckets as a 2x2 list with counts.
 - Topic tiles: 4 columns desktop (2 mobile), interactive cards: ring 28 + percent, name (2 lines
@@ -576,6 +595,9 @@ midterm-2025.pdf              Past exams      640 KB   (x) Not usable: scanned i
   lecture notes, then add past exams if you have them."
 
 ### 6.7 Topics (`/courses/[courseId]/topics`)
+
+A topic that appears on the student's past exams carries a small accent Badge "On past exams" after
+its name in the list (the plan teaches these first when time is short).
 
 **Editor mode** (any unconfirmed topic, or `?edit=1`):
 
@@ -758,8 +780,12 @@ id is plain text. Nothing is shown when the item has no sources (content written
   `acceptable_answers`, numeric comparison with 1% relative tolerance for numeric steps (fix the
   old bug: check acceptable answers AND numeric tolerance).
 - Progress (steps solved / total) is shown in the tab glyph and a Progress bar under the problem
-  switcher. The backend only has notes / examples / quiz completion flags, so Practice progress is
-  kept in the browser (solved steps in localStorage per topic) and never calls the progress API.
+  switcher. It is stored on the server per problem (`POST /api/topics/[id]/practice-progress`: solved,
+  shown and hinted steps), so it follows the student to another device or browser, and kept in
+  localStorage as a cache the views read at once. Opening a topic loads the server's progress and
+  uploads whatever only the browser had, once. Opening a hint is remembered. Finishing a problem
+  (every step solved or shown) records a practice result (steps solved without a hint over all steps)
+  that moves mastery and the review date, and refreshes the header. "Start over" is stored too.
   At >= 80% solved the tab glyph becomes a check.
 - "More practice" like "More examples".
 
@@ -959,10 +985,46 @@ show "Grading" with a spinner, failed grading shows "Grade again").
 
 ### 6.11 Course settings (`/courses/[courseId]/settings`)
 
-Simple form: name, description, Save. Danger zone (hairline-separated section, not a red box):
+Simple form: name, description, **Exam date** (optional date Input, "Margins plans your days up to
+it."), **Time to study each day** (Select: 20, 30, 45, 60, 90 minutes, 2 hours, 3 hours; default
+45), Save. The same two fields are on the create-course form (6.4), the date optional. Danger zone (hairline-separated section, not a red box):
 "Delete course" with explanation and a ConfirmDialog requiring the course name to be typed.
 
-### 6.12 Voice review (topic view and `/courses/[courseId]/review`)
+### 6.12 Review (`/courses/[courseId]/review`) and Voice review
+
+The Review page (h1 "Review", "Go over what is due, then practise out loud."):
+
+```
+ Due for review (2)
+ +--------------------------------------------------------------+
+ | Graph traversal                                    Due today |
+ | (ring) Getting there 44%   You missed 2 questions lately.     |
+ | [ Retry what you missed ]  [ Fresh review ]                   |
+ +--------------------------------------------------------------+
+ | Hash tables                                        Overdue 2d |
+ | (ring) Learning 21%        No missed questions to retry.      |
+ | [ Fresh review ]                                              |
+ +--------------------------------------------------------------+
+ Coming up
+  Sorting algorithms                                       Oct 28
+ Voice review
+ Covers your 3 weakest topics: ...      (the voice lobby below)
+```
+
+- Due = review date reached by the end of today in the student's time zone, most overdue first.
+  Each is a list item with an id `review-<topicId>` (plan items link to it; the target is outlined in
+  accent). Empty: EmptyState "Nothing is due" with the date of the next review.
+- **Retry what you missed** (primary; hidden when nothing was missed): a quiz of the questions
+  wrong in the last two attempts, no model call. It opens the topic's quiz on a set named "Retry"
+  and starts it. **Fresh review** (secondary, primary when it is the only one): a new 6-question set
+  focused on the missed concepts, difficulty from mastery, with a question or two from a prerequisite
+  topic; it opens the quiz while the set is written ("Writing" skeleton as for any new set). Failures
+  show an InlineAlert under the buttons. Both buttons name the topic in their accessible name
+  ("Retry what you missed for Graph traversal").
+- The same two buttons sit in a "Due for review" panel at the top of a due topic's quiz lobby.
+- Attempts on these sets update mastery and the schedule exactly like a quiz.
+
+Voice review:
 
 Built on the new Claude voice backend (see `/tmp/sb-design/VOICE_API.md`): browser
 SpeechRecognition for listening, speechSynthesis for speaking, server turns streamed as NDJSON.
@@ -1009,6 +1071,58 @@ Session (in place of the lobby; on mobile it uses the focus layout):
   revisit, "Start again" and "Back to topic".
 - Limits: show minutes left; at 0 the Start button is disabled with "You've used today's voice
   time. It resets in Xh."
+
+### 6.13 Plan (`/courses/[courseId]/plan`)
+
+```
+ Plan                                                     [ Exam date and time ]
+ Your exam is in 21 days, Wednesday, Nov 11. Planned for 45 minutes a day.
+
+ [warning] Time is short   You have room to learn 3 of the 6 topics left ...
+ Not scheduled: 3 topics    [Later] [Hardest] [Extra]
+
+ This week  Oct 19 to Oct 25
+ +--------------------------------------------------------------+
+ | Wed, Oct 21     (o) Learn Sorting algorithms        [ Start ] |
+ | [Today]             Read the notes, then work through ...    |
+ | 35 min done, ...    35 min                                    |
+ +--------------------------------------------------------------+
+ | Thu, Oct 22     (o) Quiz: Sorting algorithms                  |
+ |                 (o) Learn Graph traversal                     |
+```
+
+- Course nav: "Plan" after Overview (CalendarCheck icon), command palette "Open the plan".
+- A page of **weeks** (Monday to Sunday headings; the current one says "This week"), each a list of
+  **day cards**. A day card has the date (h3), badges ("Today" accent, "Exam day" warning, "Final
+  review" neutral), "About N min" (today: "N min done, M to go"), and the list of its items. Today's
+  card has an accent border and `aria-current="date"`. On phones the date sits above the list; from
+  the `sm` breakpoint it is a 148px column to the left. No horizontal scrolling at 390px.
+- An item row: a status mark (empty circle, or an accent check for done: also named "Done"/"To do"
+  for screen readers), the title as a link to its action, one line of reason, "Part 1 of 2, 35 min"
+  caption, and on today's undone items a small secondary button with the verb (named with the title).
+  Done items are quiet (fg-3) and show no reason. A day with nothing says "Nothing planned. A good day
+  to rest."
+- Above the weeks: the summary line (exam in N days / the next 14 days), then, as they apply: the
+  short-time warning (InlineAlert warning, title "Time is short", plain words: how many topics fit,
+  that past-exam topics come first, that unit mocks were left out and that only one full mock exam is
+  planned), a neutral notice when only the mocks were dropped to make everything fit, a note when the
+  exam is too close for two full mocks, and the **Not scheduled:
+  N topics** card (heading, one sentence, topics as links). Nothing the plan leaves out is hidden.
+- After learning the days fill with revision, so the run to the exam is not empty: **Review** items on
+  a spaced ladder (a week after the first quiz, then two weeks, always one before the final review days;
+  these read the same as any review, with the line "A spaced review, timed to keep it fresh." and open
+  the topic's quiz), and **Mixed practice: A, B and C** items (15 to 30 minutes, up to the daily time,
+  2 or 3 topics, weakest and past-exam topics first; "Create" opens the new mock exam form with those
+  topics ticked). The 7th day of each run is left free to rest. The first full mock is the day after
+  everything is learned when 7 or more days remain.
+- When time is short the plan gives mock exams up before topics: the unit mocks first, then the earlier
+  of the two final-week mocks. One full mock stays, 2 days before the exam; with an exam tomorrow it is
+  today.
+- Long plans keep the first three weeks and the last two open and fold the weeks in between into a
+  `details` ("Weeks in between"). Empty states: no topics (EmptyState with "Go to topics"), exam date
+  passed (neutral InlineAlert with "Change the date"), all caught up (EmptyState with "New mock exam").
+- The plan is worked out on the server from real progress on every load (topics learned, quizzes and
+  reviews, mock exams); nothing on the page is stored, so it never drifts from what happened.
 
 ---
 

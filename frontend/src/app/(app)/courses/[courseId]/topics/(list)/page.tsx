@@ -70,10 +70,11 @@ export default async function TopicsPage({
           description: topic.description,
           orderIndex: topic.orderIndex,
           unitId: topic.unitId,
+          examRelevant: topic.examRelevant,
           mastery: topic.mastery,
           dueAt: topic.dueAt,
           timing: reviewTiming(topic.dueAt, now),
-          path: studyPath(topic),
+          path: studyPath({ content: topic.content, progress: topic.progress, practiceDone: topic.practiceDone }),
         }))}
       />
     </Page>

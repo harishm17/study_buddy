@@ -39,7 +39,7 @@ export async function computeProjectMastery(
   // per topic below.
   const limit = (history: number): number | undefined => (topicIds.length === 1 ? history : undefined)
 
-  const [quizAttempts, voiceAttempts, examSignals] = await Promise.all([
+  const [quizAttempts, voiceAttempts, examSignals, practiceSignals] = await Promise.all([
     prisma.quizAttempt.findMany({
       where: { userId, topicId: { in: topicIds } },
       orderBy: { takenAt: 'desc' },
@@ -58,11 +58,18 @@ export async function computeProjectMastery(
       take: limit(MASTERY_HISTORY.exam),
       select: { topicId: true, score: true, createdAt: true, metadata: true },
     }),
+    prisma.learningSignal.findMany({
+      where: { userId, projectId, topicId: { in: topicIds }, source: 'practice' },
+      orderBy: { createdAt: 'desc' },
+      take: limit(MASTERY_HISTORY.practice),
+      select: { topicId: true, score: true, createdAt: true },
+    }),
   ])
 
   const quizByTopic = newestPerTopic(quizAttempts, MASTERY_HISTORY.quiz)
   const voiceByTopic = newestPerTopic(voiceAttempts, MASTERY_HISTORY.voice)
   const examByTopic = newestPerTopic(examSignals, MASTERY_HISTORY.exam)
+  const practiceByTopic = newestPerTopic(practiceSignals, MASTERY_HISTORY.practice)
   const now = Date.now()
 
   for (const topicId of topicIds) {
@@ -74,6 +81,7 @@ export async function computeProjectMastery(
         exam: (examByTopic.get(topicId) ?? [])
           .filter((row) => !isConfidenceFeedback(row.metadata))
           .map((row) => ({ score: row.score, at: row.createdAt })),
+        practice: (practiceByTopic.get(topicId) ?? []).map((row) => ({ score: row.score, at: row.createdAt })),
         now,
       })
     )
@@ -171,7 +179,7 @@ export async function recordLearningSignal(input: {
   userId: string
   projectId: string
   topicId?: string | null
-  source: 'quiz' | 'voice' | 'exam'
+  source: 'quiz' | 'voice' | 'exam' | 'practice'
   score: number
   confidence?: number
   metadata?: Record<string, unknown>

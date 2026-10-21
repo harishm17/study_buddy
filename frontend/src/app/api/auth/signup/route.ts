@@ -7,7 +7,11 @@ import { clientIp, createRateLimiter } from '@/lib/api/rate-limit'
 
 // 5 signups a minute per address. The counts are kept per server instance, so with several
 // instances the real limit is 5 x instances. See lib/api/rate-limit.
-const signupLimiter = createRateLimiter({ limit: 5, windowMs: 60_000 })
+// SIGNUP_RATE_LIMIT raises it for the end-to-end stack only (scripts/e2e-stack.sh sets it: the specs
+// create many accounts from one address, and CI retries create more). It is not set anywhere else,
+// and anything that is not a positive whole number leaves the default.
+const signupLimit = /^[1-9]\d*$/.test(process.env.SIGNUP_RATE_LIMIT ?? '') ? Number(process.env.SIGNUP_RATE_LIMIT) : 5
+const signupLimiter = createRateLimiter({ limit: signupLimit, windowMs: 60_000 })
 
 const signupSchema = z.object({
   email: z

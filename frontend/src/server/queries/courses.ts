@@ -1,6 +1,8 @@
 import { cache } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { deriveSetup, type CourseSetup } from '@/lib/course-setup'
+import { applyPendingExamResults } from '@/lib/learning/exam-mastery'
+import { displayMastery } from '@/lib/learning/mastery-math'
 import { masteryLevel, type MasteryLevel } from '@/lib/mastery'
 
 /** Everything here is filtered by the user id; an id that is not theirs is simply not found. */
@@ -34,14 +36,15 @@ export async function listCourses(userId: string): Promise<CourseListItem[]> {
         select: {
           userConfirmed: true,
           _count: { select: { content: true } },
-          reviewSchedules: { where: { userId }, take: 1, select: { mastery: true } },
+          reviewSchedules: { where: { userId }, take: 1, select: { mastery: true, dueAt: true, intervalDays: true } },
         },
       },
     },
   })
 
+  const now = Date.now()
   return projects.map((project) => {
-    const levels = project.topics.map((topic) => masteryLevel(topic.reviewSchedules[0]?.mastery))
+    const levels = project.topics.map((topic) => masteryLevel(displayMastery(topic.reviewSchedules[0]?.mastery, topic.reviewSchedules[0], now)))
     return {
       id: project.id,
       name: project.name,
@@ -62,6 +65,10 @@ export async function listCourses(userId: string): Promise<CourseListItem[]> {
   })
 }
 
+/** The exam date column holds midnight UTC of the calendar date; the date is what matters. */
+export const toExamDate = (value: Date | null | undefined): string | null =>
+  value ? value.toISOString().slice(0, 10) : null
+
 /** A unit (a week, a chapter, a lecture group). Topics of a flat course have no unit. */
 export type ShellUnit = {
   id: string
@@ -80,7 +87,7 @@ export type ShellTopic = {
   /** The unit it belongs to, or null (added by hand, or planned before units existed). */
   unitId: string | null
   confirmed: boolean
-  /** 0..1 from the review schedule, or null with no signal yet. */
+  /** 0..1 from the review schedule, faded when the review is overdue; null with no signal yet. */
   mastery: number | null
   dueAt: string | null
   progress: { notes: boolean; examples: boolean; quiz: boolean; quizScore: number | null }
@@ -96,13 +103,22 @@ export type CourseShell = {
   updatedAt: string
   materialCount: number
   setup: CourseSetup
+  /** The exam date as YYYY-MM-DD (a calendar date), or null while unknown. */
+  examDate: string | null
+  /** Minutes the student can study on a day. */
+  dailyMinutes: number
+  /** The student closed the "When is your exam?" card. */
+  examPromptDismissed: boolean
   /** In course order; empty for a flat course. A unit with no topics is included (the editor shows it). */
   units: ShellUnit[]
   topics: ShellTopic[]
 }
 
-/** A course with its topics, mastery, progress and content presence. Null when it is not theirs. */
+/** A course with its topics, mastery, progress and content presence. Null when it is not theirs. Applies graded mock exams to mastery first. */
 export const getCourseShell = cache(async (userId: string, courseId: string): Promise<CourseShell | null> => {
+  // A graded mock exam moves mastery and review dates the first time it is seen (once per grading),
+  // so it is applied before mastery is read anywhere on a course page.
+  await applyPendingExamResults(userId, courseId)
   const project = await prisma.project.findFirst({
     where: { id: courseId, userId },
     select: {
@@ -111,6 +127,9 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
       description: true,
       status: true,
       updatedAt: true,
+      examDate: true,
+      dailyMinutes: true,
+      examPromptDismissed: true,
       _count: { select: { materials: true } },
       units: {
         orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }],
@@ -131,13 +150,14 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
             take: 1,
             select: { notesCompleted: true, examplesCompleted: true, quizCompleted: true, quizScore: true },
           },
-          reviewSchedules: { where: { userId }, take: 1, select: { mastery: true, dueAt: true } },
+          reviewSchedules: { where: { userId }, take: 1, select: { mastery: true, dueAt: true, intervalDays: true } },
         },
       },
     },
   })
   if (!project) return null
 
+  const now = Date.now()
   const topics: ShellTopic[] = project.topics.map((topic) => {
     const progress = topic.progress[0]
     const schedule = topic.reviewSchedules[0]
@@ -148,7 +168,7 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
       orderIndex: topic.orderIndex,
       unitId: topic.unitId,
       confirmed: topic.userConfirmed,
-      mastery: schedule?.mastery ?? null,
+      mastery: displayMastery(schedule?.mastery, schedule, now),
       dueAt: schedule?.dueAt.toISOString() ?? null,
       progress: {
         notes: progress?.notesCompleted ?? false,
@@ -167,6 +187,9 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
     status: project.status,
     updatedAt: project.updatedAt.toISOString(),
     materialCount: project._count.materials,
+    examDate: toExamDate(project.examDate),
+    dailyMinutes: project.dailyMinutes,
+    examPromptDismissed: project.examPromptDismissed,
     setup: deriveSetup({
       status: project.status,
       materialCount: project._count.materials,
@@ -225,7 +248,7 @@ export const getNavIndex = cache(async (userId: string): Promise<NavCourse[]> =>
           unitId: true,
           userConfirmed: true,
           _count: { select: { content: true } },
-          reviewSchedules: { where: { userId }, take: 1, select: { mastery: true, dueAt: true } },
+          reviewSchedules: { where: { userId }, take: 1, select: { mastery: true, dueAt: true, intervalDays: true } },
         },
       },
     },
@@ -255,7 +278,7 @@ export const getNavIndex = cache(async (userId: string): Promise<NavCourse[]> =>
       topics: project.topics.map((topic) => ({
         id: topic.id,
         name: topic.name,
-        mastery: topic.reviewSchedules[0]?.mastery ?? null,
+        mastery: displayMastery(topic.reviewSchedules[0]?.mastery, topic.reviewSchedules[0], now),
         unitId: topic.unitId,
       })),
     }

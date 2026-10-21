@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { ArrowRight, ChatCircleText, Exam } from '@phosphor-icons/react/dist/ssr'
+import { InlineAlert } from '@/components/ui/inline-alert'
+import { dayLabel } from '@/lib/learning/plan-copy'
 import { Page, PageIntro } from '@/components/shell/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,39 +20,78 @@ import { isDueToday, type TodayData, type TodayTopic } from '@/server/queries/co
 import type { CourseShell } from '@/server/queries/courses'
 import { BuildingContent } from './building-content'
 import { CourseMenu } from './course-menu'
+import { ExamPromptCard } from './exam-prompt-card'
 import { RefreshOnFocus } from './refresh-on-focus'
 import { courseSummary } from './summary'
 
-function UpNext({ actions }: { actions: TodayData['upNext'] }) {
-  const [first, ...rest] = actions
-  if (!first) return null
+function UpNext({
+  courseId,
+  data,
+  summary,
+}: {
+  courseId: string
+  data: TodayData['upNext']
+  summary: TodayData['planSummary']
+}) {
+  const [first, ...rest] = data.upNext
   const then = rest.slice(0, 3)
+  const minutesLeft = data.upNext.reduce((sum, item) => sum + item.minutes, 0)
+  const planHref = `/courses/${courseId}/plan`
   return (
     <Card aria-labelledby="up-next-heading" role="region" className="flex flex-col gap-5">
       <div>
-        <h2 id="up-next-heading" className="text-small font-medium text-accent-soft-fg">
-          Up next
-        </h2>
-        <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-          <div className="min-w-0">
-            <p className="text-heading text-fg">{first.title}</p>
-            <p className="mt-1 text-small text-fg-2">{first.reason}</p>
-            <p className="mt-1 text-caption font-normal text-fg-3">{first.etaLabel}</p>
-          </div>
-          <Button asChild variant="primary" size="lg" className="shrink-0 self-start">
-            <Link href={first.href}>
-              {first.verb}
-              <ArrowRight aria-hidden="true" className="size-4" />
-            </Link>
-          </Button>
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="up-next-heading" className="text-small font-medium text-accent-soft-fg">
+            Up next
+          </h2>
+          <Link href={planHref} className="rounded-chip text-small text-fg-2 underline-offset-[3px] hover:text-fg hover:underline">
+            See the plan
+          </Link>
         </div>
+        {first ? (
+          <div className="mt-2 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+            <div className="min-w-0">
+              <p className="text-heading text-fg">{first.title}</p>
+              <p className="mt-1 text-small text-fg-2">{first.reason}</p>
+              <p className="mt-1 text-caption font-normal text-fg-3">
+                {[first.partLabel, first.etaLabel].filter(Boolean).join(', ')}
+              </p>
+            </div>
+            <Button asChild variant="primary" size="lg" className="shrink-0 self-start">
+              <Link href={first.href}>
+                {first.verb}
+                <ArrowRight aria-hidden="true" className="size-4" />
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-2">
+            <p className="text-heading text-fg">{data.doneToday.length > 0 ? "You're done for today" : 'Nothing planned for today'}</p>
+            <p className="mt-1 text-small text-fg-2">
+              {data.later
+                ? `Next: ${data.later.item.title}, ${dayLabel(data.later.date)}.`
+                : 'You are all caught up. A mock exam is a good way to find what to look at next.'}
+            </p>
+            {!data.later ? (
+              <Button asChild variant="secondary" className="mt-3" icon={<Exam />}>
+                <Link href={`/courses/${courseId}/exams/new`}>New mock exam</Link>
+              </Button>
+            ) : null}
+          </div>
+        )}
+        {first && (data.doneToday.length > 0 || minutesLeft > 0) ? (
+          <p className="mt-3 text-caption font-normal tabular text-fg-3">
+            {data.doneToday.length > 0 ? `${data.doneToday.length} done today, ` : ''}
+            about {minutesLeft} min to go
+          </p>
+        ) : null}
       </div>
       {then.length > 0 ? (
         <div className="border-t border-border pt-3">
           <h3 className="px-2 text-caption text-fg-3">Then</h3>
           <ul className="mt-1">
             {then.map((action) => (
-              <li key={action.title + action.href}>
+              <li key={action.id}>
                 <Link
                   href={action.href}
                   className="flex items-center gap-3 rounded-control px-2 py-2 transition-colors duration-120 hover:bg-surface-2"
@@ -63,6 +104,19 @@ function UpNext({ actions }: { actions: TodayData['upNext'] }) {
             ))}
           </ul>
         </div>
+      ) : null}
+      {summary.short && summary.shortMessage ? (
+        <InlineAlert
+          tone="warning"
+          title="Time is short"
+          action={
+            <Button asChild size="sm" variant="secondary">
+              <Link href={planHref}>See the plan</Link>
+            </Button>
+          }
+        >
+          {summary.shortMessage.replace(/^Time is short\.\s*/, '')}
+        </InlineAlert>
       ) : null}
     </Card>
   )
@@ -194,8 +248,9 @@ export function TodayView({ course, today }: { course: CourseShell; today: Today
       />
 
       <div className="flex flex-col gap-10">
+        {today.examPrompt ? <ExamPromptCard courseId={course.id} /> : null}
         <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-          <UpNext actions={today.upNext} />
+          <UpNext courseId={course.id} data={today.upNext} summary={today.planSummary} />
           <ProgressCard average={today.averageMastery} counts={today.counts} />
         </div>
 

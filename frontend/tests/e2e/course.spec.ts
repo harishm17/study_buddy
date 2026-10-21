@@ -81,20 +81,20 @@ test('topic editor: rename, add, reorder, merge, delete, confirm', async ({ page
 
   // Rename inline: Enter saves.
   await rows.first().getByRole('button', { name: /^Rename / }).click()
-  const nameInput = page.getByLabel('Topic name')
+  const nameInput = page.getByLabel('Topic name').locator('visible=true')
   await nameInput.fill('Renamed first topic')
   await nameInput.press('Enter')
   await expect(rows.first().getByRole('button', { name: 'Rename Renamed first topic' })).toBeVisible()
 
   // Escape cancels.
   await rows.first().getByRole('button', { name: 'Rename Renamed first topic' }).click()
-  await page.getByLabel('Topic name').fill('Should not stay')
-  await page.getByLabel('Topic name').press('Escape')
+  await page.getByLabel('Topic name').locator('visible=true').fill('Should not stay')
+  await page.getByLabel('Topic name').locator('visible=true').press('Escape')
   await expect(rows.first().getByRole('button', { name: 'Rename Renamed first topic' })).toBeVisible()
 
   // Add a topic.
-  await page.getByLabel('Add a topic').fill('Added by hand')
-  await page.getByLabel('Add a topic').press('Enter')
+  await page.getByLabel('Add a topic').locator('visible=true').fill('Added by hand')
+  await page.getByLabel('Add a topic').locator('visible=true').press('Enter')
   await expect(rows).toHaveCount(initial + 1)
   await expect(page.getByRole('button', { name: 'Rename Added by hand' })).toBeVisible()
 

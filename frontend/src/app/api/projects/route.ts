@@ -3,10 +3,14 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { z } from 'zod';
+import { dailyMinutesSchema, examDateColumn, examDateSchema } from '@/lib/learning/plan-settings';
 
 const createProjectSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(1000).nullable().optional(),
+  // Optional: the exam date (YYYY-MM-DD) and minutes the student can study each day.
+  examDate: examDateSchema.optional(),
+  dailyMinutes: dailyMinutesSchema.optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -26,7 +30,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { name, description } = validation.data;
+    const { name, description, examDate, dailyMinutes } = validation.data;
 
     const project = await prisma.project.create({
       data: {
@@ -34,6 +38,8 @@ export async function POST(req: NextRequest) {
         name,
         description,
         status: 'setup',
+        ...(examDate !== undefined ? { examDate: examDateColumn(examDate) } : {}),
+        ...(dailyMinutes !== undefined ? { dailyMinutes } : {}),
       },
     });
 

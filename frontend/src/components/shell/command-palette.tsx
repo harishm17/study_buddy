@@ -7,7 +7,9 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { signOut } from 'next-auth/react'
 import { useTheme } from 'next-themes'
 import {
+  ArrowsClockwise,
   BookOpenText,
+  CalendarCheck,
   CaretRight,
   ChatCircleText,
   CircleHalf,
@@ -105,6 +107,8 @@ function PaletteBody() {
         { id: 'action:upload', label: 'Upload materials', icon: UploadSimple, group: 'Actions', keywords: ['files', 'add'], run: ({ router }) => router.push(`${base}/materials`) },
         { id: 'action:ask', label: 'Ask a question', icon: ChatCircleText, group: 'Actions', run: ({ router }) => router.push(`${base}/ask`) },
         { id: 'action:new-exam', label: 'New mock exam', icon: Exam, group: 'Actions', run: ({ router }) => router.push(`${base}/exams/new`) },
+        { id: 'action:plan', label: 'Open the plan', icon: CalendarCheck, group: 'Actions', keywords: ['today', 'schedule', 'exam date'], run: ({ router }) => router.push(`${base}/plan`) },
+        { id: 'action:review', label: 'Review what is due', icon: ArrowsClockwise, group: 'Actions', keywords: ['retry', 'missed'], run: ({ router }) => router.push(`${base}/review`) },
         { id: 'action:voice', label: 'Start voice review', icon: Microphone, group: 'Actions', run: ({ router }) => router.push(`${base}/review`) }
       )
     }

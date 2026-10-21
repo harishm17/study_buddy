@@ -69,17 +69,19 @@ export function reviewTiming(dueAt: string | null, now: number): { due: boolean;
 
 export type GlyphState = 'done' | 'ready' | 'missing'
 
-/** Notes, examples, practice and quiz states for the topics list. Practice progress lives in the browser, so it is never "done" here. */
+/** Notes, examples, practice and quiz states for the topics list. Practice is done when the server has most of its steps solved. */
 export function studyPath(topic: {
   content: string[]
   progress: { notes: boolean; examples: boolean; quiz: boolean; quizScore: number | null }
+  /** At least 80% of the practice steps are solved (stored on the server). */
+  practiceDone?: boolean
 }): { notes: GlyphState; examples: GlyphState; practice: GlyphState; quiz: GlyphState; quizScore: number | null } {
   const has = (type: string) => topic.content.includes(type)
   const state = (type: string, done: boolean): GlyphState => (done ? 'done' : has(type) ? 'ready' : 'missing')
   return {
     notes: state('section_notes', topic.progress.notes),
     examples: state('solved_examples', topic.progress.examples),
-    practice: state('interactive_examples', false),
+    practice: state('interactive_examples', topic.practiceDone === true),
     quiz: state('topic_quiz', topic.progress.quiz),
     quizScore: topic.progress.quizScore,
   }

@@ -3,12 +3,14 @@ Quiz generator service.
 Creates section quizzes with various question types.
 """
 
+import logging
 from typing import List, Dict, Optional
 from datetime import UTC, datetime
 from enum import Enum
 
 from app.services.content_generator.context import (
     NoSourceMaterialError,
+    _tokens,
     attach_sources,
     content_messages,
     do_not_reuse_block,
@@ -19,6 +21,13 @@ from app.services.content_generator.context import (
 from app.services.llm.base import LLMOutputError
 from app.services.llm.factory import LLMFactory
 from app.services.llm.schemas import QuestionSet
+
+
+logger = logging.getLogger(__name__)
+
+# Excerpts of a prerequisite topic added for the "fresh review" questions.
+PREREQUISITE_MAX_CHUNKS = 6
+PREREQUISITE_TOKEN_BUDGET = 2500
 
 
 class QuestionType(str, Enum):
@@ -49,6 +58,12 @@ APPLICATION_RULES = """Question design:
 - Each question tests a different concept from the excerpts."""
 
 
+def prerequisite_instructions(name: str, topic_name: str, review: int, question_count: int) -> str:
+    return f"""
+Review questions: exactly {review} of the {question_count} questions must test the prerequisite topic "{name}". Base them only on the excerpts marked use="prerequisite", list only those excerpt indexes in source_excerpts, and pitch them at a level a student who already learned "{name}" could answer. The other {question_count - review} questions are about "{topic_name}" as described above and never use the prerequisite excerpts.
+"""
+
+
 def minimum_usable(requested: int) -> int:
     """Fewest valid questions accepted before a set counts as failed."""
     return max(1, (requested + 1) // 2)
@@ -70,6 +85,8 @@ class QuizGenerator:
         difficulty_level: str = "medium",
         focus: Optional[str] = None,
         cache_excerpts: bool = False,
+        prerequisite_topic_id: Optional[str] = None,
+        prerequisite_questions: int = 2,
     ) -> Dict:
         """
         Generate a quiz for a topic.
@@ -83,6 +100,9 @@ class QuizGenerator:
             difficulty_level: easy, medium, or hard
             cache_excerpts: True for another set on a topic that already has a quiz, so the
                 excerpt block is cached
+            prerequisite_topic_id: a prerequisite topic (same course) to take 1-2 review
+                questions from; ignored when it is the topic itself or has no excerpts
+            prerequisite_questions: how many review questions (1-2)
 
         Returns:
             Dict with quiz questions and metadata
@@ -96,6 +116,20 @@ class QuizGenerator:
             raise NoSourceMaterialError(f"No source material is mapped to topic {topic_id}")
         seen = do_not_reuse_block(await existing_content_digest(topic_id))
 
+        review = 0
+        prerequisite_name = ""
+        own_count = len(chunks)
+        if prerequisite_topic_id and prerequisite_topic_id != topic_id:
+            review = min(max(int(prerequisite_questions or 2), 1), 2, question_count // 3)
+            extra = await self._prerequisite_chunks(prerequisite_topic_id) if review else []
+            if extra:
+                chunks = chunks + extra
+                prerequisite_name = extra[0]["prerequisite_name"]
+            else:
+                review = 0
+        if prerequisite_topic_id and not review:
+            logger.info("Quiz for topic %s: prerequisite %s not used", topic_id, prerequisite_topic_id)
+
         questions = await self._generate_questions(
             topic_name=topic_name,
             topic_description=topic_description,
@@ -107,7 +141,13 @@ class QuizGenerator:
             cache_excerpts=cache_excerpts,
             course_map=context.course_map,
             already_seen=seen,
+            review_instructions=(
+                prerequisite_instructions(prerequisite_name, topic_name, review, question_count)
+                if review else ""
+            ),
         )
+        if review:
+            self._tag_prerequisite_questions(questions, own_count, len(chunks), prerequisite_name)
         attach_sources(questions, chunks)
 
         return {
@@ -117,6 +157,31 @@ class QuizGenerator:
             'question_types': [qt.value for qt in question_types],
             'generated_at': datetime.now(UTC).isoformat()
         }
+
+    async def _prerequisite_chunks(self, prerequisite_topic_id: str) -> List[Dict]:
+        """The first primary-source excerpts of a prerequisite topic (empty when it has none)."""
+        try:
+            context = await fetch_topic_context(prerequisite_topic_id)
+        except Exception as exc:  # the review is a bonus: never fail the quiz for it
+            logger.info("Prerequisite topic %s unavailable: %s", prerequisite_topic_id, exc)
+            return []
+        primary = [c for c in context.chunks if c.get("source_kind") == "primary"] or list(context.chunks)
+        kept: List[Dict] = []
+        used = 0
+        for chunk in primary[:PREREQUISITE_MAX_CHUNKS]:
+            if kept and used + _tokens(chunk) > PREREQUISITE_TOKEN_BUDGET:
+                break
+            used += _tokens(chunk)
+            kept.append({**chunk, "source_kind": "prerequisite", "prerequisite_name": context.topic["name"]})
+        return kept
+
+    @staticmethod
+    def _tag_prerequisite_questions(questions: List[Dict], own_count: int, total: int, name: str) -> None:
+        """Mark the questions whose excerpts all come from the prerequisite."""
+        for question in questions:
+            indexes = question.get("source_excerpts") or []
+            if indexes and all(isinstance(i, int) and own_count < i <= total for i in indexes):
+                question["prerequisite_topic"] = name
 
     async def _generate_questions(
         self,
@@ -130,6 +195,7 @@ class QuizGenerator:
         cache_excerpts: bool = False,
         course_map: str = "",
         already_seen: str = "",
+        review_instructions: str = "",
     ) -> List[Dict]:
         """Generate and validate quiz questions."""
         guidance = DIFFICULTY_GUIDANCE.get(difficulty_level, DIFFICULTY_GUIDANCE['medium'])
@@ -141,7 +207,7 @@ Difficulty: {difficulty_level}. {guidance}
 Use only these question types, spread across them: {types_str}.
 
 {APPLICATION_RULES}
-{already_seen}
+{already_seen}{review_instructions}
 {QUESTION_FORMAT_RULES}
 Set difficulty to "{difficulty_level}" and list the concepts each question tests."""
 

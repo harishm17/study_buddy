@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { Page } from '@/components/shell/page'
 import { practiceKeys } from '@/features/topic/practice-keys'
+import { PracticeProgressSync } from '@/features/topic/practice-progress'
 import { StudyTabs } from '@/features/topic/study-tabs'
 import { TopicActions, TopicHeader } from '@/features/topic/topic-header'
 import { TopicProvider, type GenerationNotice } from '@/features/topic/topic-provider'
@@ -47,6 +48,7 @@ export default async function TopicLayout({
       next={data.next}
     >
       <TopicActions courseId={courseId} topicId={topicId} name={topic.name} />
+      <PracticeProgressSync topicId={topicId} server={data.practiceProgress} />
       <Page className="pt-6">
         <TopicHeader
           courseId={courseId}

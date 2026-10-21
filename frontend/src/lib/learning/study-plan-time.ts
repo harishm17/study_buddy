@@ -1,7 +1,6 @@
-// The study plan starts at 9:00 on the student's own clock. The server runs in UTC (Cloud
-// Run), so the browser sends its IANA time zone and the start time is worked out in that zone.
-
-export const PLAN_START_HOUR = 9
+// Time zone arithmetic for the study plan. The server runs in UTC (Cloud Run) but the plan is laid
+// out in the student's own days, so the browser sends its IANA time zone (a cookie, or ?tz=) and the
+// plan works out which calendar date an instant is in that zone.
 
 export function isValidTimeZone(timeZone: string): boolean {
   try {
@@ -57,35 +56,4 @@ export function zonedTimeToUtc(
   const secondOffset = zoneOffsetMs(instant, timeZone)
   if (secondOffset !== firstOffset) instant = wallAsUtc - secondOffset
   return new Date(instant)
-}
-
-const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/
-
-/**
- * When the plan for a day starts. `date` is a YYYY-MM-DD calendar date in the student's zone;
- * without it, today in that zone. Returns null for a date that does not exist.
- */
-export function planStartTime(options: {
-  date?: string
-  timeZone: string
-  now?: Date
-}): Date | null {
-  const { date, timeZone, now = new Date() } = options
-  let parts: LocalParts
-  if (date) {
-    const match = DATE_ONLY.exec(date)
-    if (!match) return null
-    parts = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
-    const check = new Date(Date.UTC(parts.year, parts.month - 1, parts.day))
-    if (
-      check.getUTCFullYear() !== parts.year ||
-      check.getUTCMonth() !== parts.month - 1 ||
-      check.getUTCDate() !== parts.day
-    ) {
-      return null
-    }
-  } else {
-    parts = localDateParts(now, timeZone)
-  }
-  return zonedTimeToUtc(parts, PLAN_START_HOUR, 0, timeZone)
 }

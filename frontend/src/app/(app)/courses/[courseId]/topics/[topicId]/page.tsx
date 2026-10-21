@@ -11,7 +11,7 @@ import { getTopicPage } from '@/server/queries/topic'
 import { requireUser } from '@/server/session'
 
 type Params = Promise<{ courseId: string; topicId: string }>
-type SearchParams = Promise<{ view?: string | string[] }>
+type SearchParams = Promise<{ view?: string | string[]; set?: string | string[]; start?: string | string[] }>
 
 export async function generateMetadata({ params }: { params: Params }) {
   const user = await requireUser()
@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: { params: Params }) {
 export default async function TopicPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const user = await requireUser()
   const { courseId, topicId } = await params
-  const { view: requested } = await searchParams
+  const { view: requested, set: requestedSet, start } = await searchParams
   const data = await getTopicPage(user.id, courseId, topicId)
   if (!data) notFound()
 
@@ -77,7 +77,11 @@ export default async function TopicPage({ params, searchParams }: { params: Para
           {content.quiz ? (
             <QuizView
               key={content.quiz.sets[0].id}
+              courseId={courseId}
               topicId={topicId}
+              review={data.review}
+              initialSetId={Array.isArray(requestedSet) ? requestedSet[0] : requestedSet}
+              autoStart={(Array.isArray(start) ? start[0] : start) === '1'}
               sets={content.quiz.sets}
               attempts={data.attempts}
               voiceHref={`${base}?view=voice`}

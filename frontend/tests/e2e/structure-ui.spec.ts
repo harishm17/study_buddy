@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { expect, test, type Page } from '@playwright/test'
+import { withPrisma } from './helpers/db'
 import { DEMO_EMAIL, DEMO_PASSWORD, FIXTURE_PDF, demoIds } from './helpers/seed-demo'
 
 // The course structure screens: units on the topics page and in the sidebar, the topic header
@@ -178,8 +179,10 @@ test.describe('the demo course', () => {
     await page.keyboard.press('Space')
     await page.getByRole('button', { name: 'Check' }).click()
     await expect(body(page).getByText('Correct', { exact: true })).toBeVisible()
-    // Leave the browser's saved progress alone for other specs.
+    // Leave the saved progress alone for other specs: the browser's cache and the server's rows.
+    await expect.poll(() => withPrisma((prisma) => prisma.practiceProgress.count({ where: { topicId: mathTopic } }))).toBeGreaterThan(0)
     await page.evaluate(() => localStorage.clear())
+    await withPrisma((prisma) => prisma.practiceProgress.deleteMany({ where: { topicId: mathTopic } }))
   })
 
   test('materials show a role badge on each file', async ({ page }) => {
@@ -278,8 +281,8 @@ test.describe('a course built to be edited', () => {
     await expect(body(page).getByText('Week 4', { exact: true })).toBeVisible()
 
     // A new topic goes into the unit picked next to the field (the last unit by default).
-    await page.getByLabel('Add a topic').fill('Shortest paths')
-    await page.getByLabel('Add a topic').press('Enter')
+    await page.getByLabel('Add a topic').locator('visible=true').fill('Shortest paths')
+    await page.getByLabel('Add a topic').locator('visible=true').press('Enter')
     await expect(rows(page, 'Graphs')).toHaveCount(1)
 
     // Rename the unit.
