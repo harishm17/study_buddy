@@ -155,8 +155,8 @@ function Bento() {
       <h2 id="bento-heading" className="text-[30px] font-semibold leading-9 tracking-[-0.02em] text-fg md:text-display">
         What you get
       </h2>
-      <div className="mt-10 grid gap-4 md:grid-cols-12">
-        <div className={`${cell} md:col-span-7`}>
+      <div className="mt-10 grid gap-4 lg:grid-cols-12">
+        <div className={`${cell} lg:col-span-7`}>
           <CellText
             title="Notes with sources"
             text="Written from your own files, with code, maths and the pages they came from."
@@ -166,44 +166,44 @@ function Bento() {
             width={1200}
             height={842}
             alt="Margins notes with a Python code block, an outline of the page and a list of source files"
-            sizes="(min-width: 1152px) 560px, (min-width: 768px) 55vw, calc(100vw - 82px)"
+            sizes="(min-width: 1152px) 560px, (min-width: 1024px) 55vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[330px]"
           />
         </div>
-        <div className={`${cell} md:col-span-5`}>
+        <div className={`${cell} lg:col-span-5`}>
           <CellText title="Practice that checks each step" text="Work a problem one step at a time, with hints and feedback on every answer." />
           <CellShot
             name="practice"
             width={1000}
             height={878}
             alt="Margins practice problem with two solved steps, a hint and an answer box"
-            sizes="(min-width: 1152px) 400px, (min-width: 768px) 40vw, calc(100vw - 82px)"
+            sizes="(min-width: 1152px) 400px, (min-width: 1024px) 40vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[330px]"
           />
         </div>
-        <div className={`${cell} md:col-span-5`}>
+        <div className={`${cell} lg:col-span-5`}>
           <CellText title="Quizzes graded with feedback" text="Short answers are graded too, with a note on what was missing." />
           <CellShot
             name="quiz-results"
             width={1000}
             height={885}
             alt="Margins quiz results showing 75 percent, 9 of 12 points, with the answer and explanation for a missed question"
-            sizes="(min-width: 1152px) 400px, (min-width: 768px) 40vw, calc(100vw - 82px)"
+            sizes="(min-width: 1152px) 400px, (min-width: 1024px) 40vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[360px]"
           />
         </div>
-        <div className={`${cell} md:col-span-7`}>
+        <div className={`${cell} lg:col-span-7`}>
           <CellText title="Ask your materials, with citations" text="Answers come only from your files. Hover a number to see the passage it came from." />
           <CellShot
             name="ask"
             width={1000}
             height={988}
             alt="Margins answer about BFS and DFS with a citation card showing the quoted passage and its page"
-            sizes="(min-width: 1152px) 560px, (min-width: 768px) 55vw, calc(100vw - 82px)"
+            sizes="(min-width: 1152px) 560px, (min-width: 1024px) 55vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[360px]"
           />
         </div>
-        <div className="flex flex-col justify-between gap-8 overflow-hidden rounded-card bg-accent-soft p-6 md:col-span-12 md:flex-row md:items-center md:gap-12 md:p-10">
+        <div className="flex flex-col justify-between gap-8 overflow-hidden rounded-card bg-accent-soft p-6 lg:col-span-12 md:flex-row md:items-center md:gap-12 md:p-10">
           <div className="max-w-[40ch]">
             <h3 className="text-heading text-accent-soft-fg">Mock exams with a real timer</h3>
             <p className="mt-1.5 text-small text-accent-soft-fg">
