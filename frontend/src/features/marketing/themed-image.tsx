@@ -10,11 +10,12 @@ type ThemedImageProps = {
   sizes: string
   /** Preloads the light image (the dark one loads when it is first shown). */
   priority?: boolean
+  fetchPriority?: 'high' | 'low' | 'auto'
   className?: string
 }
 
 /** A product screenshot in the light or dark version, switched with the theme class on <html>. */
-export function ThemedImage({ name, width, height, alt, sizes, priority, className }: ThemedImageProps) {
+export function ThemedImage({ name, width, height, alt, sizes, priority, fetchPriority, className }: ThemedImageProps) {
   return (
     <>
       <Image
@@ -24,6 +25,7 @@ export function ThemedImage({ name, width, height, alt, sizes, priority, classNa
         alt={alt}
         sizes={sizes}
         priority={priority}
+        fetchPriority={fetchPriority}
         className={cn('dark:hidden', className)}
       />
       <Image

@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { BRAND_NAME } from '@/config/brand'
 import { DEFAULT_DESCRIPTION, SITE_URL } from '@/config/site'
 import { FinalCta, HeroActions } from '@/features/marketing/auth-actions'
+import { LazyMount } from '@/features/marketing/lazy-mount'
 import { ThemedImage } from '@/features/marketing/themed-image'
 import '@/features/marketing/landing.css'
 
@@ -51,9 +52,10 @@ function Hero() {
               width={1600}
               height={1000}
               priority
+              fetchPriority="high"
               alt="Margins notes page showing Graph traversal notes with sources"
-              sizes="(max-width: 767px) 640px, (min-width: 1440px) 960px, (min-width: 1280px) 820px, (min-width: 1024px) 700px, 100vw"
-              className="h-auto w-full max-md:w-[640px] max-md:max-w-none"
+              sizes="(min-width: 1440px) 960px, (min-width: 1280px) 820px, (min-width: 1024px) 700px, 100vw"
+              className="h-auto w-full"
             />
           </div>
         </div>
@@ -92,16 +94,16 @@ function HowItWorks() {
             </div>
             {index === 1 ? (
               <div className="md:order-1 md:col-span-7">
-                <div className="overflow-hidden rounded-card border border-border bg-surface">
+                <LazyMount className="aspect-[1100/557] overflow-hidden rounded-card border border-border bg-surface">
                   <ThemedImage
                     name="topics-edit"
                     width={1100}
                     height={557}
                     alt="Margins topic editor listing seven topics found in a course, each with keywords"
-                    sizes="(min-width: 1152px) 640px, (min-width: 768px) 55vw, 100vw"
+                    sizes="(min-width: 1152px) 640px, (min-width: 768px) 55vw, calc(100vw - 34px)"
                     className="h-auto w-full"
                   />
-                </div>
+                </LazyMount>
               </div>
             ) : null}
           </li>
@@ -140,9 +142,9 @@ function CellShot({
 }) {
   return (
     <div className="mt-auto px-6">
-      <div className={`overflow-hidden rounded-t-control border border-b-0 border-border ${heightClass}`}>
+      <LazyMount className={`overflow-hidden rounded-t-control border border-b-0 border-border ${heightClass}`}>
         <ThemedImage name={name} width={width} height={height} alt={alt} sizes={sizes} className="h-auto w-full" />
-      </div>
+      </LazyMount>
     </div>
   )
 }
@@ -164,7 +166,7 @@ function Bento() {
             width={1200}
             height={842}
             alt="Margins notes with a Python code block, an outline of the page and a list of source files"
-            sizes="(min-width: 1152px) 560px, (min-width: 768px) 55vw, 100vw"
+            sizes="(min-width: 1152px) 560px, (min-width: 768px) 55vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[330px]"
           />
         </div>
@@ -175,7 +177,7 @@ function Bento() {
             width={1000}
             height={878}
             alt="Margins practice problem with two solved steps, a hint and an answer box"
-            sizes="(min-width: 1152px) 400px, (min-width: 768px) 40vw, 100vw"
+            sizes="(min-width: 1152px) 400px, (min-width: 768px) 40vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[330px]"
           />
         </div>
@@ -186,7 +188,7 @@ function Bento() {
             width={1000}
             height={885}
             alt="Margins quiz results showing 75 percent, 9 of 12 points, with the answer and explanation for a missed question"
-            sizes="(min-width: 1152px) 400px, (min-width: 768px) 40vw, 100vw"
+            sizes="(min-width: 1152px) 400px, (min-width: 768px) 40vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[360px]"
           />
         </div>
@@ -195,9 +197,9 @@ function Bento() {
           <CellShot
             name="ask"
             width={1000}
-            height={965}
+            height={988}
             alt="Margins answer about BFS and DFS with a citation card showing the quoted passage and its page"
-            sizes="(min-width: 1152px) 560px, (min-width: 768px) 55vw, 100vw"
+            sizes="(min-width: 1152px) 560px, (min-width: 768px) 55vw, calc(100vw - 82px)"
             heightClass="h-[260px] md:h-[360px]"
           />
         </div>
@@ -208,12 +210,14 @@ function Bento() {
               Pick your topics and a time limit, then sit the exam under real conditions. Answers save as you go.
             </p>
           </div>
-          <p
-            aria-hidden="true"
-            className="tabular font-mono text-[72px] font-medium leading-none tracking-[-0.04em] text-accent-soft-fg md:text-[112px]"
-          >
-            41:07
-          </p>
+          <LazyMount className="h-[72px] shrink-0 md:h-[112px] md:w-[400px]">
+            <p
+              aria-hidden="true"
+              className="tabular font-mono text-[72px] font-medium leading-none tracking-[-0.04em] text-accent-soft-fg md:text-right md:text-[112px]"
+            >
+              41:07
+            </p>
+          </LazyMount>
         </div>
       </div>
     </section>

@@ -10,15 +10,24 @@ import { BRAND_NAME } from '@/config/brand'
  * Whether the visitor is signed in, read in the browser so public pages stay fully static.
  * Null until known; the pages render their signed-out buttons first.
  */
+/** One session request shared by every island on the page. */
+let sessionRequest: Promise<boolean> | null = null
+function readSignedIn(): Promise<boolean> {
+  sessionRequest ??= getSession().then((session) => !!session?.user)
+  return sessionRequest
+}
+
 function useSignedIn(): boolean | null {
   const [signedIn, setSignedIn] = React.useState<boolean | null>(null)
   React.useEffect(() => {
     let cancelled = false
-    getSession()
-      .then((session) => {
-        if (!cancelled) setSignedIn(!!session?.user)
+    readSignedIn()
+      .then((value) => {
+        if (!cancelled) setSignedIn(value)
       })
-      .catch(() => {})
+      .catch(() => {
+        sessionRequest = null
+      })
     return () => {
       cancelled = true
     }

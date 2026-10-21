@@ -61,7 +61,16 @@ test('the study path: write, read, practise, take a quiz', async ({ page }) => {
   await expect(page).toHaveURL(/\?view=notes$/)
   await expect(page.getByRole('heading', { level: 1, name: TOPICS[0] })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'No notes yet' })).toBeVisible()
-  await expect(page.getByRole('link', { name: 'Ask about this' })).toHaveAttribute('href', `/courses/${courseId}/ask?topic=${ids[0]}`)
+  // "Ask about this" opens the Ask sheet scoped to the topic, with a link to the full page.
+  await page.getByRole('button', { name: 'Ask about this' }).click()
+  const sheet = page.getByRole('dialog', { name: 'Ask about this topic' })
+  await expect(sheet).toBeVisible()
+  await expect(sheet.getByRole('link', { name: 'Open full page' })).toHaveAttribute(
+    'href',
+    new RegExp(`/courses/${courseId}/ask\\?topic=${ids[0]}`)
+  )
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeHidden()
 
   // Write the notes through the empty state; the view fills in when the job finishes.
   await page.getByRole('button', { name: 'Write notes' }).click()
