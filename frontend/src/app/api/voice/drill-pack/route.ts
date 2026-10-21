@@ -10,6 +10,7 @@ const drillPackSchema = z.object({
   topicId: z.string().optional(),
 })
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(request: NextRequest) {
   try {
     const session = await requireAuth()

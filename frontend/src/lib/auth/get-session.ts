@@ -26,17 +26,3 @@ export async function requireAuth(): Promise<UserSession> {
 
   return session as UserSession
 }
-
-/**
- * Get the current session, return null if not authenticated
- * Use this for optional authentication
- */
-export async function getOptionalAuth(): Promise<UserSession | null> {
-  const session = await getServerSession(authOptions)
-
-  if (!session || !session.user) {
-    return null
-  }
-
-  return session as UserSession
-}

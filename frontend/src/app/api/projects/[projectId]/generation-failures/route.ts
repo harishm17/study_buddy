@@ -22,6 +22,7 @@ export const dynamic = 'force-dynamic'
 // Enough history to find the latest job of every topic and content type in a large project.
 const RECENT_JOB_LIMIT = 600
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }

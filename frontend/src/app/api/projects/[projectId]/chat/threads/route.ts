@@ -18,6 +18,7 @@ async function ownedProject(projectId: string) {
   return { userId, project }
 }
 
+// Kept for API clients; the UI reads this through server queries.
 /** GET: this user's conversations in the project, most recently active first. */
 export async function GET(
   _req: NextRequest,

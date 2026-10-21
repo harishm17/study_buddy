@@ -24,7 +24,9 @@ const LANGUAGE_LABELS: Record<string, string> = {
   pt: 'Portuguese',
   it: 'Italian',
   hi: 'Hindi',
+  zh: 'Chinese',
   ja: 'Japanese',
+  ko: 'Korean',
 }
 
 export function languageLabel(code: string): string {

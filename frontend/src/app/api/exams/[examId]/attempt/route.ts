@@ -42,6 +42,7 @@ const handleError = (error: unknown, label: string) => {
   return apiInternal('Internal server error')
 }
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(_request: NextRequest, { params }: Context) {
   try {
     const session = await requireAuth()

@@ -9,6 +9,7 @@ const getOverallScore = (value: unknown): number | null => {
   return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : null;
 };
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ examId: string }> }

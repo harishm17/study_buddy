@@ -14,6 +14,7 @@ const createTopicSchema = z.object({
   description: z.string().optional(),
 })
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }

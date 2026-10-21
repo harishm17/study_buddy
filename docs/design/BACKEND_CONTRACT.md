@@ -998,8 +998,7 @@ All text fields are markdown, with LaTeX math (`$..$` and `$$..$$`) and fenced c
 
 **Dead or unused**
 - Schema models `OverallQuiz` and `OverallQuizAttempt`.
-- Frontend `enqueueChunkingJob` (the AI service creates chunk jobs).
-- `getOptionalAuth`, `studyPlanUrl`, `formatBytes`, `generateShortId`.
+- `studyPlanUrl`, `formatBytes`, `generateShortId`.
 - npm dependencies `@auth/prisma-adapter`, `@tanstack/react-query`, `react-hook-form` and `@hookform/resolvers` are installed but unused in `src`.
 - Voice `mode 'teach_back'` appears only in a schema comment.
 - Chat `role 'error'` is real but undocumented in the schema.

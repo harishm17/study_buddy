@@ -267,23 +267,6 @@ export async function enqueueContentGenerationJob(
 }
 
 /**
- * Enqueue a chunking job
- * @param jobId - Processing job ID
- * @param materialId - Material ID to chunk
- * @returns Task name
- */
-export async function enqueueChunkingJob(
-  jobId: string,
-  materialId: string
-): Promise<string> {
-  return enqueueTask('/jobs/chunk-material', {
-    jobId,
-    jobType: 'chunk_material',
-    data: { materialId },
-  })
-}
-
-/**
  * Enqueue an exam grading job. The AI service loads the questions and answers from the
  * submission, so the task body stays small.
  * @param jobId - Processing job ID

@@ -11,6 +11,7 @@ import {
 
 const REQUIRED_CONTENT = ['section_notes', 'solved_examples', 'interactive_examples', 'topic_quiz']
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }

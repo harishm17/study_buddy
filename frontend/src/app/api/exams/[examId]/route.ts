@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import prisma from '@/lib/prisma';
 import { toPublicQuestions } from '@/lib/learning/quiz-questions';
 
+// Kept for API clients; the UI reads this through server queries.
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ examId: string }> }

@@ -92,7 +92,7 @@ test('text mode: start, first question, answer, evaluation, end, summary', async
 
 test('text mode: Just talk has no Hint or Skip and the coach replies', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
   // Style control is a radiogroup; Just talk has no questions, so no Hint or Skip.
   await page.getByRole('radio', { name: 'Just talk' }).click()
@@ -113,7 +113,7 @@ test('text mode: Just talk has no Hint or Skip and the coach replies', async ({ 
 
 test('voice mode: listening, 800 ms silence sends the answer, speaking, barge-in', async ({ page }) => {
   await installVoiceStubs(page, { speechMs: 600 })
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
   await startButton(page).click()
 
@@ -152,7 +152,7 @@ test('voice mode: listening, 800 ms silence sends the answer, speaking, barge-in
 
 test('voice mode: pause the mic, type instead, and come back to the microphone', async ({ page }) => {
   await installVoiceStubs(page)
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
   await startButton(page).click()
   await expect(page.getByTestId('voice-orb')).toHaveAttribute('data-state', 'listening', { timeout: 30_000 })
@@ -173,7 +173,7 @@ test('voice mode: pause the mic, type instead, and come back to the microphone',
 
 test('microphone permission denied falls back to typing with a way to retry', async ({ page }) => {
   await installVoiceStubs(page, { micDenied: true })
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
   await startButton(page).click()
   await expect(page.getByText('Microphone access is blocked')).toBeVisible({ timeout: 30_000 })
@@ -187,7 +187,7 @@ test('lobby: the daily limit disables Start, the 422 offers to create content', 
   await page.route('**/api/voice/usage', (route) =>
     route.fulfill({ json: { dailyMinutes: 30, usedSeconds: 1800, remainingSeconds: 0, hasLiveSession: false } })
   )
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await expect(page.getByTestId('voice-lobby')).toBeVisible({ timeout: 30_000 })
   await expect(page.getByText('0 min left today')).toBeVisible()
   await expect(startButton(page)).toBeDisabled()
@@ -223,7 +223,7 @@ const turnError = (status: number, code: string, message: string, retryable: boo
 
 test('turn errors: active session and daily limit send you back to the lobby', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
 
   await page.route('**/api/voice/turn', (route) => route.fulfill(turnError(409, 'ACTIVE_SESSION', 'Another session is live', false)))
@@ -240,7 +240,7 @@ test('turn errors: active session and daily limit send you back to the lobby', a
 
 test('turn errors: a retryable failure keeps the session and Try again recovers', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
 
   let failures = 1
@@ -262,7 +262,7 @@ test('turn errors: a retryable failure keeps the session and Try again recovers'
 
 test('turn errors: a session that ended on the server shows the summary', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
   await startButton(page).click()
   await expect(page.getByTestId('voice-question')).toBeVisible({ timeout: 30_000 })
@@ -276,7 +276,7 @@ test('turn errors: a session that ended on the server shows the summary', async 
 
 test('stream events: an error event and a finished drill', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await waitForLobby(page)
 
   const lines = (events: object[]) => events.map((event) => JSON.stringify(event)).join('\n') + '\n'
@@ -332,7 +332,7 @@ test('stream events: an error event and a finished drill', async ({ page }) => {
 test('the session is ended on page hide and a heartbeat goes out every 30 seconds', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
   await page.clock.install()
-  await page.goto(`/courses/${ids.courseId}/dev-voice/${ids.topicId}`)
+  await page.goto(`/courses/${ids.courseId}/topics/${ids.topicId}?view=voice`)
   await page.clock.resume()
   await waitForLobby(page)
 
