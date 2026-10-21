@@ -255,5 +255,234 @@
         "key": "t08-repeated-updating-and-screening-example"
       }
     ]
+  },
+  "mit-6.006": {
+    "all": [
+      {
+        "id": "07d7b612-b13d-4113-9e4e-85fe47e06faa",
+        "name": "Comparison model search lower bound",
+        "description": "Why comparison-based search needs Omega(log n) time, shown with decision trees.",
+        "keywords": [
+          "comparison model",
+          "decision tree",
+          "lower bound",
+          "search",
+          "set interface"
+        ],
+        "unit": "Hashing",
+        "objectives": [
+          "describe the comparison model of computation",
+          "model an algorithm as a decision tree",
+          "derive the Omega(log n) lower bound for comparison search"
+        ],
+        "estimated_minutes": 25
+      },
+      {
+        "id": "d19b6afd-bb2c-438a-92fe-a7d5d2633a50",
+        "name": "Direct access arrays and hash tables",
+        "description": "Beating the comparison bound with direct access arrays, hash functions, chaining, universal hashing and dynamic resizing.",
+        "keywords": [
+          "hashing",
+          "direct access array",
+          "chaining",
+          "universal hashing",
+          "load factor",
+          "amortized"
+        ],
+        "unit": "Hashing",
+        "objectives": [
+          "implement a set with a direct access array",
+          "explain hash collisions and resolve them with chaining",
+          "compare division and universal hash functions",
+          "analyze expected and amortized hash table running time"
+        ],
+        "estimated_minutes": 45
+      },
+      {
+        "id": "36ac8979-232a-4481-aaf1-dd4133d4da50",
+        "name": "Priority queues and PQ sort",
+        "description": "The priority queue interface and how array, sorted array and AVL implementations yield sorting algorithms.",
+        "keywords": [
+          "priority queue",
+          "priority queue sort",
+          "selection sort",
+          "insertion sort",
+          "AVL sort"
+        ],
+        "unit": "Binary Heaps",
+        "objectives": [
+          "state the priority queue interface operations",
+          "turn any priority queue into a sorting algorithm",
+          "compare array, sorted array and AVL priority queues"
+        ],
+        "estimated_minutes": 25
+      },
+      {
+        "id": "1dc105ed-84da-4931-9970-8ec6e8ea647f",
+        "name": "Binary heap insert and delete",
+        "description": "Representing a complete binary tree implicitly in an array and maintaining the max-heap property.",
+        "keywords": [
+          "binary heap",
+          "max-heap property",
+          "complete binary tree",
+          "heapify up",
+          "heapify down"
+        ],
+        "unit": "Binary Heaps",
+        "objectives": [
+          "compute parent and child indices in an implicit tree",
+          "state the max-heap property",
+          "perform heapify up for insert",
+          "perform heapify down for delete max"
+        ],
+        "estimated_minutes": 35
+      },
+      {
+        "id": "f19350fe-8c23-4341-971b-055d9dc8f79b",
+        "name": "Heap sort and linear build",
+        "description": "In-place heap sort, linear-time heap building, and related priority queue variants.",
+        "keywords": [
+          "heap sort",
+          "in-place sort",
+          "build heap",
+          "linear time",
+          "multiset"
+        ],
+        "unit": "Binary Heaps",
+        "objectives": [
+          "run in-place heap sort",
+          "prove build heap runs in O(n) time",
+          "use a sequence AVL tree as a priority queue",
+          "implement multisets from sets"
+        ],
+        "estimated_minutes": 30
+      },
+      {
+        "id": "7c74beae-5d2a-46e7-984b-fba06d2e6136",
+        "name": "SRTBOT and longest common subsequence",
+        "description": "The SRTBOT steps for designing dynamic programs, applied to LCS.",
+        "keywords": [
+          "dynamic programming",
+          "SRTBOT",
+          "memoization",
+          "LCS",
+          "subproblem"
+        ],
+        "unit": "Dynamic Programming Subproblems",
+        "objectives": [
+          "list the SRTBOT steps",
+          "define prefix and suffix subproblems",
+          "solve LCS with a two-dimensional DP",
+          "analyze DP running time"
+        ],
+        "estimated_minutes": 40
+      },
+      {
+        "id": "728c9003-b7fa-40a3-a1de-ce3e4e37a777",
+        "name": "LIS and alternating coin game",
+        "description": "Using subproblem constraints and expansion for longest increasing subsequence and a two-player coin game.",
+        "keywords": [
+          "LIS",
+          "longest increasing subsequence",
+          "coin game",
+          "subproblem expansion",
+          "subproblem constraint"
+        ],
+        "unit": "Dynamic Programming Subproblems",
+        "objectives": [
+          "solve LIS by constraining subproblems",
+          "model the coin game with expanded subproblems",
+          "recognize when to constrain or expand subproblems"
+        ],
+        "estimated_minutes": 45
+      }
+    ],
+    "selected": [
+      {
+        "id": "07d7b612-b13d-4113-9e4e-85fe47e06faa",
+        "name": "Comparison model search lower bound",
+        "description": "Why comparison-based search needs Omega(log n) time, shown with decision trees.",
+        "keywords": [
+          "comparison model",
+          "decision tree",
+          "lower bound",
+          "search",
+          "set interface"
+        ],
+        "unit": "Hashing",
+        "objectives": [
+          "describe the comparison model of computation",
+          "model an algorithm as a decision tree",
+          "derive the Omega(log n) lower bound for comparison search"
+        ],
+        "estimated_minutes": 25,
+        "index": 0,
+        "key": "t00-comparison-model-search-lower-bound"
+      },
+      {
+        "id": "36ac8979-232a-4481-aaf1-dd4133d4da50",
+        "name": "Priority queues and PQ sort",
+        "description": "The priority queue interface and how array, sorted array and AVL implementations yield sorting algorithms.",
+        "keywords": [
+          "priority queue",
+          "priority queue sort",
+          "selection sort",
+          "insertion sort",
+          "AVL sort"
+        ],
+        "unit": "Binary Heaps",
+        "objectives": [
+          "state the priority queue interface operations",
+          "turn any priority queue into a sorting algorithm",
+          "compare array, sorted array and AVL priority queues"
+        ],
+        "estimated_minutes": 25,
+        "index": 2,
+        "key": "t02-priority-queues-and-pq-sort"
+      },
+      {
+        "id": "f19350fe-8c23-4341-971b-055d9dc8f79b",
+        "name": "Heap sort and linear build",
+        "description": "In-place heap sort, linear-time heap building, and related priority queue variants.",
+        "keywords": [
+          "heap sort",
+          "in-place sort",
+          "build heap",
+          "linear time",
+          "multiset"
+        ],
+        "unit": "Binary Heaps",
+        "objectives": [
+          "run in-place heap sort",
+          "prove build heap runs in O(n) time",
+          "use a sequence AVL tree as a priority queue",
+          "implement multisets from sets"
+        ],
+        "estimated_minutes": 30,
+        "index": 4,
+        "key": "t04-heap-sort-and-linear-build"
+      },
+      {
+        "id": "728c9003-b7fa-40a3-a1de-ce3e4e37a777",
+        "name": "LIS and alternating coin game",
+        "description": "Using subproblem constraints and expansion for longest increasing subsequence and a two-player coin game.",
+        "keywords": [
+          "LIS",
+          "longest increasing subsequence",
+          "coin game",
+          "subproblem expansion",
+          "subproblem constraint"
+        ],
+        "unit": "Dynamic Programming Subproblems",
+        "objectives": [
+          "solve LIS by constraining subproblems",
+          "model the coin game with expanded subproblems",
+          "recognize when to constrain or expand subproblems"
+        ],
+        "estimated_minutes": 45,
+        "index": 6,
+        "key": "t06-lis-and-alternating-coin-game"
+      }
+    ]
   }
 }

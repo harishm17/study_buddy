@@ -17,6 +17,8 @@ async function signIn(page: Page, email: string, password: string) {
 }
 
 const { course, topics, mathTopic } = demoIds()
+// getByText also sees the hidden copy Next keeps while a page streams in; the page body is one place only.
+const body = (page: Page) => page.locator('#main')
 const sidebar = (page: Page) => page.getByRole('complementary', { name: 'Sidebar' })
 
 test.describe('the demo course', () => {
@@ -88,7 +90,7 @@ test.describe('the demo course', () => {
     const about = page.getByRole('region', { name: 'About this topic' })
     await expect(about.getByRole('heading', { level: 2, name: 'By the end you can' })).toBeVisible()
     await expect(about.getByRole('listitem').filter({ hasText: 'run breadth-first and depth-first search by hand' })).toBeVisible()
-    await expect(page.getByText('About 30 min')).toBeVisible()
+    await expect(body(page).getByText('About 30 min')).toBeVisible()
     await expect(page.getByRole('link', { name: 'Week 1: Sorting and graphs' })).toBeVisible()
 
     // Prerequisites link to the topic.
@@ -110,25 +112,27 @@ test.describe('the demo course', () => {
 
   test('check yourself: the question shows, the answer waits behind a button', async ({ page }) => {
     await page.goto(`/courses/${course}/topics/${mathTopic}?view=notes`)
-    const reveal = page.getByRole('button', { name: 'Show answer' })
+    // Scoped to the page body: while a page streams in, Next can keep a hidden copy of the text elsewhere.
+    const main = page.locator('#main')
+    const reveal = main.getByRole('button', { name: 'Show answer' })
     await expect(reveal).toHaveCount(2)
-    await expect(page.getByText('A fair die is rolled once.')).toBeVisible()
-    await expect(page.getByText('Each of the six faces is equally likely')).toHaveCount(0)
+    await expect(body(page).getByText('A fair die is rolled once.')).toBeVisible()
+    await expect(body(page).getByText('Each of the six faces is equally likely')).toHaveCount(0)
 
     const first = reveal.first()
     await expect(first).toHaveAttribute('aria-expanded', 'false')
     // Keyboard: focus the button and press Enter.
     await first.focus()
     await page.keyboard.press('Enter')
-    const hide = page.getByRole('button', { name: 'Hide answer' })
+    const hide = main.getByRole('button', { name: 'Hide answer' })
     await expect(hide).toHaveAttribute('aria-expanded', 'true')
-    await expect(page.getByText('Each of the six faces is equally likely')).toBeVisible()
+    await expect(body(page).getByText('Each of the six faces is equally likely')).toBeVisible()
     // Math renders in the question and in the answer; the second item is still closed.
     await expect(page.locator('.md-check .katex').first()).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Show answer' })).toHaveCount(1)
+    await expect(main.getByRole('button', { name: 'Show answer' })).toHaveCount(1)
 
     await hide.click()
-    await expect(page.getByText('Each of the six faces is equally likely')).toHaveCount(0)
+    await expect(body(page).getByText('Each of the six faces is equally likely')).toHaveCount(0)
   })
 
   test('notes without check blocks are unchanged', async ({ page }) => {
@@ -143,10 +147,10 @@ test.describe('the demo course', () => {
     const link = page.getByRole('link', { name: 'algorithms.pdf, pp. 1-2' })
     await expect(link).toBeVisible()
     await expect(link).toHaveAttribute('href', /\/api\/materials\/[0-9a-f-]{36}\/file#page=1$/)
-    await expect(page.getByText(/^From\s+algorithms\.pdf, pp\. 1-2/)).toBeVisible()
+    await expect(body(page).getByText(/^From\s+algorithms\.pdf, pp\. 1-2/)).toBeVisible()
     // The second example is closed until it is opened; its file has no id, so the source is plain text.
     await page.getByRole('button', { name: /^2\s/ }).click()
-    await expect(page.getByText('From lecture-notes.pdf, p. 7')).toBeVisible()
+    await expect(body(page).getByText('From lecture-notes.pdf, p. 7')).toBeVisible()
 
     await page.goto(`/courses/${course}/topics/${mathTopic}?view=practice`)
     await expect(page.getByRole('link', { name: 'algorithms.pdf, pp. 3-4' })).toBeVisible()
@@ -162,18 +166,18 @@ test.describe('the demo course', () => {
     await expect(page.getByRole('heading', { level: 2, name: /Reading a probability table/ })).toBeVisible()
     const options = page.getByRole('radio')
     await expect(options).toHaveCount(4)
-    await expect(page.getByText('They are equally likely')).toBeVisible()
+    await expect(body(page).getByText('They are equally likely')).toBeVisible()
     await expect(page.getByRole('button', { name: 'Check' })).toBeDisabled()
 
     await options.nth(2).focus()
     await page.keyboard.press('Space')
     await page.getByRole('button', { name: 'Check' }).click()
-    await expect(page.getByText('Not quite')).toBeVisible()
+    await expect(body(page).getByText('Not quite')).toBeVisible()
     await page.getByRole('button', { name: 'Try again' }).click()
     await options.nth(1).focus()
     await page.keyboard.press('Space')
     await page.getByRole('button', { name: 'Check' }).click()
-    await expect(page.getByText('Correct', { exact: true })).toBeVisible()
+    await expect(body(page).getByText('Correct', { exact: true })).toBeVisible()
     // Leave the browser's saved progress alone for other specs.
     await page.evaluate(() => localStorage.clear())
   })
@@ -222,8 +226,8 @@ test.describe('a course built to be edited', () => {
     await expect(page.getByRole('heading', { level: 2, name: 'Spare' })).toBeVisible()
     await expect(rows(page, 'Arrays')).toHaveCount(3)
     await expect(rows(page, 'Trees')).toHaveCount(2)
-    await expect(page.getByText('No topics in this unit yet.')).toBeVisible()
-    await expect(page.getByText('5 topics in 3 units')).toBeVisible()
+    await expect(body(page).getByText('No topics in this unit yet.')).toBeVisible()
+    await expect(body(page).getByText('5 topics in 3 units')).toBeVisible()
 
     // Move "Slicing" from Arrays to Trees.
     await page.getByRole('button', { name: 'Actions for Slicing' }).click()
@@ -271,7 +275,7 @@ test.describe('a course built to be edited', () => {
     await dialog.getByLabel('Week').fill('Week 4')
     await dialog.getByRole('button', { name: 'Add unit' }).click()
     await expect(page.getByRole('heading', { level: 2, name: 'Graphs' })).toBeVisible()
-    await expect(page.getByText('Week 4', { exact: true })).toBeVisible()
+    await expect(body(page).getByText('Week 4', { exact: true })).toBeVisible()
 
     // A new topic goes into the unit picked next to the field (the last unit by default).
     await page.getByLabel('Add a topic').fill('Shortest paths')

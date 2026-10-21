@@ -469,7 +469,7 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
             options={CATEGORY_OPTIONS}
             value={category}
             onValueChange={setCategory}
-            className="min-w-0"
+            className="min-w-0 flex-wrap justify-center overflow-visible"
           />
         </div>
         <input
