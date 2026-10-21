@@ -2,8 +2,8 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowRight, WarningCircle } from '@phosphor-icons/react/dist/ssr'
-import { Button, type ButtonProps } from '@/components/ui/button'
+import { WarningCircle } from '@phosphor-icons/react/dist/ssr'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Spinner } from '@/components/ui/spinner'
@@ -15,69 +15,6 @@ import { cn } from '@/lib/utils'
 import type { GenerationState } from '@/server/queries/course'
 
 const UNAVAILABLE = "Study content can't be created right now. Try again in a few minutes."
-
-type MissingResponse = { status?: string; queuedJobs: number; skippedActive: number; failedJobs: number; message: string }
-
-/** Starts the missing notes, examples, practice and quizzes for every confirmed topic. */
-export function useGenerateMissing(courseId: string) {
-  const router = useRouter()
-  const [pending, setPending] = React.useState(false)
-
-  const run = React.useCallback(async () => {
-    setPending(true)
-    try {
-      const result = await apiFetch<MissingResponse>(`/api/projects/${courseId}/generate-missing-content`, { method: 'POST' })
-      if (result.queuedJobs === 0 && result.skippedActive === 0) {
-        toast(result.failedJobs > 0 ? "Couldn't start writing. Try again." : 'All the study content is already written.')
-      }
-      router.refresh()
-    } catch (error) {
-      toast.error(isApiError(error) ? (error.status === 503 ? UNAVAILABLE : error.message) : UNAVAILABLE)
-    } finally {
-      setPending(false)
-    }
-  }, [courseId, router])
-
-  return { run, pending }
-}
-
-export function GenerateMissingButton({
-  courseId,
-  children,
-  ...props
-}: { courseId: string; children: React.ReactNode } & Omit<ButtonProps, 'onClick' | 'loading' | 'children'>) {
-  const { run, pending } = useGenerateMissing(courseId)
-  return (
-    <Button {...props} onClick={run} loading={pending}>
-      {children}
-    </Button>
-  )
-}
-
-/** A compact "Then" row in the Up next card that runs generation in place. */
-export function GenerateMissingRow({
-  courseId,
-  title,
-  etaLabel,
-}: {
-  courseId: string
-  title: string
-  etaLabel: string
-}) {
-  const { run, pending } = useGenerateMissing(courseId)
-  return (
-    <button
-      type="button"
-      onClick={run}
-      disabled={pending}
-      className="flex w-full items-center gap-3 rounded-control px-2 py-2 text-left transition-colors duration-120 hover:bg-surface-2 disabled:opacity-60"
-    >
-      <span className="min-w-0 flex-1 truncate text-body text-fg">{title}</span>
-      <span className="shrink-0 text-caption font-normal text-fg-3">{etaLabel}</span>
-      {pending ? <Spinner className="size-4 text-fg-3" /> : <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-fg-3" />}
-    </button>
-  )
-}
 
 /** "Writing content, 18 of 48 ready" from the running jobs plus what already exists. */
 export function useGenerationProgress(courseId: string, generation: GenerationState) {

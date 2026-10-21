@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { JobStatus } from '@/components/ui/job-status'
-import { FailureList, GenerateMissingButton, GenerationProgress, useGenerationProgress } from './building-content'
+import { FailureList, GenerationProgress, useGenerationProgress } from './building-content'
 import { useExtraction } from './extraction'
 import { pluralize } from '@/lib/format'
 import type { GenerationState, JobRef } from '@/server/queries/course'
@@ -82,24 +82,35 @@ export function CheckTopicsStep({
   )
 }
 
-/** Step 3 content: the build button, or the aggregate progress while content is written. */
-export function BuildContentStep({ courseId, generation }: { courseId: string; generation: GenerationState }) {
+/**
+ * Step 3 content: a link to the first topic. Content is written when a topic is opened, so there
+ * is nothing to build here; the progress shows while the first topic is being written.
+ */
+export function StartStudyingStep({
+  courseId,
+  firstTopic,
+  generation,
+}: {
+  courseId: string
+  firstTopic: { id: string; name: string } | null
+  generation: GenerationState
+}) {
   const { active, readyNow, total, refresh } = useGenerationProgress(courseId, generation)
 
   return (
     <div className="mt-3 flex flex-col gap-3">
       {active > 0 ? <GenerationProgress readyNow={readyNow} total={total} /> : null}
       <FailureList failures={generation.failures} onRetried={refresh} />
-      {active === 0 ? (
-        <div>
-          <GenerateMissingButton courseId={courseId} variant="primary">
-            Build study content
-          </GenerateMissingButton>
-          <p className="mt-2 text-caption font-normal text-fg-3">
-            Takes a few minutes. You can start reading as topics finish.
-          </p>
-        </div>
-      ) : null}
+      <div>
+        <Button asChild variant="primary">
+          <Link href={firstTopic ? `/courses/${courseId}/topics/${firstTopic.id}` : `/courses/${courseId}/topics`}>
+            {firstTopic ? `Start ${firstTopic.name}` : 'Open topics'}
+          </Link>
+        </Button>
+        <p className="mt-2 text-caption font-normal text-fg-3">
+          The notes are written when you open a topic, which takes about a minute.
+        </p>
+      </div>
     </div>
   )
 }

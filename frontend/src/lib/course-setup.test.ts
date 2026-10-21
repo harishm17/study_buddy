@@ -20,7 +20,7 @@ test('unconfirmed topics are step 2, review', () => {
 })
 
 test('confirmed topics without content is step 3', () => {
-  assert.deepEqual(deriveSetup({ ...base, contentBlockCount: 0 }), { mode: 'setup', step: 3, label: 'Build study content' })
+  assert.deepEqual(deriveSetup({ ...base, contentBlockCount: 0 }), { mode: 'setup', step: 3, label: 'Start studying' })
 })
 
 test('confirmed topics with some content is active', () => {

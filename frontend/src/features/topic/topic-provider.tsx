@@ -8,6 +8,7 @@ import { fillResetTime } from '@/lib/budget/copy'
 import { describeJobFailure, parseContentTarget } from '@/lib/jobs/failure-message'
 import { fetchActiveJobs, type NormalizedJob } from '@/lib/jobs/poll-job'
 import { useJobPolling } from '@/features/jobs/use-job-polling'
+import { autoStartDecision } from './auto-start'
 import { KIND_COPY, PREFLIGHT_MESSAGE } from './copy'
 import { CONTENT_KINDS, CONTENT_TYPE_BY_KIND, KIND_BY_CONTENT_TYPE, type ContentKind } from './types'
 import type { GenerateMode } from './generate-preferences'
@@ -34,8 +35,12 @@ type TopicContextValue = {
   /** The latest job for this kind failed (from the server, or while this page was open). */
   failure: Partial<Record<ContentKind, GenerationNotice>>
   starting: Partial<Record<ContentKind, boolean>>
+  /** Opening a topic with no notes starts them; true until that has started (or been found running). */
+  preparingNotes: boolean
   generate: (kind: ContentKind, mode: GenerateMode, preferences: Record<string, unknown>) => Promise<boolean>
   dismiss: (kind: ContentKind) => void
+  /** Start the next topic's notes in the background (when this topic is marked done). */
+  prefetchNext: () => void
   /** The number keys switch views, except while a quiz is being taken (they pick options). */
   keysSuspended: boolean
   setKeysSuspended: (suspended: boolean) => void
@@ -57,6 +62,7 @@ export function useGeneration(kind: ContentKind) {
     failure: topic.failure[kind],
     startError: topic.startError[kind],
     starting: !!topic.starting[kind],
+    preparing: kind === 'notes' && topic.preparingNotes,
     generate: (mode: GenerateMode, preferences: Record<string, unknown>) =>
       topic.generate(kind, mode, preferences),
     dismiss: () => topic.dismiss(kind),
@@ -87,6 +93,10 @@ type ProviderProps = {
   contentVersion: string
   /** Failures the server found for kinds that still have no content. */
   initialFailures: Partial<Record<ContentKind, GenerationNotice>>
+  /** Whether the topic has notes when the page is rendered. */
+  notesPresent: boolean
+  /** The next topic in course order, whose notes are started when this one is marked done. */
+  next: { id: string; hasNotes: boolean } | null
   children: React.ReactNode
 }
 
@@ -94,11 +104,24 @@ type ProviderProps = {
  * Everything on the topic page that outlives a view: background generation (started here or
  * found running after a refresh), its failures, and the keyboard lock for the quiz.
  *
+ * Content is written on demand. Opening a topic with no notes starts them (one job, once: a
+ * refresh finds the job that is already running, and the server allows one job per topic and
+ * type); the AI service then queues the other types one after another, and this provider follows
+ * each of those jobs as it appears.
+ *
  * A running job is followed with the shared poller. When it completes the page is refreshed
  * (the content is read on the server) and a quiet toast says it is ready; the "generating"
  * state stays up until the new content has arrived, so the view never flashes empty.
  */
-export function TopicProvider({ topicId, courseId, contentVersion, initialFailures, children }: ProviderProps) {
+export function TopicProvider({
+  topicId,
+  courseId,
+  contentVersion,
+  initialFailures,
+  notesPresent,
+  next,
+  children,
+}: ProviderProps) {
   const router = useRouter()
   const { pollJob } = useJobPolling({ timeoutMs: JOB_TIMEOUT_MS })
   const [running, setRunning] = React.useState<TopicContextValue['running']>({})
@@ -107,6 +130,10 @@ export function TopicProvider({ topicId, courseId, contentVersion, initialFailur
   const [starting, setStarting] = React.useState<TopicContextValue['starting']>({})
   const [keysSuspended, setKeysSuspended] = React.useState(false)
   const tracked = React.useRef(new Set<string>())
+  // Opening a topic with no notes (and no failed attempt to retry by hand) starts them once.
+  const [preparingNotes, setPreparingNotes] = React.useState(!notesPresent && !initialFailures.notes)
+  const [activeChecked, setActiveChecked] = React.useState(false)
+  const autoStarted = React.useRef(false)
 
   // Failures from the server hold until a new run starts; ones seen here replace them.
   const [dismissed, setDismissed] = React.useState<ContentKind[]>([])
@@ -120,7 +147,7 @@ export function TopicProvider({ topicId, courseId, contentVersion, initialFailur
   }, [localFailure, initialFailures, dismissed])
 
   const track = React.useCallback(
-    (jobId: string, kind: ContentKind, since: number) => {
+    (jobId: string, kind: ContentKind, since: number, quiet = false) => {
       if (tracked.current.has(jobId)) return
       tracked.current.add(jobId)
       setRunning((current) => ({ ...current, [kind]: { jobId, job: null, since, timedOut: false, done: false } }))
@@ -135,7 +162,9 @@ export function TopicProvider({ topicId, courseId, contentVersion, initialFailur
           setRunning((current) =>
             current[kind]?.jobId === jobId ? { ...current, [kind]: { ...current[kind]!, done: true } } : current
           )
-          toast.success(KIND_COPY[kind].ready)
+          if (!quiet) toast.success(KIND_COPY[kind].ready)
+          // The AI service has already created the job for the next type, if it queues one.
+          void syncActiveRef.current(true)
           React.startTransition(() => router.refresh())
           return
         }
@@ -162,24 +191,37 @@ export function TopicProvider({ topicId, courseId, contentVersion, initialFailur
     [pollJob, router]
   )
 
-  // Pick up work that was running before this page loaded.
+  // Follow this topic's jobs that are running on the server: ones started before this page
+  // loaded, and (quietly) the next type in the chain after a job finishes.
+  const syncActive = React.useCallback(
+    async (quiet: boolean, signal?: AbortSignal) => {
+      const jobs = await fetchActiveJobs({ projectId: courseId, jobTypes: ['generate_content'] }, signal)
+      for (const job of jobs) {
+        const targetKey = typeof job.raw.targetKey === 'string' ? job.raw.targetKey : null
+        const target = parseContentTarget(targetKey)
+        if (!target || target.topicId !== topicId) continue
+        const kind = KIND_BY_CONTENT_TYPE[target.contentType]
+        if (!kind) continue
+        const startedAt = Date.parse(String(job.raw.startedAt ?? job.raw.createdAt ?? ''))
+        track(job.id, kind, Number.isFinite(startedAt) ? startedAt : Date.now(), quiet)
+      }
+    },
+    [courseId, topicId, track]
+  )
+  const syncActiveRef = React.useRef(syncActive)
+  React.useEffect(() => {
+    syncActiveRef.current = syncActive
+  })
+
   React.useEffect(() => {
     const controller = new AbortController()
-    fetchActiveJobs({ projectId: courseId, jobTypes: ['generate_content'] }, controller.signal)
-      .then((jobs) => {
-        for (const job of jobs) {
-          const targetKey = typeof job.raw.targetKey === 'string' ? job.raw.targetKey : null
-          const target = parseContentTarget(targetKey)
-          if (!target || target.topicId !== topicId) continue
-          const kind = KIND_BY_CONTENT_TYPE[target.contentType]
-          if (!kind) continue
-          const startedAt = Date.parse(String(job.raw.startedAt ?? job.raw.createdAt ?? ''))
-          track(job.id, kind, Number.isFinite(startedAt) ? startedAt : Date.now())
-        }
-      })
+    syncActive(false, controller.signal)
       .catch(() => {})
+      .finally(() => {
+        if (!controller.signal.aborted) setActiveChecked(true)
+      })
     return () => controller.abort()
-  }, [courseId, topicId, track])
+  }, [syncActive])
 
   // Fresh content has arrived: stop showing the finished jobs.
   React.useEffect(() => {
@@ -212,6 +254,8 @@ export function TopicProvider({ topicId, courseId, contentVersion, initialFailur
           json: { contentType: CONTENT_TYPE_BY_KIND[kind], preferences },
         })
         if (response.jobId) track(response.jobId, kind, Date.now())
+        // Nothing was started because the content is already there: show it.
+        else React.startTransition(() => router.refresh())
         return true
       } catch (error) {
         setStartError((current) => ({ ...current, [kind]: toNotice(error) }))
@@ -220,8 +264,36 @@ export function TopicProvider({ topicId, courseId, contentVersion, initialFailur
         setStarting((current) => ({ ...current, [kind]: false }))
       }
     },
-    [topicId, track]
+    [topicId, track, router]
   )
+
+  // Start the notes of a topic that has none, once the jobs already running have been found.
+  const notesRunning = !!running.notes
+  React.useEffect(() => {
+    const decision = autoStartDecision({
+      preparing: preparingNotes,
+      activeChecked,
+      alreadyStarted: autoStarted.current,
+      notesPresent,
+      notesRunning,
+    })
+    if (decision === 'wait') return
+    if (decision === 'skip') {
+      setPreparingNotes(false)
+      return
+    }
+    autoStarted.current = true
+    void generate('notes', 'create', { prepare_rest: true, only_if_missing: true }).finally(() => setPreparingNotes(false))
+  }, [preparingNotes, activeChecked, notesPresent, notesRunning, generate])
+
+  const prefetchNext = React.useCallback(() => {
+    if (!next || next.hasNotes) return
+    // Quiet: it is a head start, and a failure shows when that topic is opened.
+    apiFetch(`/api/topics/${next.id}/generate-content`, {
+      method: 'POST',
+      json: { contentType: CONTENT_TYPE_BY_KIND.notes, preferences: { only_if_missing: true } },
+    }).catch(() => {})
+  }, [next])
 
   const dismiss = React.useCallback((kind: ContentKind) => {
     setStartError((current) => ({ ...current, [kind]: undefined }))
@@ -237,12 +309,14 @@ export function TopicProvider({ topicId, courseId, contentVersion, initialFailur
       startError,
       failure,
       starting,
+      preparingNotes,
       generate,
       dismiss,
+      prefetchNext,
       keysSuspended,
       setKeysSuspended,
     }),
-    [topicId, courseId, running, startError, failure, starting, generate, dismiss, keysSuspended]
+    [topicId, courseId, running, startError, failure, starting, preparingNotes, generate, dismiss, prefetchNext, keysSuspended]
   )
 
   return <TopicContext.Provider value={value}>{children}</TopicContext.Provider>

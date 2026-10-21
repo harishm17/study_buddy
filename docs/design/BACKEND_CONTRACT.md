@@ -207,8 +207,11 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
     preferences?: { detail_level?: 'brief'|'moderate'|'comprehensive', include_examples?: boolean,
       count?: number(1..10), question_count?: number(5..30), difficulty_level?: 'easy'|'medium'|'hard',
       focus?: string.trim.min(3).max(280), question_types?: ('multiple_choice'|'short_answer'|'numerical'|'true_false')[],
-      append?: boolean, variation_seed?: number /* regenerate only */ } }
+      append?: boolean, variation_seed?: number /* regenerate only */,
+      prepare_rest?: boolean /* generate only */, only_if_missing?: boolean /* generate only */ } }
   ```
+- `prepare_rest`: when this job finishes, the AI service queues the topic's other missing types one job at a time (notes, then examples, practice, quiz). See "Generation chain" below. The topic page sends it, with `only_if_missing`, when a topic with no notes is opened.
+- `only_if_missing` (never stored on the job): answers `{ jobId: null, status:'exists', message }` without creating a job when the topic already has content of that type, so a page that renders twice cannot write the notes twice.
 - Order of checks: topic ownership (404), then preflight (503), then body (400 `INVALID_INPUT` with `details:[{path,message}]`).
 - `createJobOrFindActive`, targetKey `content:{topicId}:{contentType}`. Job inputData: `{topicId, contentType, preferences}`.
 - Generate returns `{ jobId, status, message, estimatedSeconds:60, replacingExisting:boolean }`. Regenerate returns the same without `replacingExisting`. Already running gives the same body with `message '...already in progress'`.
@@ -218,11 +221,16 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
   - A quiz always inserts a **new** `topic_quizzes` row (a new quiz set) and overwrites the `topic_content` copy.
 - Job result: `resultData = { content_id, content_type, metadata, usage }`.
 
-**`POST /api/projects/[projectId]/generate-missing-content`** (no body)
-- Considers only `userConfirmed` topics. For each of the 4 core types a topic lacks (and that has no active job), it creates and enqueues a job with preferences `{}`.
-- 200: `{ status:'queued'|'already_running'|'noop', queuedJobs, skippedActive, failedJobs, missingBlocks, message }`.
-- If nothing is missing and nothing is active, the body has no `status`: `{queuedJobs:0, skippedActive:0, failedJobs:0, missingBlocks:0, message:'All core content blocks are already generated.'}`.
+**Generation chain** (`ai-service/app/services/generation_chain.py`)
+- Content is written when a student opens a topic, not for the whole course. Opening a topic with no notes starts one notes job (`prepare_rest`). When a job with `prepare_rest` or `prepare_all` finishes, the AI service creates the job for the topic's next missing type (order: notes, solved examples, practice, quiz) before the finished job is marked completed, and dispatches it after. So one job per topic is ever in flight, and the chain keeps going if the browser is closed.
+- It stops at the first failed job (the failure shows with its Try again), and when the user's daily allowance is used up. A `prepare_all` run skips a topic that cannot be written at all (no source material, or the model refuses) and goes on to the next.
+- Jobs for the same topic also run one at a time inside the AI service (a per-topic lock), and at most `LLM_MAX_CONCURRENCY` (default 4) model calls run at once across all jobs and chat.
+
+**`POST /api/projects/[projectId]/generate-missing-content`** (no body) — "Prepare all topics now"
+- Considers only `userConfirmed` topics, in course order (`orderIndex`, then `createdAt`). It starts **one** job: the first type of the first topic that lacks something, with preferences `{ prepare_all: true }`. The AI service chains the rest (see above), so at most one topic is in flight. Nothing starts while the course has any `generate_content` job running.
+- 200: `{ status:'queued'|'already_running'|'noop', queuedJobs (0 or 1), topicsToPrepare, message }`; 502 `{ status:'failed', ... }` when the job could not be enqueued.
 - It returns **no job ids**. The client discovers them via `GET /api/jobs?active=1&projectId=...&types=generate_content`.
+- The UI calls it only from the course "..." menu item "Prepare all topics now", after a confirmation with an estimate ("about N topics ... a large part of today's AI allowance"). The overview, topics list and setup guide have no other bulk action.
 
 **`GET /api/projects/[projectId]/generation-failures`**
 - 200: `{ failures: [{ jobId, topicId, topicName, contentType, errorCode, message }] }`
@@ -510,6 +518,7 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - The reaper (every 60 s) fails exhausted processing jobs with `JOB_LEASE_EXPIRED` and re-dispatches stale ones.
 - Pending-never-claimed jobs are re-dispatched after 120 s, 240 s and 360 s, then failed with `JOB_DISPATCH_FAILED`.
 - Direct-HTTP dev dispatch (no Cloud Tasks) uses 3 retries with backoff. After the final failure it marks the job `ENQUEUE_FAILED` or `ENQUEUE_PERMANENT`.
+- Rate limits and overload are transient: `LLM_RATE_LIMITED` and `LLM_UNAVAILABLE` (429, 529, 5xx from Anthropic after the SDK's own `LLM_MAX_RETRIES` = 4 retries) answer **503** with a `Retry-After` header (the API's own wait, else 20 s for a rate limit and 10 s for overload; at most 120 s). The job fails with `retryable = true` while attempts remain, and the direct dispatchers (frontend `cloud-tasks.ts`, AI service `cloud_tasks.py`) wait at least `Retry-After` before the next attempt. Other retryable failures answer 500, permanent ones 400.
 - If `DIRECT_INLINE_JOB_TYPES` is set, those enqueues block the request until the job finishes.
 
 **One active job per target** (partial unique index on `targetKey` for pending/processing). Creators return the existing job with `created:false`:
@@ -548,7 +557,7 @@ Legend: **Auth** is 401 if no session. Ownership is checked via the project, whi
 - `LLM_REQUEST_REJECTED`
 - `ENQUEUE_FAILED`, `ENQUEUE_PERMANENT`, `JOB_DISPATCH_FAILED`
 - `STORAGE_UNAVAILABLE`
-- **`LLM_DAILY_BUDGET`**: the only code whose `errorMessage` is student-facing. It reads "Daily AI usage limit reached ($X of $Y used today, UTC). It is available again after midnight UTC." The default cap is `DAILY_LLM_BUDGET_USD = 3.00` per user per UTC day. It covers jobs and chat answers only. It is checked before each LLM job and before a chat answer starts, so one call can end up slightly over.
+- **`LLM_DAILY_BUDGET`**: its `errorMessage` ("Daily AI usage limit reached ($X of $Y used today, UTC). ...") is for logs and admins and is never shown. Screens show "You've used today's AI allowance. It resets at <local time>." for the code (the reset time is midnight UTC shown in the browser's time zone; see `frontend/src/lib/budget/copy.ts`). No dollar amount reaches student-facing UI. The default cap is `DAILY_LLM_BUDGET_USD = 3.00` per user per UTC day. It covers jobs and chat answers only. It is checked before each LLM job and before a chat answer starts, so one call can end up slightly over.
 - Others that can appear: `MATERIAL_NOT_FOUND`, `VALIDATION_FAILED`, `NO_CONTENT` (also sets the material `invalid`), `CHUNKING_FAILED`, `TOPIC_EXTRACTION_FAILED`, `CONTENT_GENERATION_FAILED`, `EXAM_GENERATION_FAILED`, `EXAM_GRADING_FAILED`, `SUBMISSION_NOT_FOUND`, `INVALID_INPUT`, `JOB_LEASE_EXPIRED`, `JOB_FAILED`.
 - `describeJobFailure(code, msg)` returns the text, with the fallback `"Generation failed. Try again."`
 - "LLM not configured" has two surfaces:

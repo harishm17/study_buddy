@@ -175,7 +175,11 @@ export type GenerationFailureRow = {
 }
 
 export type GenerationState = {
-  /** Confirmed topics times the four core content types. */
+  /**
+   * The four core content types for each topic content is being written for: every confirmed
+   * topic during "Prepare all topics now", otherwise the topics that have some content, a job
+   * running or a failure (content is written as topics are opened, not for the whole course).
+   */
   totalBlocks: number
   /** Blocks that exist. */
   readyBlocks: number
@@ -196,7 +200,6 @@ export const blockNoun = (contentType: string): string => BLOCK_NOUN[contentType
 export async function getGenerationState(userId: string, course: CourseShell): Promise<GenerationState> {
   const confirmed = course.topics.filter((topic) => topic.confirmed)
   const core = new Set<string>(CORE_CONTENT_TYPES)
-  const readyBlocks = confirmed.reduce((sum, topic) => sum + topic.content.filter((type) => core.has(type)).length, 0)
 
   const staleBefore = new Date(Date.now() - STALE_JOB_WINDOW_MS)
   const pendingBefore = new Date(Date.now() - PENDING_DISPATCH_STALE_MS)
@@ -204,7 +207,7 @@ export async function getGenerationState(userId: string, course: CourseShell): P
   const [activeJobs, recent] = await Promise.all([
     prisma.processingJob.findMany({
       where: { projectId: course.id, userId, jobType: 'generate_content', status: { in: ACTIVE_JOB_STATUSES } },
-      select: { status: true, createdAt: true, startedAt: true },
+      select: { status: true, createdAt: true, startedAt: true, inputData: true },
     }),
     prisma.processingJob.findMany({
       where: { projectId: course.id, userId, jobType: 'generate_content', targetKey: { not: null } },
@@ -214,9 +217,10 @@ export async function getGenerationState(userId: string, course: CourseShell): P
     }),
   ])
 
-  const active = activeJobs.filter(
+  const liveJobs = activeJobs.filter(
     (job) => !(job.createdAt < staleBefore || (job.status === 'pending' && !job.startedAt && job.createdAt < pendingBefore))
-  ).length
+  )
+  const active = liveJobs.length
 
   const topicsById = new Map(course.topics.map((topic) => [topic.id, topic]))
   const failures = pickGenerationFailures(recent as GenerationJobRow[], (topicId, contentType) =>
@@ -234,7 +238,17 @@ export async function getGenerationState(userId: string, course: CourseShell): P
       }
     })
 
-  return { totalBlocks: confirmed.length * CORE_CONTENT_TYPES.length, readyBlocks, activeJobs: active, failures }
+
+  const preparingAll = liveJobs.some(
+    (job) => isRecord(job.inputData) && isRecord(job.inputData.preferences) && job.inputData.preferences.prepare_all === true
+  )
+  const inPlay = new Set(liveJobs.flatMap((job) => (isRecord(job.inputData) && typeof job.inputData.topicId === 'string' ? [job.inputData.topicId] : [])))
+  for (const failure of failures) inPlay.add(failure.topicId)
+  const counted = confirmed.filter(
+    (topic) => preparingAll || inPlay.has(topic.id) || topic.content.some((type) => core.has(type))
+  )
+  const readyBlocks = counted.reduce((sum, topic) => sum + topic.content.filter((type) => core.has(type)).length, 0)
+  return { totalBlocks: counted.length * CORE_CONTENT_TYPES.length, readyBlocks, activeJobs: active, failures }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -266,6 +280,8 @@ export type TodayData = {
   upNext: DescribedAction[]
   recentExams: RecentExam[]
   generation: GenerationState
+  /** Confirmed topics with some content not written yet, for "Prepare all topics now". */
+  topicsToPrepare: number
 }
 
 export type SetupData = {
@@ -274,6 +290,8 @@ export type SetupData = {
   materials: MaterialsData
   topicCount: number
   confirmedTopicCount: number
+  /** The first confirmed topic in course order, where "Start studying" goes. */
+  firstTopic: { id: string; name: string } | null
   generation: GenerationState
 }
 
@@ -316,7 +334,14 @@ export async function getCourseOverview(userId: string, courseId: string): Promi
     return {
       mode: 'setup',
       course,
-      setup: { step, materials, topicCount: course.topics.length, confirmedTopicCount, generation },
+      setup: {
+        step,
+        materials,
+        topicCount: course.topics.length,
+        confirmedTopicCount,
+        firstTopic: course.topics.find((topic) => topic.confirmed) ?? null,
+        generation,
+      },
     }
   }
 
@@ -355,6 +380,9 @@ export async function getCourseOverview(userId: string, courseId: string): Promi
         .map((topic) => ({ id: topic.id, name: topic.name, mastery: topic.mastery, dueAt: topic.dueAt })),
       upNext,
       generation,
+      topicsToPrepare: course.topics.filter(
+        (topic) => topic.confirmed && CORE_CONTENT_TYPES.some((type) => !topic.content.includes(type))
+      ).length,
       recentExams: submissions.map((submission) => ({
         submissionId: submission.id,
         examId: submission.sampleExam.id,
@@ -395,8 +423,6 @@ export type TopicsData = {
   materialsProcessing: number
   extractJob: JobRef | null
   extractFailure: string | null
-  /** Missing core blocks across confirmed topics. */
-  missingBlocks: number
   generation: GenerationState
 }
 
@@ -440,7 +466,6 @@ export async function getTopicsData(userId: string, courseId: string): Promise<T
     materialsProcessing: materials.processingCount,
     extractJob: materials.extractJob,
     extractFailure: materials.extractFailure,
-    missingBlocks: generation.totalBlocks - generation.readyBlocks,
     generation,
   }
 }

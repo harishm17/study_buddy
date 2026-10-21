@@ -4,7 +4,7 @@
  *
  *   step 1  add materials
  *   step 2  check the topics (also while topics are still being found)
- *   step 3  build study content
+ *   step 3  start studying (content is written when a topic is opened)
  */
 
 export type CourseSetupInput = {
@@ -35,6 +35,6 @@ export function deriveSetup(input: CourseSetupInput): CourseSetup {
       label: input.topicCount === 0 ? 'Finding topics' : 'Review topics',
     }
   }
-  if (input.contentBlockCount === 0) return { mode: 'setup', step: 3, label: 'Build study content' }
+  if (input.contentBlockCount === 0) return { mode: 'setup', step: 3, label: 'Start studying' }
   return { mode: 'active', step: null, label: null }
 }

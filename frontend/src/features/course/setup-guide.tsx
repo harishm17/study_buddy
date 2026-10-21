@@ -6,7 +6,7 @@ import { pluralize } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { SetupData } from '@/server/queries/course'
 import { MaterialsManager } from './materials-manager'
-import { BuildContentStep, CheckTopicsStep } from './setup-steps'
+import { CheckTopicsStep, StartStudyingStep } from './setup-steps'
 
 type StepState = 'done' | 'current' | 'upcoming'
 
@@ -114,9 +114,11 @@ export function SetupGuide({ courseId, name, setup }: { courseId: string; name: 
           )}
         </Step>
 
-        <Step number={3} state={step === 3 ? 'current' : 'upcoming'} title="Build your study content" last>
-          <p className={description}>Notes, worked examples, practice and a quiz for every topic.</p>
-          {step === 3 ? <BuildContentStep courseId={courseId} generation={setup.generation} /> : null}
+        <Step number={3} state={step === 3 ? 'current' : 'upcoming'} title="Start studying" last>
+          <p className={description}>Notes, worked examples, practice and a quiz for each topic, written as you go.</p>
+          {step === 3 ? (
+            <StartStudyingStep courseId={courseId} firstTopic={setup.firstTopic} generation={setup.generation} />
+          ) : null}
         </Step>
       </ol>
     </Page>

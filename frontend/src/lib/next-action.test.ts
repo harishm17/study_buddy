@@ -14,12 +14,19 @@ const action = (over: Partial<NextAction>): NextAction => ({
   ...over,
 })
 
-test('study goes to the notes of the topic', () => {
+test('the first topic says Start and goes to its notes', () => {
   const described = describeNextAction(action({}), 'c1', 'Graph traversal')
-  assert.equal(described.title, 'Study Graph traversal')
+  assert.equal(described.title, 'Start Graph traversal')
   assert.equal(described.href, '/courses/c1/topics/t1?view=notes')
   assert.equal(described.verb, 'Start')
   assert.equal(described.etaLabel, 'About 18 min')
+  assert.doesNotMatch(`${described.title} ${described.reason}`, /generate|build|\$/i)
+})
+
+test('a topic that has been started says Continue', () => {
+  const described = describeNextAction(action({ started: true }), 'c1', 'Graph traversal')
+  assert.equal(described.title, 'Continue Graph traversal')
+  assert.equal(described.verb, 'Continue')
 })
 
 test('review and quiz go to the quiz view', () => {
@@ -36,13 +43,11 @@ test('a batch review says how many are due', () => {
   assert.equal(described.reason, '3 topics are due for review.')
 })
 
-test('batch generation runs in place and links to the course', () => {
-  const described = describeNextAction(action({ type: 'generate_content', id: 'c1-generate-batch', topicId: 't1' }), 'c1')
-  assert.equal(described.isBatchGenerate, true)
-  assert.equal(described.href, '/courses/c1')
+test('content being written is a notice, not an action to start', () => {
   const active = describeNextAction(action({ type: 'generate_content', id: 'c1-generate-batch-active', topicId: null }), 'c1')
   assert.equal(active.isGenerating, true)
-  assert.equal(active.isBatchGenerate, false)
+  assert.equal(active.href, '/courses/c1')
+  assert.equal('isBatchGenerate' in active, false)
 })
 
 test('setup actions route to materials and the topic editor', () => {

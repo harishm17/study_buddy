@@ -43,7 +43,7 @@ export type QuizAttemptData = {
 
 export type TopicFailure = { message: string; errorCode: string | null }
 
-export type TopicNeighbour = { id: string; name: string }
+export type TopicNeighbour = { id: string; name: string; hasNotes: boolean }
 
 export type TopicPageData = {
   course: { id: string; name: string }
@@ -87,6 +87,12 @@ const toAnswers = (value: unknown): Record<string, string> => {
   }
   return answers
 }
+
+const neighbour = (topic: { id: string; name: string; content: string[] }): TopicNeighbour => ({
+  id: topic.id,
+  name: topic.name,
+  hasNotes: topic.content.includes(CONTENT_TYPE_BY_KIND.notes),
+})
 
 export const getTopicPage = cache(async function getTopicPage(
   userId: string,
@@ -214,11 +220,8 @@ export const getTopicPage = cache(async function getTopicPage(
       daysUntilDue: shellTopic.dueAt ? (Date.parse(shellTopic.dueAt) - Date.now()) / 86_400_000 : null,
       progress: shellTopic.progress,
     },
-    previous: index > 0 ? { id: course.topics[index - 1].id, name: course.topics[index - 1].name } : null,
-    next:
-      index < course.topics.length - 1
-        ? { id: course.topics[index + 1].id, name: course.topics[index + 1].name }
-        : null,
+    previous: index > 0 ? neighbour(course.topics[index - 1]) : null,
+    next: index < course.topics.length - 1 ? neighbour(course.topics[index + 1]) : null,
     content,
     present,
     contentVersion,

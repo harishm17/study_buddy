@@ -126,27 +126,34 @@ test('topic editor: rename, add, reorder, merge, delete, confirm', async ({ page
   await page.getByRole('button', { name: 'Cancel' }).click()
   await expect(rows).toHaveCount(initial)
 
-  // Confirm: back to the overview, where step 3 is next.
+  // Confirm: back to the overview, where step 3 is next: start the first topic (its notes are
+  // written when it is opened, so there is no bulk "build" button).
   await page.getByRole('button', { name: 'Confirm topics' }).click()
   await expect(page).toHaveURL(courseUrl)
-  await expect(page.getByRole('button', { name: 'Build study content' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Start studying' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /^Start / })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Build study content|Build missing content/ })).toHaveCount(0)
   await expect(page.getByText(`${initial} topics confirmed.`)).toBeVisible()
 })
 
-test('build content shows progress or failures, then topics list and materials', async ({ page }) => {
+test('starting the first topic writes its notes, then topics list and materials', async ({ page }) => {
   await signIn(page, email, password)
 
-  // The dev AI service has no chunked text for these files, so every block fails with a reason
-  // and a way to try again. With a real service the same step shows "Writing content, N of M ready".
+  // Opening a topic with no notes starts them. The dev AI service may have no chunked text for
+  // these files, so the job can fail with a reason and a way to try again (it is not started a
+  // second time by itself). With text mapped, the notes appear.
   await page.goto(courseUrl)
-  await page.getByRole('button', { name: 'Build study content' }).click()
-  await expect(page.getByText(/couldn't be written|Writing content/).first()).toBeVisible({ timeout: 60_000 })
+  await page.getByRole('link', { name: /^Start / }).click()
+  await expect(page).toHaveURL(/\/topics\/[0-9a-f-]{36}\?view=notes$/)
+  await expect(
+    page.getByText(/couldn't be written/).or(page.getByRole('heading', { name: 'Overview' }).first()).first()
+  ).toBeVisible({ timeout: 60_000 })
 
-  // The topics list mode: confirmed topics, with the build button counting missing blocks.
+  // The topics list: confirmed topics, and no bulk build button.
   await page.goto(`${courseUrl}/topics`)
   await expect(page.getByRole('heading', { level: 1, name: 'Topics' })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Edit topics' })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Build missing content \(\d+\)/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Build missing content/ })).toHaveCount(0)
   await page.getByRole('radio', { name: 'Needs work' }).click()
   await expect(page.getByRole('list', { name: 'Topics' }).getByRole('listitem').first()).toBeVisible()
 

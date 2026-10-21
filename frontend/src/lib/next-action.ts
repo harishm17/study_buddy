@@ -7,9 +7,7 @@ export type DescribedAction = {
   verb: string
   href: string
   etaLabel: string
-  /** True for the batch "generate missing content" action, which runs in place on the course page. */
-  isBatchGenerate: boolean
-  /** True while the batch generation is already running. */
+  /** True while content is being written in the background (the building panel shows it instead). */
   isGenerating: boolean
 }
 
@@ -27,8 +25,7 @@ export function describeNextAction(
   const topicHref = (view?: string) =>
     action.topicId ? `${base}/topics/${action.topicId}${view ? `?view=${view}` : ''}` : `${base}/topics`
   const etaLabel = `About ${action.etaMinutes} min`
-  const batch = action.id.includes('-batch')
-  const common = { etaLabel, isBatchGenerate: false, isGenerating: false }
+  const common = { etaLabel, isGenerating: false }
 
   switch (action.type) {
     case 'upload_materials':
@@ -56,11 +53,14 @@ export function describeNextAction(
         href: `${base}/topics?edit=1`,
       }
     case 'study_topic':
+      // The notes are written when the topic is opened, so starting is all it takes.
       return {
         ...common,
-        title: `Study ${topic}`,
-        reason: "You haven't finished the notes and examples yet.",
-        verb: 'Start',
+        title: action.started ? `Continue ${topic}` : `Start ${topic}`,
+        reason: action.started
+          ? "You haven't finished the notes and examples yet."
+          : 'The notes are written when you open it.',
+        verb: action.started ? 'Continue' : 'Start',
         href: topicHref('notes'),
       }
     case 'review_topic': {
@@ -89,26 +89,16 @@ export function describeNextAction(
         verb: 'Start',
         href: topicHref('voice'),
       }
-    case 'generate_content': {
-      const generating = action.id.endsWith('-batch-active')
+    case 'generate_content':
+      // Only the "being written" notice is left (the planner no longer asks to generate).
       return {
         ...common,
-        title: generating
-          ? 'Writing your study content'
-          : batch
-            ? 'Build the missing study content'
-            : `Write content for ${topic}`,
-        reason: generating
-          ? 'It keeps running if you leave this page.'
-          : batch
-            ? 'Some topics are missing notes, examples, practice or a quiz.'
-            : 'This topic is missing some notes, examples, practice or a quiz.',
-        verb: generating ? 'View' : 'Generate',
-        href: batch || !action.topicId ? base : topicHref(),
-        isBatchGenerate: batch && !generating,
-        isGenerating: generating,
+        title: 'Writing your study content',
+        reason: 'It keeps running if you leave this page.',
+        verb: 'View',
+        href: action.topicId ? topicHref() : base,
+        isGenerating: true,
       }
-    }
     case 'take_exam': {
       const build = action.id.endsWith('-exam-build')
       return {
