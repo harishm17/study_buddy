@@ -183,6 +183,7 @@ export function GradedResults({ result, submittedLabel }: { result: Graded; subm
                 correctAnswer={question.correctAnswer}
                 feedback={question.feedback}
                 topicName={question.topicName}
+                sources={question.sources}
               />
             ))}
           </ol>

@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { CaretDown, File, FileDoc, FilePdf, FilePpt, ListBullets } from '@phosphor-icons/react/dist/ssr'
+import { CaretDown, ListBullets } from '@phosphor-icons/react/dist/ssr'
+import { SourceIcon } from '@/components/learning/source-link'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { LazyMarkdown } from '@/components/ui/lazy-markdown'
@@ -13,14 +14,6 @@ import { CompletionRow } from './completion-row'
 import { cleanNotes, readMinutes } from './notes-text'
 import { useMarkComplete } from './use-mark-complete'
 import type { NotesContent, TopicCitation } from './types'
-
-function SourceIcon({ filename }: { filename: string }) {
-  const extension = filename.split('.').pop()?.toLowerCase()
-  if (extension === 'pdf') return <FilePdf />
-  if (extension === 'docx' || extension === 'doc') return <FileDoc />
-  if (extension === 'pptx' || extension === 'ppt') return <FilePpt />
-  return <File />
-}
 
 function citationLabel(citation: TopicCitation): string {
   return citation.pages ? `${citation.filename}, p. ${citation.pages}` : citation.filename

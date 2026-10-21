@@ -58,6 +58,7 @@ export default async function TopicLayout({
           bestQuiz={topic.progress.quizScore}
           previous={data.previous}
           next={data.next}
+          structure={topic.structure}
         />
         <StudyTabs
           courseId={courseId}

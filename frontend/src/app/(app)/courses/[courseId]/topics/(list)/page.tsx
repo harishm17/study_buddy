@@ -60,11 +60,13 @@ export default async function TopicsPage({
         summary={courseSummary(data.topics.length, counts, due)}
         generation={data.generation}
         now={now}
+        units={data.units}
         topics={data.topics.map((topic) => ({
           id: topic.id,
           name: topic.name,
           description: topic.description,
           orderIndex: topic.orderIndex,
+          unitId: topic.unitId,
           mastery: topic.mastery,
           dueAt: topic.dueAt,
           timing: reviewTiming(topic.dueAt, now),

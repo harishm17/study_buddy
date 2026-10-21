@@ -5,7 +5,9 @@ import { CheckCircle, CircleHalf, Question, XCircle } from '@phosphor-icons/reac
 import { Badge } from '@/components/ui/badge'
 import { LazyMarkdown } from '@/components/ui/lazy-markdown'
 import { MathText } from '@/components/ui/math-text'
+import type { SourceRef } from '@/lib/topics/sources'
 import { cn } from '@/lib/utils'
+import { SourceLine } from './source-link'
 
 export type ReviewStatus = 'correct' | 'partial' | 'incorrect' | 'review'
 
@@ -56,6 +58,8 @@ export type ReviewItemProps = {
   explanation?: string | null
   /** The topic the question belongs to, shown as a small badge. */
   topicName?: string | null
+  /** Where in the student's files the question comes from: "From notes.pdf, p. 4". */
+  sources?: SourceRef[]
   className?: string
 }
 
@@ -87,6 +91,7 @@ export function ReviewItem({
   feedback,
   explanation,
   topicName,
+  sources,
   className,
 }: ReviewItemProps) {
   const showKey = status !== 'correct'
@@ -141,6 +146,7 @@ export function ReviewItem({
             </Detail>
           ) : null}
         </dl>
+        {sources && sources.length > 0 ? <SourceLine sources={sources} className="mt-3" /> : null}
       </div>
     </li>
   )

@@ -4,13 +4,18 @@ import * as React from 'react'
 import Link from 'next/link'
 import { Check, Exam, Lightbulb, Notebook, PencilSimple, PencilSimpleLine } from '@phosphor-icons/react/dist/ssr'
 import { PageIntro } from '@/components/shell/page'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ProgressRing } from '@/components/ui/progress-ring'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Tooltip } from '@/components/ui/tooltip'
+import { MathText } from '@/components/ui/math-text'
+import { MasteryIndicator } from '@/components/ui/mastery-indicator'
+import { pluralize } from '@/lib/format'
 import { masteryLabel, masteryLevel, masteryPercent, masteryTone } from '@/lib/mastery'
+import { groupTopicsByUnit, unitMastery, type UnitGroup as UnitGroupOf } from '@/lib/topics/units'
 import { cn } from '@/lib/utils'
-import type { GenerationState } from '@/server/queries/course'
+import type { GenerationState, TopicsData } from '@/server/queries/course'
 import { BuildingContent } from './building-content'
 import { needsWorkOrder, type GlyphState } from './summary'
 
@@ -19,6 +24,8 @@ export type ListTopic = {
   name: string
   description: string | null
   orderIndex: number
+  /** The unit it belongs to, or null (a flat course, or a topic added by hand). */
+  unitId: string | null
   mastery: number | null
   dueAt: string | null
   /** "Due today" or "Next review in 4 days", worked out on the server. */
@@ -103,11 +110,45 @@ function TopicRowItem({ courseId, topic }: { courseId: string; topic: ListTopic 
   )
 }
 
+type Group = UnitGroupOf<ListTopic, TopicsData['units'][number]>
+
+/** One unit: its title, week, size and mastery, then its topics. The topics with no unit get a plain "Topics" heading. */
+function UnitGroup({ courseId, group }: { courseId: string; group: Group }) {
+  const headingId = React.useId()
+  const { unit, topics } = group
+  const mastery = unitMastery(topics.map((topic) => topic.mastery))
+  return (
+    <section aria-labelledby={headingId}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2 pb-2">
+        <h2 id={headingId} className="min-w-0 text-heading text-fg">
+          {unit ? <MathText>{unit.title}</MathText> : 'Topics'}
+        </h2>
+        {unit?.weekLabel ? <Badge>{unit.weekLabel}</Badge> : null}
+        <span className="text-small tabular text-fg-3">{pluralize(topics.length, 'topic')}</span>
+        {unit ? <MasteryIndicator mastery={mastery} showPercent className="ml-auto text-small" /> : null}
+      </div>
+      {unit?.summary ? <p className="-mt-1 mb-2 max-w-[68ch] px-2 text-small text-fg-2">
+          <MathText>{unit.summary}</MathText>
+        </p> : null}
+      <ul
+        aria-label={unit ? `Topics in ${unit.title}` : 'Topics'}
+        className="divide-y divide-border border-y border-border"
+      >
+        {topics.map((topic) => (
+          <TopicRowItem key={topic.id} courseId={courseId} topic={topic} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 type Sort = 'order' | 'needs-work'
 
 type TopicsListProps = {
   courseId: string
   topics: ListTopic[]
+  /** In course order; empty for a flat course, which is one plain list. */
+  units: TopicsData['units']
   summary: string
   generation: GenerationState
   /** When this page was rendered, in ms, so "Needs work" can tell what is due. */
@@ -115,9 +156,12 @@ type TopicsListProps = {
 }
 
 /** Confirmed topics: progress, the study path, mastery and review timing, with a sort. */
-export function TopicsList({ courseId, topics, summary, generation, now }: TopicsListProps) {
+export function TopicsList({ courseId, topics, units, summary, generation, now }: TopicsListProps) {
   const [sort, setSort] = React.useState<Sort>('order')
   const ordered = sort === 'order' ? topics : needsWorkOrder(topics, now)
+  // "Needs work" is one list across units; course order keeps them together under their unit.
+  const groups = React.useMemo(() => groupTopicsByUnit(topics, units), [topics, units])
+  const grouped = sort === 'order' && units.length > 0
   const building = generation.activeJobs > 0 || generation.failures.length > 0
 
   return (
@@ -148,11 +192,19 @@ export function TopicsList({ courseId, topics, summary, generation, now }: Topic
               ]}
             />
           </div>
-          <ul aria-label="Topics" className="divide-y divide-border border-y border-border">
-            {ordered.map((topic) => (
-              <TopicRowItem key={topic.id} courseId={courseId} topic={topic} />
-            ))}
-          </ul>
+          {grouped ? (
+            <div className="flex flex-col gap-8">
+              {groups.map((group) => (
+                <UnitGroup key={group.unit?.id ?? 'loose'} courseId={courseId} group={group} />
+              ))}
+            </div>
+          ) : (
+            <ul aria-label="Topics" className="divide-y divide-border border-y border-border">
+              {ordered.map((topic) => (
+                <TopicRowItem key={topic.id} courseId={courseId} topic={topic} />
+              ))}
+            </ul>
+          )}
         </div>
       </div>
     </>

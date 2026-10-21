@@ -2,7 +2,11 @@ import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
 
 const BARE_HEADINGS = [
   'Overview',
+  "What You'll Learn",
+  'The Idea',
   'Key Concepts',
+  'Worked Example',
+  'Check Yourself',
   'How It Works',
   'Detailed Content',
   'Common Pitfalls',
@@ -36,7 +40,7 @@ export function cleanNotes(raw: string): string {
   body = kept.join('\n')
 
   for (const label of BARE_HEADINGS) {
-    body = body.replace(new RegExp('^(?!#)[ \\t]*' + label + '[ \\t]*:?[ \\t]*$', 'gim'), '## ' + label)
+    body = body.replace(new RegExp('^(?!#)[ \\t]*' + label + '[ \\t]*:?[ \\t]*$', 'gim'), (found) => '## ' + found.trim().replace(/:$/, '').trim())
   }
 
   body = body.replace(/^\s*#\s+[^\n]*\n+/, '')

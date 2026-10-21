@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { ArrowRight, Check, CaretLeft, CaretRight, Eye, Lightbulb, Plus, XCircle } from '@phosphor-icons/react/dist/ssr'
+import { SourceLine } from '@/components/learning/source-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
@@ -382,6 +383,7 @@ export function PracticeView({ topicId, practice }: { topicId: string; practice:
             {problem.minutes ? <span className="ml-1 text-caption text-fg-3">About {problem.minutes} min</span> : null}
           </div>
         )}
+        <SourceLine sources={problem.sources} />
       </div>
 
       <ol className="mt-8 flex flex-col">

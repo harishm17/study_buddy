@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { CaretDown, CheckCircle, ListNumbers, Plus } from '@phosphor-icons/react/dist/ssr'
+import { SourceLine } from '@/components/learning/source-link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -136,6 +137,8 @@ function ExampleCard({
               ))}
             </div>
           ) : null}
+
+          <SourceLine sources={example.sources} />
         </div>
       ) : null}
     </Card>
