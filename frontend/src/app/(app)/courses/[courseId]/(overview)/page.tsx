@@ -4,6 +4,7 @@ import { TodayView } from '@/features/course/today-view'
 import { getCourseOverview } from '@/server/queries/course'
 import { getCourseShell } from '@/server/queries/courses'
 import { requireUser } from '@/server/session'
+import { getTimeZone } from '@/server/timezone'
 
 export async function generateMetadata({ params }: { params: Promise<{ courseId: string }> }) {
   const user = await requireUser()
@@ -14,7 +15,7 @@ export async function generateMetadata({ params }: { params: Promise<{ courseId:
 export default async function CourseOverviewPage({ params }: { params: Promise<{ courseId: string }> }) {
   const user = await requireUser()
   const { courseId } = await params
-  const overview = await getCourseOverview(user.id, courseId)
+  const overview = await getCourseOverview(user.id, courseId, await getTimeZone())
   if (!overview) notFound()
 
   if (overview.mode === 'setup') {

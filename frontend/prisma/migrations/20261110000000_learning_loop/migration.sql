@@ -5,6 +5,10 @@
 -- AlterTable
 ALTER TABLE "exam_submissions" ADD COLUMN     "review_applied_at" TIMESTAMP(3);
 
+-- Results graded before this change are not applied to mastery now: they were already part of it
+-- (their exam signals count) and re-timing every review at deploy would surprise students.
+UPDATE "exam_submissions" SET "review_applied_at" = "graded_at" WHERE "graded_at" IS NOT NULL;
+
 -- AlterTable
 ALTER TABLE "projects" ADD COLUMN     "daily_minutes" INTEGER NOT NULL DEFAULT 45,
 ADD COLUMN     "exam_date" TIMESTAMP(3),

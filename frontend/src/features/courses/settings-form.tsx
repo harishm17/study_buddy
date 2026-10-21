@@ -10,22 +10,29 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toaster'
 import { apiFetch, isApiError } from '@/lib/api/client'
+import { PlanFields } from './plan-fields'
 
 type CourseSettingsFormProps = {
-  course: { id: string; name: string; description: string | null }
+  course: { id: string; name: string; description: string | null; examDate: string | null; dailyMinutes: number }
 }
 
 export function CourseSettingsForm({ course }: CourseSettingsFormProps) {
   const router = useRouter()
   const [name, setName] = React.useState(course.name)
   const [description, setDescription] = React.useState(course.description ?? '')
+  const [examDate, setExamDate] = React.useState(course.examDate ?? '')
+  const [dailyMinutes, setDailyMinutes] = React.useState(course.dailyMinutes)
   const [nameError, setNameError] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
   const [deleteOpen, setDeleteOpen] = React.useState(false)
   const [typedName, setTypedName] = React.useState('')
 
-  const dirty = name.trim() !== course.name || description.trim() !== (course.description ?? '')
+  const dirty =
+    name.trim() !== course.name ||
+    description.trim() !== (course.description ?? '') ||
+    examDate !== (course.examDate ?? '') ||
+    dailyMinutes !== course.dailyMinutes
 
   async function onSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -39,7 +46,7 @@ export function CourseSettingsForm({ course }: CourseSettingsFormProps) {
     try {
       await apiFetch(`/api/projects/${course.id}`, {
         method: 'PATCH',
-        json: { name: name.trim(), description: description.trim() },
+        json: { name: name.trim(), description: description.trim(), examDate: examDate || null, dailyMinutes },
       })
       toast.success(name.trim() !== course.name ? 'Course renamed' : 'Course saved')
       router.refresh()
@@ -76,6 +83,7 @@ export function CourseSettingsForm({ course }: CourseSettingsFormProps) {
             onChange={(event) => setDescription(event.target.value)}
           />
         </Field>
+        <PlanFields examDate={examDate} dailyMinutes={dailyMinutes} onExamDate={setExamDate} onDailyMinutes={setDailyMinutes} />
         {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
         <div>
           <Button type="submit" variant="primary" loading={saving} disabled={!dirty}>

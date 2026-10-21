@@ -4,6 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import {
+  CalendarCheck,
   CaretDown,
   ChatCircleText,
   Exam,
@@ -11,7 +12,7 @@ import {
   House,
   ListBullets,
   MagnifyingGlass,
-  Microphone,
+  ArrowsClockwise,
 } from '@phosphor-icons/react/dist/ssr'
 import { Kbd } from '@/components/ui/kbd'
 import { MasteryIndicator } from '@/components/ui/mastery-indicator'
@@ -210,6 +211,7 @@ export function SidebarContent({ allowRail = false }: { allowRail?: boolean }) {
               </span>
             ) : null,
         },
+        { key: 'plan', label: 'Plan', href: `${base}/plan`, icon: CalendarCheck, active: pathname.startsWith(`${base}/plan`) },
         {
           key: 'topics',
           label: 'Topics',
@@ -226,7 +228,7 @@ export function SidebarContent({ allowRail = false }: { allowRail?: boolean }) {
         { key: 'materials', label: 'Materials', href: `${base}/materials`, icon: Files, active: pathname.startsWith(`${base}/materials`) },
         { key: 'ask', label: 'Ask', href: `${base}/ask`, icon: ChatCircleText, active: pathname.startsWith(`${base}/ask`) },
         { key: 'exams', label: 'Mock exams', href: `${base}/exams`, icon: Exam, active: pathname.startsWith(`${base}/exams`) },
-        { key: 'review', label: 'Voice review', href: `${base}/review`, icon: Microphone, active: pathname.startsWith(`${base}/review`) },
+        { key: 'review', label: 'Review', href: `${base}/review`, icon: ArrowsClockwise, active: pathname.startsWith(`${base}/review`) },
       ]
     : []
 

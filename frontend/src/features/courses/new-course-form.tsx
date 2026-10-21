@@ -9,11 +9,15 @@ import { InlineAlert } from '@/components/ui/inline-alert'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { apiFetch, isApiError } from '@/lib/api/client'
+import { DEFAULT_DAILY_MINUTES } from '@/lib/learning/plan-settings'
+import { PlanFields } from './plan-fields'
 
 export function NewCourseForm() {
   const router = useRouter()
   const [name, setName] = React.useState('')
   const [description, setDescription] = React.useState('')
+  const [examDate, setExamDate] = React.useState('')
+  const [dailyMinutes, setDailyMinutes] = React.useState<number>(DEFAULT_DAILY_MINUTES)
   const [nameError, setNameError] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [pending, setPending] = React.useState(false)
@@ -32,7 +36,12 @@ export function NewCourseForm() {
     try {
       const { project } = await apiFetch<{ project: { id: string } }>('/api/projects', {
         method: 'POST',
-        json: { name: name.trim(), description: description.trim() || null },
+        json: {
+          name: name.trim(),
+          description: description.trim() || null,
+          ...(examDate ? { examDate } : {}),
+          dailyMinutes,
+        },
       })
       router.push(`/courses/${project.id}`)
       // The sidebar and command palette read the course list in the layout.
@@ -66,6 +75,7 @@ export function NewCourseForm() {
           onChange={(event) => setDescription(event.target.value)}
         />
       </Field>
+      <PlanFields examDate={examDate} dailyMinutes={dailyMinutes} onExamDate={setExamDate} onDailyMinutes={setDailyMinutes} />
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       <div className="flex items-center gap-2">
         <Button type="submit" variant="primary" loading={pending}>

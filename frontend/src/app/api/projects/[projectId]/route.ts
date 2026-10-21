@@ -9,11 +9,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db/prisma'
 import { requireAuth } from '@/lib/auth/get-session'
 import { z } from 'zod'
+import { dailyMinutesSchema, examDateColumn, examDateSchema } from '@/lib/learning/plan-settings'
 
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
   status: z.enum(['setup', 'topics_pending', 'active', 'completed']).optional(),
+  // The exam date (YYYY-MM-DD, or null to clear it), the minutes to study each day, and whether the
+  // "When is your exam?" card was closed.
+  examDate: examDateSchema.optional(),
+  dailyMinutes: dailyMinutesSchema.optional(),
+  examPromptDismissed: z.boolean().optional(),
 })
 
 // Kept for API clients; the UI reads this through server queries.
@@ -100,7 +106,7 @@ export async function PATCH(
 
     const updatedProject = await prisma.project.update({
       where: { id: projectId },
-      data: validation.data,
+      data: { ...validation.data, examDate: examDateColumn(validation.data.examDate) },
     })
 
     return NextResponse.json({ project: updatedProject })

@@ -1,11 +1,11 @@
 import { prisma } from '@/lib/db/prisma'
-import { buildNextActionsForProject } from '@/lib/learning/planner'
-import { describeNextAction, type DescribedAction } from '@/lib/next-action'
+import { upNextFromPlan } from '@/lib/learning/plan-copy'
 import { mostRecentActivity } from '@/features/home/recent-course'
+import { getPlanData } from './plan'
 
 export type ContinueAction = {
   course: { id: string; name: string }
-  action: DescribedAction
+  action: { title: string; reason: string; etaLabel: string; href: string }
 }
 
 /**
@@ -50,22 +50,29 @@ async function continueCourse(userId: string): Promise<{ id: string; name: strin
 }
 
 /**
- * The top "Up next" action of the course the student worked on most recently, using the same
- * planner as GET /api/projects/[id]/next-actions. Null when the user has no courses.
+ * The first thing to do today in the plan of the course the student worked on most recently (or the
+ * first thing on the next day with work when today is done). Null when the user has no courses or
+ * nothing is planned.
  */
-export async function continueAction(userId: string): Promise<ContinueAction | null> {
+export async function continueAction(userId: string, timeZone: string): Promise<ContinueAction | null> {
   const course = await continueCourse(userId)
   if (!course) return null
 
-  const [first] = await buildNextActionsForProject(userId, course.id)
+  const data = await getPlanData(userId, course.id, timeZone)
+  if (!data) return null
+  if (data.course.setup.mode === 'setup') {
+    return {
+      course,
+      action: {
+        title: data.course.setup.label,
+        reason: 'Finish setting up this course to get your study plan.',
+        etaLabel: 'A few minutes',
+        href: `/courses/${course.id}`,
+      },
+    }
+  }
+  const { upNext, later } = upNextFromPlan(data.plan, course.id)
+  const first = upNext[0] ?? later?.item
   if (!first) return null
-
-  const topic = first.topicId
-    ? await prisma.topic.findFirst({
-        where: { id: first.topicId, project: { userId } },
-        select: { name: true },
-      })
-    : null
-
-  return { course, action: describeNextAction(first, course.id, topic?.name) }
+  return { course, action: { title: first.title, reason: first.reason, etaLabel: first.etaLabel, href: first.href } }
 }

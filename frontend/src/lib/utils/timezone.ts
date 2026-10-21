@@ -6,10 +6,3 @@ export function browserTimeZone(): string {
     return 'UTC'
   }
 }
-
-/** URL of the study plan for a project, planned on the student's own clock. */
-export function studyPlanUrl(projectId: string, date?: string): string {
-  const params = new URLSearchParams({ tz: browserTimeZone() })
-  if (date) params.set('date', date)
-  return `/api/projects/${projectId}/study-plan?${params.toString()}`
-}

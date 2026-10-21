@@ -12,15 +12,17 @@ import { continueAction } from '@/server/queries/continue'
 import { listCourses } from '@/server/queries/courses'
 import { dueReviews } from '@/server/queries/reviews'
 import { requireUser } from '@/server/session'
+import { getTimeZone } from '@/server/timezone'
 
 export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage() {
   const user = await requireUser()
+  const timeZone = await getTimeZone()
   const [courses, due, next] = await Promise.all([
     listCourses(user.id),
     dueReviews(user.id, 5),
-    continueAction(user.id),
+    continueAction(user.id, timeZone),
   ])
 
   if (courses.length === 0) {

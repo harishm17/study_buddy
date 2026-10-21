@@ -3,6 +3,7 @@ import { CommandPalette } from '@/components/shell/command-palette'
 import { MobileNav } from '@/components/shell/mobile-nav'
 import { ShellProvider } from '@/components/shell/shell-provider'
 import { ShortcutsDialog } from '@/components/shell/shortcuts-dialog'
+import { TimeZoneSync } from '@/features/shell/time-zone-sync'
 import { Sidebar } from '@/components/shell/sidebar'
 import { SkipLink } from '@/components/shell/skip-link'
 import { Topbar } from '@/components/shell/topbar'
@@ -18,6 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <ShellProvider user={{ name: user.name, email: user.email }} nav={nav}>
+      <TimeZoneSync />
       <SkipLink />
       <div className="flex min-h-dvh">
         <Sidebar />

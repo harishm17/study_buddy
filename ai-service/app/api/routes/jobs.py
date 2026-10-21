@@ -801,7 +801,8 @@ async def grade_exam_job(payload: JobPayload, job: JobContext) -> JobOutcome:
             UPDATE exam_submissions
             SET ai_grading = $1,
                 ai_feedback = $2,
-                graded_at = {UTC_NOW}
+                graded_at = {UTC_NOW},
+                review_applied_at = NULL
             WHERE id = $3
             """,
             json.dumps(grading_result),
