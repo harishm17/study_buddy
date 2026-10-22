@@ -69,7 +69,7 @@ export function HeroActions() {
             <Link href="/signup">Get started</Link>
           </Button>
           <Button asChild variant="secondary" size="lg">
-            <Link href="/login">Sign in</Link>
+            <a href="#how-it-works">See how it works</a>
           </Button>
         </>
       )}

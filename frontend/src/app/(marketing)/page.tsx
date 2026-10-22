@@ -1,10 +1,12 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
+import { ArrowUpRight, Minus, Plus } from '@phosphor-icons/react/dist/ssr'
 import { BRAND_NAME } from '@/config/brand'
 import { DEFAULT_DESCRIPTION, SITE_URL } from '@/config/site'
 import { FinalCta, HeroActions } from '@/features/marketing/auth-actions'
-import { LazyMount } from '@/features/marketing/lazy-mount'
-import { ThemedImage } from '@/features/marketing/themed-image'
-import '@/features/marketing/landing.css'
+import { EVAL_FACTS, FAQ, LINKS, LOOP_STEPS } from '@/features/marketing/content'
+import { Loop } from '@/features/marketing/loop'
+import { Shot } from '@/features/marketing/shot'
 
 export const metadata: Metadata = {
   alternates: { canonical: '/' },
@@ -28,220 +30,164 @@ const jsonLd = [
     url: SITE_URL,
     logo: `${SITE_URL}/icon-512.png`,
   },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: FAQ.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: { '@type': 'Answer', text: item.answer.join(' ') },
+    })),
+  },
 ]
 
-const sectionPad = 'mx-auto w-full max-w-[1120px] px-4 md:px-8'
+const container = 'mx-auto w-full max-w-[1280px] px-4 md:px-8'
+const h2 = 'text-[30px] font-semibold leading-9 tracking-[-0.02em] text-fg md:text-display'
+const link = 'inline-flex items-center gap-1 rounded-chip text-small font-medium text-accent hover:underline'
 
 function Hero() {
   return (
-    <section className="overflow-hidden">
-      <div className="pb-14 pt-8 md:pb-16 md:pt-14 lg:flex lg:items-center lg:gap-10 lg:pb-16 lg:pl-8 min-[1280px]:gap-12 min-[1440px]:gap-14 min-[1440px]:pl-[max(32px,calc((100vw-1280px)/2+32px))]">
-        <div className="px-4 md:px-8 lg:w-[400px] lg:shrink-0 lg:p-0 min-[1280px]:w-[440px] min-[1440px]:w-[460px]">
-          <h1 className="text-balance text-[38px] font-semibold leading-[44px] tracking-[-0.025em] text-fg md:text-display-xl">
-            Turn your course files into a study plan.
+    <section className={`${container} pb-14 pt-8 md:pb-20 md:pt-12`}>
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)] lg:gap-12">
+        <div>
+          <h1 className="text-balance text-[38px] font-semibold leading-[44px] tracking-[-0.025em] text-fg md:text-[44px] md:leading-[50px]">
+            Your course files, planned to exam day.
           </h1>
-          <p className="mt-5 max-w-[34ch] text-[17px] leading-[27px] text-fg-2">
-            Upload lecture notes and past exams. {BRAND_NAME} builds notes, practice, quizzes and mock exams from them.
+          <p className="mt-5 max-w-[36ch] text-reading text-fg-2">
+            Upload your notes and past exams. {BRAND_NAME} plans each day to your exam and writes the practice from your files.
           </p>
           <HeroActions />
         </div>
-        <div className="mt-12 px-4 md:px-8 lg:mt-0 lg:min-w-0 lg:flex-1 lg:p-0">
-          <div className="overflow-hidden rounded-card border border-border bg-surface shadow-float lg:w-[700px] lg:max-w-none min-[1280px]:w-[820px] min-[1440px]:w-[960px]">
-            <ThemedImage
-              name="notes"
-              width={1600}
-              height={1000}
-              priority
-              fetchPriority="high"
-              alt="Margins notes page showing Graph traversal notes with sources"
-              sizes="(min-width: 1440px) 960px, (min-width: 1280px) 820px, (min-width: 1024px) 700px, 100vw"
-              className="h-auto w-full"
-            />
-          </div>
+        <div className="mx-auto w-full max-w-[420px] overflow-hidden rounded-card border border-border bg-surface md:max-w-none">
+          <Shot
+            name="plan"
+            desktop={{ width: 1400, height: 957 }}
+            mobile={{ width: 780, height: 1180 }}
+            eager
+            alt="The Margins plan page. Today lists a review and a quiz, and the days after it lead to the exam date."
+            sizes="(min-width: 1280px) 700px, (min-width: 1024px) 55vw, 704px"
+            className="h-auto w-full"
+          />
         </div>
       </div>
     </section>
   )
 }
 
-const STEPS = [
-  { title: 'Upload your materials', text: 'Add lecture notes, past exams and book chapters as PDF, Word or PowerPoint files.' },
-  {
-    title: 'Check the topics',
-    text: `${BRAND_NAME} finds the topics in your files. Rename, merge or remove any before you confirm.`,
-  },
-  { title: 'Study, practise, test', text: 'Read the notes, work through examples, take quizzes, then sit a timed mock exam.' },
-]
-
-function HowItWorks() {
+function LoopSection() {
   return (
-    <section aria-labelledby="how-heading" className={`${sectionPad} py-16 md:py-20`}>
-      <h2 id="how-heading" className="text-[30px] font-semibold leading-9 tracking-[-0.02em] text-fg md:text-display">
-        How it works
+    <section id="how-it-works" aria-labelledby="loop-heading" className={`${container} scroll-mt-4 py-14 md:py-20`}>
+      <h2 id="loop-heading" className={h2}>
+        From your files to exam day
       </h2>
-      <ol className="mt-10 border-t border-border">
-        {STEPS.map((step, index) => (
-          <li
-            key={step.title}
-            className="grid gap-x-12 gap-y-8 border-b border-border py-10 md:grid-cols-12 md:items-center md:py-12"
-          >
-            <div className={index === 1 ? 'md:order-2 md:col-span-5' : 'md:col-span-6'}>
-              <span className="tabular grid size-7 place-items-center rounded-full border border-border-strong text-small text-fg-2">
-                {index + 1}
-              </span>
-              <h3 className="mt-4 text-title text-fg">{step.title}</h3>
-              <p className="mt-2 max-w-[44ch] text-[17px] leading-[27px] text-fg-2">{step.text}</p>
+      <div className="mt-10 md:mt-12">
+        <Loop steps={LOOP_STEPS} />
+      </div>
+    </section>
+  )
+}
+
+function Trust() {
+  return (
+    <section id="trust" aria-labelledby="trust-heading" className="bg-surface-2">
+      <div className={`${container} py-14 md:py-20`}>
+        <h2 id="trust-heading" className={h2}>
+          Sources you can check
+        </h2>
+        <div className="mt-10 grid gap-6 md:mt-12 lg:grid-cols-12 lg:gap-8">
+          <div className="flex flex-col overflow-hidden rounded-card border border-border bg-surface lg:col-span-7">
+            <div className="p-6 pb-5 md:p-8 md:pb-6">
+              <h3 className="text-heading text-fg">Every answer points to your files</h3>
+              <p className="mt-2 max-w-[52ch] text-reading text-fg-2">
+                Notes, worked examples, quiz results and chat answers name the file and page they came from. Hover a number in an answer to read the passage itself.
+              </p>
             </div>
-            {index === 1 ? (
-              <div className="md:order-1 md:col-span-7">
-                <LazyMount className="aspect-[1100/557] overflow-hidden rounded-card border border-border bg-surface">
-                  <ThemedImage
-                    name="topics-edit"
-                    width={1100}
-                    height={557}
-                    alt="Margins topic editor listing seven topics found in a course, each with keywords"
-                    sizes="(min-width: 1152px) 640px, (min-width: 768px) 55vw, calc(100vw - 34px)"
-                    className="h-auto w-full"
-                  />
-                </LazyMount>
+            <div className="flex flex-1 px-6 md:px-8">
+              <div className="relative min-h-[400px] flex-1 overflow-hidden rounded-t-control border border-b-0 border-border">
+                <Shot
+                  name="ask"
+                  desktop={{ width: 1000, height: 1022 }}
+                  mobile={{ width: 780, height: 1520 }}
+                  alt="An answer in Ask your materials with a citation open: the quoted passage, the file name and the page"
+                  sizes="(min-width: 1280px) 620px, (min-width: 1024px) 55vw, 704px"
+                  className="absolute inset-0 h-full w-full object-cover object-[50%_32%] md:object-[50%_38%]"
+                />
               </div>
-            ) : null}
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-}
-
-const cell = 'flex flex-col overflow-hidden rounded-card border border-border bg-surface'
-
-function CellText({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="p-6 pb-5">
-      <h3 className="text-heading text-fg">{title}</h3>
-      <p className="mt-1.5 max-w-[46ch] text-small text-fg-2">{text}</p>
-    </div>
-  )
-}
-
-/** A screenshot peeking out of the bottom of a cell: framed on top and the sides, cut by the cell edge. */
-function CellShot({
-  name,
-  width,
-  height,
-  alt,
-  sizes,
-  heightClass,
-}: {
-  name: string
-  width: number
-  height: number
-  alt: string
-  sizes: string
-  heightClass: string
-}) {
-  return (
-    <div className="mt-auto px-6">
-      <LazyMount className={`overflow-hidden rounded-t-control border border-b-0 border-border ${heightClass}`}>
-        <ThemedImage name={name} width={width} height={height} alt={alt} sizes={sizes} className="h-auto w-full" />
-      </LazyMount>
-    </div>
-  )
-}
-
-function Bento() {
-  return (
-    <section aria-labelledby="bento-heading" className={`${sectionPad} py-16 md:py-20`}>
-      <h2 id="bento-heading" className="text-[30px] font-semibold leading-9 tracking-[-0.02em] text-fg md:text-display">
-        What you get
-      </h2>
-      <div className="mt-10 grid gap-4 lg:grid-cols-12">
-        <div className={`${cell} lg:col-span-7`}>
-          <CellText
-            title="Notes with sources"
-            text="Written from your own files, with code, maths and the pages they came from."
-          />
-          <CellShot
-            name="notes-detail"
-            width={1200}
-            height={842}
-            alt="Margins notes with a Python code block, an outline of the page and a list of source files"
-            sizes="(min-width: 1152px) 560px, (min-width: 1024px) 55vw, calc(100vw - 82px)"
-            heightClass="h-[260px] md:h-[330px]"
-          />
-        </div>
-        <div className={`${cell} lg:col-span-5`}>
-          <CellText title="Practice that checks each step" text="Work a problem one step at a time, with hints and feedback on every answer." />
-          <CellShot
-            name="practice"
-            width={1000}
-            height={878}
-            alt="Margins practice problem with two solved steps, a hint and an answer box"
-            sizes="(min-width: 1152px) 400px, (min-width: 1024px) 40vw, calc(100vw - 82px)"
-            heightClass="h-[260px] md:h-[330px]"
-          />
-        </div>
-        <div className={`${cell} lg:col-span-5`}>
-          <CellText title="Quizzes graded with feedback" text="Short answers are graded too, with a note on what was missing." />
-          <CellShot
-            name="quiz-results"
-            width={1000}
-            height={885}
-            alt="Margins quiz results showing 75 percent, 9 of 12 points, with the answer and explanation for a missed question"
-            sizes="(min-width: 1152px) 400px, (min-width: 1024px) 40vw, calc(100vw - 82px)"
-            heightClass="h-[260px] md:h-[360px]"
-          />
-        </div>
-        <div className={`${cell} lg:col-span-7`}>
-          <CellText title="Ask your materials, with citations" text="Answers come only from your files. Hover a number to see the passage it came from." />
-          <CellShot
-            name="ask"
-            width={1000}
-            height={988}
-            alt="Margins answer about BFS and DFS with a citation card showing the quoted passage and its page"
-            sizes="(min-width: 1152px) 560px, (min-width: 1024px) 55vw, calc(100vw - 82px)"
-            heightClass="h-[260px] md:h-[360px]"
-          />
-        </div>
-        <div className="flex flex-col justify-between gap-8 overflow-hidden rounded-card bg-accent-soft p-6 lg:col-span-12 md:flex-row md:items-center md:gap-12 md:p-10">
-          <div className="max-w-[40ch]">
-            <h3 className="text-heading text-accent-soft-fg">Mock exams with a real timer</h3>
-            <p className="mt-1.5 text-small text-accent-soft-fg">
-              Pick your topics and a time limit, then sit the exam under real conditions. Answers save as you go.
-            </p>
+            </div>
           </div>
-          <LazyMount className="h-[72px] shrink-0 md:h-[112px] md:w-[400px]">
-            <p
-              aria-hidden="true"
-              className="tabular font-mono text-[72px] font-medium leading-none tracking-[-0.04em] text-accent-soft-fg md:text-right md:text-[112px]"
-            >
-              41:07
-            </p>
-          </LazyMount>
+
+          <ul className="flex flex-col divide-y divide-border lg:col-span-5">
+            <li className="pb-8">
+              <h3 className="text-heading text-fg">Quality is measured</h3>
+              <p className="mt-2 text-reading text-fg-2">
+                We run the generators on two MIT OpenCourseWare courses and have a judge model, which does not know which model wrote the text, score the output. In the latest run on {EVAL_FACTS.topics} topics, correctness scored {EVAL_FACTS.correctness} out of 5 and grounding in the source pages {EVAL_FACTS.grounding}. The judge also listed {EVAL_FACTS.errors} errors, {EVAL_FACTS.mathErrors} of them mathematical, and we publish them.
+              </p>
+              <a href={LINKS.eval} target="_blank" rel="noopener noreferrer" className={`${link} mt-3`}>
+                Read the evaluation <ArrowUpRight aria-hidden="true" className="size-3.5" />
+              </a>
+            </li>
+            <li className="py-8">
+              <h3 className="text-heading text-fg">Open source</h3>
+              <p className="mt-2 text-reading text-fg-2">
+                {BRAND_NAME} is MIT licensed. Read the code, see how your files are handled, or run it yourself.
+              </p>
+              <a href={LINKS.github} target="_blank" rel="noopener noreferrer" className={`${link} mt-3`}>
+                View the code on GitHub <ArrowUpRight aria-hidden="true" className="size-3.5" />
+              </a>
+            </li>
+            <li className="pt-8">
+              <h3 className="text-heading text-fg">Your files stay yours</h3>
+              <p className="mt-2 text-reading text-fg-2">
+                Your files stay in your account. Delete a course and its files, and everything made from them, go with it. We do not sell your data or use your files to train AI models.
+              </p>
+              <Link href="/privacy" className={`${link} mt-3`}>
+                Read the privacy policy
+              </Link>
+            </li>
+          </ul>
         </div>
       </div>
     </section>
   )
 }
 
-function VoiceBand() {
+function Faqs() {
   return (
-    <section aria-labelledby="voice-heading" className="bg-surface-2">
-      <div className={`${sectionPad} flex flex-col items-start gap-10 py-16 md:flex-row md:items-center md:gap-16 md:py-24`}>
-        <div aria-hidden="true" className="relative grid size-32 shrink-0 place-items-center">
-          <span className="voice-orb-ring absolute inset-0 rounded-full border border-accent" />
-          <span className="absolute inset-0 rounded-full border border-border bg-accent-soft" />
-          <span className="voice-orb-core relative size-14 rounded-full bg-accent" />
-        </div>
-        <div className="max-w-[56ch]">
-          <h2 id="voice-heading" className="text-[30px] font-semibold leading-9 tracking-[-0.02em] text-fg md:text-display">
-            Explain it out loud
-          </h2>
-          <p className="mt-3 text-[17px] leading-[27px] text-fg-2">
-            Voice review asks you questions about a topic and listens to your spoken answers. You hear what you got
-            right and what to go back to, like practising with a study partner.
-          </p>
-        </div>
+    <section id="faq" aria-labelledby="faq-heading" className={`${container} scroll-mt-4 py-14 md:py-20`}>
+      <h2 id="faq-heading" className={h2}>
+        Common questions
+      </h2>
+      <div className="mt-8 border-t border-border md:mt-10">
+        {FAQ.map((item, index) => (
+          <details key={item.id} className="group border-b border-border" name="faq" open={index === 0}>
+            <summary className="flex list-none items-center justify-between gap-6 rounded-chip py-5 text-heading text-fg marker:hidden [&::-webkit-details-marker]:hidden">
+              {item.question}
+              <Plus aria-hidden="true" className="size-5 shrink-0 text-fg-3 group-open:hidden" />
+              <Minus aria-hidden="true" className="hidden size-5 shrink-0 text-fg-3 group-open:block" />
+            </summary>
+            <div className="flex max-w-[68ch] flex-col gap-3 pb-6 text-reading text-fg-2">
+              {item.answer.map((paragraph) => (
+                <p key={paragraph}>{paragraph}</p>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function ClosingCta() {
+  return (
+    <section aria-labelledby="cta-heading" className="border-t border-border px-4 py-20 text-center md:py-28">
+      <h2 id="cta-heading" className={h2}>
+        Start with one course.
+      </h2>
+      <p className="mx-auto mt-4 max-w-[44ch] text-reading text-fg-2">
+        Free to use, with a daily AI allowance. Add your files and see what to do today.
+      </p>
+      <div className="mt-8 flex justify-center">
+        <FinalCta />
       </div>
     </section>
   )
@@ -253,20 +199,10 @@ export default function LandingPage() {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <Hero />
-      <HowItWorks />
-      <Bento />
-      <VoiceBand />
-      <p className="mx-auto max-w-[1120px] px-4 py-12 text-center text-small text-fg-2 md:px-8">
-        Your files stay in your account. Delete a course and its files go with it.
-      </p>
-      <section aria-labelledby="cta-heading" className="border-t border-border px-4 py-20 text-center md:py-28">
-        <h2 id="cta-heading" className="text-[30px] font-semibold leading-9 tracking-[-0.02em] text-fg md:text-display">
-          Start with one course.
-        </h2>
-        <div className="mt-8 flex justify-center">
-          <FinalCta />
-        </div>
-      </section>
+      <LoopSection />
+      <Trust />
+      <Faqs />
+      <ClosingCta />
     </>
   )
 }
