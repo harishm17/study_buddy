@@ -25,7 +25,7 @@ Upload your lecture notes, textbook chapters and past exams. Margins splits them
    - **Notes**: a lesson (what you'll learn, the idea, key concepts, a worked example, a check-yourself question, pitfalls and a summary), rendered with KaTeX math and highlighted code, written from that topic's own pages and listing the files and pages it came from.
    - **Examples**: solved problems with step-by-step reasoning, and interactive problems you solve one step at a time with hints.
    - **Quiz**: multiple choice, true/false, numerical and short answer. Scores are computed on the server; short answers are graded by the model with partial credit.
-   - **Voice**: a spoken session with three styles (quiz me, walk me through it, just talk) in ten languages.
+   - **Voice practice**: a spoken session with three styles (quiz me, walk me through it, just talk) in ten languages.
 4. **Take practice exams** across topics: timed, autosaved, with per-question feedback and regrading. Upload past exams and **Match my past exams** writes new ones in their style (question mix, points, phrasing, conventions); the topics those exams test are flagged.
 5. **Plan to your exam date.** Give the date and your daily minutes and Margins lays out each day: new topics in prerequisite order, a quiz the next day, spaced reviews, a mock exam after each unit and two full mocks before the exam. Mastery comes from quizzes, exams, voice and practice; **Retry what you missed** and **Fresh review** target weak spots.
 6. **Ask your materials**: a chat that answers from your files with numbered citations, and says so when the files don't cover the question.

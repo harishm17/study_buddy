@@ -134,7 +134,7 @@ function UpNext({ courseId, next }: { courseId: string; next: TodayData['next'] 
 const BUCKETS: { level: MasteryLevel; label: string; swatch: string }[] = [
   { level: 'strong', label: 'Strong', swatch: 'bg-accent' },
   { level: 'getting', label: 'Getting there', swatch: 'bg-accent/50' },
-  { level: 'learning', label: 'Learning', swatch: 'bg-warning' },
+  { level: 'learning', label: 'Learning', swatch: 'bg-learning' },
   { level: 'none', label: 'Not started', swatch: 'bg-surface-3' },
 ]
 

@@ -62,7 +62,7 @@ function Hero() {
           <Shot
             name="plan"
             desktop={{ width: 1400, height: 957 }}
-            mobile={{ width: 780, height: 1180 }}
+            mobile={{ width: 780, height: 1400 }}
             eager
             alt="The Margins plan page. Today lists a review and a quiz, and the days after it lead to the exam date."
             sizes="(min-width: 1280px) 700px, (min-width: 1024px) 55vw, 704px"
@@ -107,7 +107,7 @@ function Trust() {
                 <Shot
                   name="ask"
                   desktop={{ width: 1000, height: 1022 }}
-                  mobile={{ width: 780, height: 1520 }}
+                  mobile={{ width: 780, height: 1400 }}
                   alt="An answer in Ask your materials with a citation open: the quoted passage, the file name and the page"
                   sizes="(min-width: 1280px) 620px, (min-width: 1024px) 55vw, 704px"
                   className="absolute inset-0 h-full w-full object-cover object-[50%_32%] md:object-[50%_38%]"
