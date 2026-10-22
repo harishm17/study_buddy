@@ -33,16 +33,45 @@ const MESSAGES: Record<string, string> = {
   ENQUEUE_PERMANENT: 'The job could not be started. Retry in a moment.',
   JOB_DISPATCH_FAILED: 'The job could not be started. Retry in a moment.',
   STORAGE_UNAVAILABLE: 'Your files could not be read just now. Retry in a moment.',
+  // The default code each kind of job fails with when nothing more specific is known.
+  VALIDATION_FAILED: 'We could not check this file. Remove it and upload it again.',
+  CHUNKING_FAILED: 'We could not read the pages of this file. Remove it and upload it again, or try another copy.',
+  TOPIC_EXTRACTION_FAILED: 'We could not find the topics in your files. Try again.',
+  CONTENT_GENERATION_FAILED: 'The study content could not be written. Try again.',
+  EXAM_GENERATION_FAILED: 'The mock exam could not be written. Try again.',
+  EXAM_GRADING_FAILED: 'We could not finish grading it. Grade the exam again to see your score.',
+  EXAM_PROFILE_FAILED: 'We could not read the style of your past exams. Mock exams will use the default style.',
+  EXAM_RELEVANCE_FAILED: 'We could not match your past exams to your topics. Try again.',
+  MATERIAL_NOT_FOUND: 'That file was removed before it could be read.',
+  SUBMISSION_NOT_FOUND: 'That exam attempt could not be found, so it could not be graded.',
+  INVALID_INPUT: 'The request was not complete. Try again.',
 }
 
-export const FALLBACK_FAILURE_MESSAGE = 'Generation failed. Try again.'
+/**
+ * What a failure says when its code is not one of the above, by the kind of job that failed. A
+ * grading job never says "Generation failed": the student reads what went wrong with the thing
+ * they asked for.
+ */
+const FALLBACK_BY_JOB_TYPE: Record<string, string> = {
+  validate_material: MESSAGES.VALIDATION_FAILED,
+  chunk_material: MESSAGES.CHUNKING_FAILED,
+  extract_topics: MESSAGES.TOPIC_EXTRACTION_FAILED,
+  generate_content: MESSAGES.CONTENT_GENERATION_FAILED,
+  generate_exam: MESSAGES.EXAM_GENERATION_FAILED,
+  grade_exam: MESSAGES.EXAM_GRADING_FAILED,
+}
+
+export const FALLBACK_FAILURE_MESSAGE = 'Something went wrong. Try again.'
 
 export function describeJobFailure(
   errorCode: string | null | undefined,
-  _errorMessage?: string | null
+  _errorMessage?: string | null,
+  jobType?: string | null
 ): string {
   if (errorCode === 'LLM_DAILY_BUDGET') return ALLOWANCE_TEMPLATE
-  return (errorCode && MESSAGES[errorCode]) || FALLBACK_FAILURE_MESSAGE
+  return (
+    (errorCode && MESSAGES[errorCode]) || (jobType && FALLBACK_BY_JOB_TYPE[jobType]) || FALLBACK_FAILURE_MESSAGE
+  )
 }
 
 /** "content:<topicId>:<contentType>" as stored on a generation job, or null for any other key. */
@@ -91,7 +120,7 @@ export function pickGenerationFailures(
       topicId: target.topicId,
       contentType: target.contentType,
       errorCode: row.errorCode,
-      message: describeJobFailure(row.errorCode, row.errorMessage),
+      message: describeJobFailure(row.errorCode, row.errorMessage, 'generate_content'),
     })
   }
   return failures

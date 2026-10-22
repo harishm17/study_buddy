@@ -77,3 +77,17 @@ test('a failure is dropped once the content exists anyway', () => {
 test('jobs without a content target are ignored', () => {
   assert.deepEqual(pickGenerationFailures([row('j1', 'extract:p1', 'failed')], () => false), [])
 })
+
+test('a failure names the job that failed, not "generation"', () => {
+  // Each kind of job fails with its own default code; the text is about what the student asked for.
+  assert.match(describeJobFailure('EXAM_GRADING_FAILED'), /grading/i)
+  assert.match(describeJobFailure('EXAM_GENERATION_FAILED'), /mock exam/i)
+  assert.match(describeJobFailure('TOPIC_EXTRACTION_FAILED'), /topics/i)
+  assert.match(describeJobFailure('CHUNKING_FAILED'), /pages of this file/)
+  // An unknown code falls back by job type, and only then to the plain sentence.
+  assert.match(describeJobFailure('SOMETHING_ELSE', null, 'grade_exam'), /grade/i)
+  assert.match(describeJobFailure(null, null, 'generate_exam'), /mock exam/i)
+  for (const type of ['validate_material', 'chunk_material', 'extract_topics', 'generate_content', 'generate_exam', 'grade_exam']) {
+    assert.doesNotMatch(describeJobFailure(null, null, type), /Generation failed/)
+  }
+})

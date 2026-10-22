@@ -125,3 +125,12 @@ export function initials(name: string | null | undefined, email?: string | null)
   const letters = parts.length === 1 ? parts[0].slice(0, 2) : parts[0][0] + parts[1][0]
   return letters.toUpperCase()
 }
+
+/**
+ * A 0..100 score as "72%", with at most one decimal ("8.7%", never "9%"). The one rule for every
+ * score a student sees (lobby, results, lists, rings, badges), so a figure reads the same everywhere.
+ */
+export function formatScore(score: number): string {
+  const rounded = Math.round(score * 10) / 10
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`
+}

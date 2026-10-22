@@ -8,6 +8,7 @@ import { ProgressRing } from '@/components/ui/progress-ring'
 import { SegmentedControl } from '@/components/ui/segmented-control'
 import { toast } from '@/components/ui/toaster'
 import { apiFetch } from '@/lib/api/client'
+import { formatScore } from '@/lib/format'
 import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import type { QuizReviewItem } from '@/lib/learning/quiz-review'
 import { cn } from '@/lib/utils'
@@ -81,6 +82,7 @@ function ConfidencePrompt({ topicId }: { topicId: string }) {
 
 /** The score, a filter, every question reviewed, and a confidence rating. */
 export function QuizResults({
+  courseId,
   topicId,
   questions,
   result,
@@ -88,6 +90,7 @@ export function QuizResults({
   onRetake,
   onClose,
 }: {
+  courseId: string
   topicId: string
   questions: PublicQuizQuestion[]
   result: QuizResult
@@ -102,12 +105,12 @@ export function QuizResults({
   )
   const missed = entries.filter((entry) => !entry.review.isCorrect)
   const shown = filter === 'missed' ? missed : entries
-  const score = Math.round(result.score)
+  const score = formatScore(result.score)
 
   return (
     <div className="max-w-[720px]">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-4">
-        <ProgressRing size={96} value={result.score / 100} label={`${score}%`} aria-label={`Score ${score} percent`} />
+        <ProgressRing size={96} value={result.score / 100} label={score} aria-label={`Score ${score}`} />
         <div className="min-w-0 flex-1">
           <h2 className="text-heading text-fg">
             <span className="tabular">
@@ -115,7 +118,7 @@ export function QuizResults({
             </span>
           </h2>
           <p className="mt-0.5 text-small text-fg-2">
-            Your best is <span className="tabular">{Math.round(result.bestScore)}%</span>.
+            Your best is <span className="tabular">{formatScore(result.bestScore)}</span>.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -144,7 +147,7 @@ export function QuizResults({
 
       <div className="mt-2">
         {shown.length > 0 ? (
-          <ReviewList entries={shown} />
+          <ReviewList entries={shown} courseId={courseId} topicId={topicId} />
         ) : (
           <p className="py-8 text-small text-fg-2">You got every question right. Nothing to review here.</p>
         )}

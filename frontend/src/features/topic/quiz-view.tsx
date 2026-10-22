@@ -135,6 +135,7 @@ export function QuizView({ courseId, topicId, sets, attempts, voiceHref, review,
   if (result && result.setId === activeSet.id) {
     return (
       <QuizResults
+        courseId={courseId}
         topicId={topicId}
         questions={activeSet.questions}
         result={result.value}
