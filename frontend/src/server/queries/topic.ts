@@ -78,6 +78,8 @@ export type TopicPageData = {
     name: string
     description: string | null
     mastery: number | null
+    /** Mastery as earned, before it faded for a late review. */
+    earnedMastery: number | null
     masteryLevel: MasteryLevel
     dueAt: string | null
     /** Days until the review is due by the server's clock; zero or less means due now. */
@@ -277,6 +279,7 @@ export const getTopicPage = cache(async function getTopicPage(
       name: shellTopic.name,
       description: shellTopic.description,
       mastery: shellTopic.mastery,
+      earnedMastery: shellTopic.earnedMastery,
       masteryLevel: masteryLevel(shellTopic.mastery),
       dueAt: shellTopic.dueAt,
       daysUntilDue: shellTopic.dueAt ? (Date.parse(shellTopic.dueAt) - Date.now()) / 86_400_000 : null,

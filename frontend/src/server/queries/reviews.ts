@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { displayMastery } from '@/lib/learning/mastery-math'
+import { dueBoundary } from '@/lib/learning/next-step'
 
 export type DueReview = {
   topicId: string
@@ -11,13 +12,11 @@ export type DueReview = {
 }
 
 /**
- * Topics across the user's courses whose review is due by the end of today (UTC), most overdue
- * first. `total` counts all of them so the UI can say "and N more".
+ * Topics across the user's courses whose review is due by the end of the student's today, most
+ * overdue first. `total` counts all of them so the UI can say "and N more".
  */
-export async function dueReviews(userId: string, limit = 5): Promise<{ items: DueReview[]; total: number }> {
-  const endOfToday = new Date()
-  endOfToday.setUTCHours(23, 59, 59, 999)
-  const where = { userId, dueAt: { lte: endOfToday }, project: { userId }, topic: { userConfirmed: true } }
+export async function dueReviews(userId: string, timeZone: string, limit = 5): Promise<{ items: DueReview[]; total: number }> {
+  const where = { userId, dueAt: { lt: dueBoundary(new Date(), timeZone) }, project: { userId }, topic: { userConfirmed: true } }
 
   const [rows, total] = await Promise.all([
     prisma.reviewSchedule.findMany({

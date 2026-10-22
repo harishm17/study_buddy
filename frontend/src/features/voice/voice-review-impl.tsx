@@ -10,7 +10,7 @@ import { useVoiceSession } from './use-voice-session'
 import { getVoiceUsage, type VoiceUsage } from './voice-api'
 import type { VoiceReviewProps } from './voice-review'
 
-/** The real voice review. Loaded on demand by voice-review.tsx so no other page ships it. */
+/** The real voice practice. Loaded on demand by voice-review.tsx so no other page ships it. */
 export function VoiceReviewImpl({ courseId, mode, topic }: VoiceReviewProps) {
   const { state, orb, summary, controller } = useVoiceSession({ courseId, mode, topic })
   const [usage, setUsage] = React.useState<VoiceUsage | 'unavailable' | null>(null)
@@ -31,7 +31,7 @@ export function VoiceReviewImpl({ courseId, mode, topic }: VoiceReviewProps) {
   }, [inLobby])
 
   if (mode === 'topic' && !topic) {
-    return <InlineAlert tone="danger" title="No topic selected">Open a topic to start a voice review.</InlineAlert>
+    return <InlineAlert tone="danger" title="No topic selected">Open a topic to start a voice practice.</InlineAlert>
   }
 
   if (state.phase === 'live') {
@@ -40,7 +40,7 @@ export function VoiceReviewImpl({ courseId, mode, topic }: VoiceReviewProps) {
         state={state}
         orb={orb}
         controller={controller}
-        title={mode === 'sprint' ? 'Weakest topics sprint' : (topic?.name ?? 'Voice review')}
+        title={mode === 'sprint' ? 'Weakest topics sprint' : (topic?.name ?? 'Voice practice')}
         hasQuestions={state.style === 'oral_quiz'}
         recognitionSupported={recognitionSupported}
       />
@@ -55,7 +55,7 @@ export function VoiceReviewImpl({ courseId, mode, topic }: VoiceReviewProps) {
         alert={state.alert}
         back={
           mode === 'sprint' || !topic
-            ? { href: `/courses/${courseId}`, label: 'Back to course' }
+            ? { href: `/courses/${courseId}/review`, label: 'Back to review' }
             : { href: `/courses/${courseId}/topics/${topic.id}`, label: 'Back to topic' }
         }
         onRestart={() => controller.reset()}

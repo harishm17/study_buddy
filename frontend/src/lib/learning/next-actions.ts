@@ -1,5 +1,6 @@
 import type { CourseSetup } from '@/lib/course-setup'
-import { todayItems, type Plan, type PlanItem } from './plan'
+import type { NextStep } from './next-step'
+import { REVIEW_MINUTES, todayItems, type Plan, type PlanItem } from './plan'
 
 /**
  * The shape GET /api/projects/[projectId]/next-actions has always returned. The actions are now
@@ -83,4 +84,27 @@ export function nextActionsFromPlan(plan: Plan): NextAction[] {
       priority: index,
       etaMinutes: item.minutes,
     }))
+}
+
+/**
+ * The actions the next-actions API returns, taken from the same next step the screens show
+ * (lib/learning/next-step.ts): today's plan items, or the review that is due when today's plan is
+ * done. Nothing when there is nothing to do.
+ */
+export function nextActionsFromStep(step: NextStep, plan: Plan): NextAction[] {
+  if (step.kind === 'work') return nextActionsFromPlan(plan)
+  if (step.kind === 'reviews_due' && step.action?.topicId) {
+    return [
+      {
+        id: `review:${step.action.topicId}`,
+        type: 'review_topic',
+        topicId: step.action.topicId,
+        title: step.title,
+        reason: step.reason,
+        priority: 0,
+        etaMinutes: REVIEW_MINUTES,
+      },
+    ]
+  }
+  return []
 }

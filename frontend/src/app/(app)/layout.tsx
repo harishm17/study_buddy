@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { CommandPalette } from '@/components/shell/command-palette'
 import { MobileNav } from '@/components/shell/mobile-nav'
+import { MobileTabs } from '@/components/shell/mobile-tabs'
 import { ShellProvider } from '@/components/shell/shell-provider'
 import { ShortcutsDialog } from '@/components/shell/shortcuts-dialog'
 import { TimeZoneSync } from '@/features/shell/time-zone-sync'
@@ -9,17 +10,19 @@ import { SkipLink } from '@/components/shell/skip-link'
 import { Topbar } from '@/components/shell/topbar'
 import { getNavIndex } from '@/server/queries/courses'
 import { requireUser } from '@/server/session'
+import { getTimeZoneState } from '@/server/timezone'
 
 export const metadata: Metadata = { robots: { index: false, follow: false } }
 
 /** Signed-in app: sidebar, top bar, command palette. Signed-out visitors go to /login?next=. */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
-  const nav = await getNavIndex(user.id)
+  const { timeZone, known } = await getTimeZoneState()
+  const nav = await getNavIndex(user.id, timeZone)
 
   return (
     <ShellProvider user={{ name: user.name, email: user.email }} nav={nav}>
-      <TimeZoneSync />
+      <TimeZoneSync serverKnewZone={known} />
       <SkipLink />
       <div className="flex min-h-dvh">
         <Sidebar />
@@ -28,6 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <main id="main" tabIndex={-1} className="flex-1 outline-none">
             {children}
           </main>
+          <MobileTabs />
         </div>
       </div>
       <MobileNav />

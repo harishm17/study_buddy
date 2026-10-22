@@ -27,7 +27,7 @@ export type VoiceSession = {
 
 export type { StartConfig }
 
-/** One voice review: the reducer state for the UI plus the controller that drives it. */
+/** One voice practice: the reducer state for the UI plus the controller that drives it. */
 export function useVoiceSession(options: VoiceControllerOptions): VoiceSession {
   const [state, dispatch] = React.useReducer(sessionReducer, initialSessionState)
   const router = useRouter()

@@ -12,16 +12,18 @@ import { continueAction } from '@/server/queries/continue'
 import { listCourses } from '@/server/queries/courses'
 import { dueReviews } from '@/server/queries/reviews'
 import { requireUser } from '@/server/session'
-import { getTimeZone } from '@/server/timezone'
+import { HomeSkeleton } from '@/features/shell/page-skeletons'
+import { getTimeZoneState } from '@/server/timezone'
 
 export const metadata: Metadata = { title: 'Home' }
 
 export default async function HomePage() {
   const user = await requireUser()
-  const timeZone = await getTimeZone()
+  const { timeZone, known } = await getTimeZoneState()
+  if (!known) return <HomeSkeleton />
   const [courses, due, next] = await Promise.all([
     listCourses(user.id),
-    dueReviews(user.id, 5),
+    dueReviews(user.id, timeZone, 5),
     continueAction(user.id, timeZone),
   ])
 
