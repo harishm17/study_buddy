@@ -19,7 +19,7 @@ export default function PrivacyPage() {
         <p>
           Your account: your email address, your name if you give one, and a hashed password (or your Google
           account ID if you sign in with Google). Your course files and what Margins creates from them: notes,
-          examples, practice, quizzes, mock exams, chat answers, your answers and scores, and voice review
+          examples, practice, quizzes, mock exams, chat answers, your answers and scores, and voice practice
           transcripts. Basic usage records, such as how much AI processing your account used each day, so we can
           keep the service within its limits.
         </p>
@@ -34,7 +34,7 @@ export default function PrivacyPage() {
         <p>
           Anthropic processes the text of your files and your questions to create study material and answers
           (Anthropic does not use this data to train its models by default). Railway hosts the app, the database
-          and file storage in the United States. Google provides sign-in if you choose it. Voice review uses your
+          and file storage in the United States. Google provides sign-in if you choose it. Voice practice uses your
           browser&apos;s built-in speech recognition, which may send audio to your browser vendor (Google for
           Chrome, Apple for Safari).
         </p>

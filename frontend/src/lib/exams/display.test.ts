@@ -3,8 +3,9 @@ import { describe, it } from 'node:test'
 import { examTitle, examTitles } from './display'
 
 describe('examTitle', () => {
-  it('names generated exams by date and keeps custom names', () => {
-    assert.equal(examTitle('Sample Exam - 2026-10-20', '2026-10-20T12:00:00Z'), 'Sample exam, Oct 20')
+  it('names generated exams "Mock exam" by date and keeps custom names', () => {
+    assert.equal(examTitle('Sample Exam - 2026-10-20', '2026-10-20T12:00:00Z'), 'Mock exam, Oct 20')
+    assert.equal(examTitle('Mock exam - 2026-10-20', '2026-10-20T12:00:00Z'), 'Mock exam, Oct 20')
     assert.equal(examTitle('Midterm drill', '2026-10-20T12:00:00Z'), 'Midterm drill')
   })
 })
@@ -17,10 +18,10 @@ describe('examTitles', () => {
       { id: 'c', name: 'Sample Exam - 2026-10-21', createdAt: '2026-10-21T19:30:00Z' },
       { id: 'd', name: 'Sample Exam - 2026-10-20', createdAt: '2026-10-20T12:00:00Z' },
     ])
-    assert.equal(titles.get('a'), 'Sample exam, Oct 21')
-    assert.equal(titles.get('b'), 'Sample exam, Oct 21 (2)')
-    assert.equal(titles.get('c'), 'Sample exam, Oct 21 (3)')
-    assert.equal(titles.get('d'), 'Sample exam, Oct 20')
+    assert.equal(titles.get('a'), 'Mock exam, Oct 21')
+    assert.equal(titles.get('b'), 'Mock exam, Oct 21 (2)')
+    assert.equal(titles.get('c'), 'Mock exam, Oct 21 (3)')
+    assert.equal(titles.get('d'), 'Mock exam, Oct 20')
   })
 
   it('keeps custom names, and numbers a repeated one too', () => {

@@ -38,7 +38,7 @@ elements (`icon={<Plus />}`), which keeps every primitive usable from server com
 | `question-renderer.tsx` | `QuestionRenderer` | multiple choice, true/false, numerical, short answer; a stem with a table or listing is drawn as blocks |
 | `question-text.tsx` | `QuestionText`, `stemHasBlocks` | a question stem: one line is inline text with math, anything longer goes through the block renderer so tables stay tables |
 | `scrollable.ts` | `useScrollableFocus` | makes content that scrolls sideways (equations, code, tables) reachable from the keyboard, only when it overflows |
-| `theme-switch.tsx` | `ThemeSwitch`, `ThemeMenuRadios`, `useThemeChoice` | Light, Dark or System: a segmented control for any page, and the same three choices as menu items for a dropdown |
+| `theme-switch.tsx` | `ThemeSwitch`, `ThemeMenuRadios`, `useThemeChoice` | Light, Dark or System: an icon button with a menu for public pages (the public header, sign in), and the same three choices as menu items inside the account menu |
 | `markdown.tsx` | `Markdown`, `MarkdownInline` | heavy: import through `lazy-markdown.tsx` |
 | `lazy-markdown.tsx` | `LazyMarkdown`, `LazyMarkdownInline` | next/dynamic wrappers |
 | `math-text.tsx` | `MathText` | every model-written string in running text: inline markdown and KaTeX, plain strings render at once |

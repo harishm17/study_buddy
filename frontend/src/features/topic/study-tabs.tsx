@@ -9,7 +9,7 @@ import { PRACTICE_DONE_SHARE, solvedCount } from './practice-keys'
 import { usePracticeProgress } from './practice-progress'
 import { useTopic } from './topic-provider'
 import { useTopicView } from './use-topic-view'
-import { VIEW_IDS, VIEW_LABELS, type ContentKind, type ViewId } from './types'
+import { SHORT_LABELS, VIEW_IDS, VIEW_LABELS, type ContentKind, type ViewId } from './types'
 
 type StudyTabsProps = {
   courseId: string
@@ -86,7 +86,7 @@ function useTopicShortcuts(hrefs: { views: string[]; previous: string | null; ne
 }
 
 /**
- * The study path: Notes, Worked examples, Practice, Quiz, Voice review, as links with ?view=.
+ * The study path: Notes, Worked examples, Practice, Quiz, Voice practice, as links with ?view=.
  * Each carries a status glyph. Sticky under the top bar.
  */
 export function StudyTabs({
@@ -131,9 +131,15 @@ export function StudyTabs({
     }
   }
 
+  // On a phone the labels are short enough for all five tabs to fit, so none is cut off.
   const items: TabItem[] = VIEW_IDS.map((id, index) => ({
     id,
-    label: VIEW_LABELS[id],
+    label: (
+      <>
+        <span className="sm:hidden">{SHORT_LABELS[id]}</span>
+        <span className="max-sm:hidden">{VIEW_LABELS[id]}</span>
+      </>
+    ),
     href: hrefs[index],
     glyph: glyphFor(id),
   }))
@@ -143,7 +149,7 @@ export function StudyTabs({
       aria-label="Study path"
       items={items}
       activeId={view}
-      className="sticky top-(--topbar-height) z-sticky -mx-4 bg-canvas px-4 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8"
+      className="sticky top-(--topbar-height) z-sticky -mx-4 bg-canvas px-4 max-sm:[&_a::after]:inset-x-1.5 max-sm:[&_a]:gap-1 max-sm:[&_a]:px-1.5 max-sm:[&_a]:text-small md:-mx-6 md:px-6 lg:-mx-8 lg:px-8"
     />
   )
 }

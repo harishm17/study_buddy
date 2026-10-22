@@ -1,19 +1,31 @@
 import Link from 'next/link'
-import { ArrowRight, CalendarCheck, Check, Circle, Gear } from '@phosphor-icons/react/dist/ssr'
+import { ArrowRight, CalendarCheck, CaretDown, CaretRight, Check, Circle, Gear } from '@phosphor-icons/react/dist/ssr'
 import { Page, PageIntro } from '@/components/shell/page'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { InlineAlert } from '@/components/ui/inline-alert'
 import { weekStart, type Plan, type PlanDay } from '@/lib/learning/plan'
-import { dayLabel, describePlanItem, weekLabel, type DescribedPlanItem } from '@/lib/learning/plan-copy'
+import {
+  dayLabel,
+  describePlanItem,
+  weekLabel,
+  type DescribeContext,
+  type DescribedPlanItem,
+} from '@/lib/learning/plan-copy'
 import { minutesLabel } from '@/lib/learning/plan-settings'
 import { cn } from '@/lib/utils'
 import { pluralize } from '@/lib/format'
 
-/** A long plan keeps the first weeks and the last (final weeks before an exam) open and folds the middle. */
-const FIRST_WEEKS_OPEN = 3
-const LAST_WEEKS_OPEN = 2
+/**
+ * How much of the plan is open. Today and the two days after it show their items. Every later day is
+ * one line that opens. The weeks between the first two and the last two before an exam fold into one
+ * line each, so a plan for a distant exam is a short page rather than a long one. Nothing is hidden
+ * for good: every line opens, and the plan itself is unchanged.
+ */
+export const OPEN_DAYS = 3
+const FIRST_WEEKS_SHOWN = 2
+const LAST_WEEKS_SHOWN = 2
 
 type Week = { start: string; days: PlanDay[] }
 
@@ -29,10 +41,20 @@ export function groupWeeks(days: PlanDay[]): Week[] {
   return weeks
 }
 
+/** "Learn Sorting", or "Learn Sorting and 2 more". */
+export function daySummary(titles: string[]): string {
+  if (titles.length === 0) return 'Nothing planned'
+  if (titles.length === 1) return titles[0]
+  return `${titles[0]} and ${titles.length - 1} more`
+}
+
+const toContext = (unitTitles: Record<string, string>): DescribeContext => ({ unitTitles })
+
 function ItemRow({ item, today }: { item: DescribedPlanItem; today: boolean }) {
   const meta = [item.partLabel, item.done ? null : item.etaLabel.replace('About ', '')].filter(Boolean).join(', ')
+  const showButton = today && !item.done
   return (
-    <li className="flex min-h-11 items-start gap-3 py-2">
+    <li className="relative flex min-h-11 items-start gap-3 py-2">
       <span className="mt-0.5 inline-flex shrink-0" role="img" aria-label={item.done ? 'Done' : 'To do'}>
         {item.done ? (
           <span className="grid size-5 place-items-center rounded-full bg-accent text-accent-fg">
@@ -43,29 +65,61 @@ function ItemRow({ item, today }: { item: DescribedPlanItem; today: boolean }) {
         )}
       </span>
       <div className="min-w-0 flex-1">
+        {/* The whole row opens it (the link stretches over the row), so every row can be opened, not only today's. */}
         <Link
           href={item.href}
-          className={cn('rounded-chip text-body-strong hover:underline', item.done ? 'text-fg-3' : 'text-fg')}
+          className={cn(
+            'inline-flex min-h-6 items-center rounded-chip text-body-strong after:absolute after:inset-0 hover:underline max-sm:min-h-7',
+            item.done ? 'text-fg-3' : 'text-fg'
+          )}
         >
           {item.title}
         </Link>
         {!item.done ? <p className="text-small text-fg-2">{item.reason}</p> : null}
         {meta ? <p className="text-caption font-normal text-fg-3">{meta}</p> : null}
       </div>
-      {today && !item.done ? (
-        <Button asChild size="sm" variant="secondary" className="shrink-0">
+      {showButton ? (
+        <Button asChild size="sm" variant="secondary" className="relative z-10 shrink-0">
           <Link href={item.href} aria-label={`${item.verb}: ${item.title}`}>
             {item.verb}
           </Link>
         </Button>
-      ) : null}
+      ) : (
+        <CaretRight aria-hidden="true" className="mt-1 size-4 shrink-0 text-fg-3" />
+      )}
     </li>
   )
 }
 
-function DayCard({ courseId, day }: { courseId: string; day: PlanDay }) {
-  const items = day.items.map((item) => describePlanItem(item, courseId))
+function DayBadges({ day }: { day: PlanDay }) {
+  return (
+    <>
+      {day.isToday ? <Badge tone="accent">Today</Badge> : null}
+      {day.isExamDay ? <Badge tone="warning">Exam day</Badge> : null}
+      {day.isFinalReview && !day.isExamDay ? <Badge tone="neutral">Final review</Badge> : null}
+    </>
+  )
+}
+
+function dayMinutesLine(day: PlanDay): string | null {
+  if (day.minutes + day.doneMinutes === 0) return null
+  return day.isToday && day.doneMinutes > 0 ? `${day.doneMinutes} min done, ${day.minutes} to go` : `About ${day.minutes + day.doneMinutes} min`
+}
+
+function ItemList({ items, today }: { items: DescribedPlanItem[]; today: boolean }) {
+  return (
+    <ul className="min-w-0 divide-y divide-border">
+      {items.map((item) => (
+        <ItemRow key={item.id} item={item} today={today} />
+      ))}
+    </ul>
+  )
+}
+
+/** A day with its items showing: today, and the next two days. */
+function DayCard({ day, items }: { day: PlanDay; items: DescribedPlanItem[] }) {
   const headingId = `day-${day.date}`
+  const minutes = dayMinutesLine(day)
   return (
     <li
       aria-labelledby={headingId}
@@ -80,24 +134,12 @@ function DayCard({ courseId, day }: { courseId: string; day: PlanDay }) {
           {dayLabel(day.date)}
         </h3>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {day.isToday ? <Badge tone="accent">Today</Badge> : null}
-          {day.isExamDay ? <Badge tone="warning">Exam day</Badge> : null}
-          {day.isFinalReview && !day.isExamDay ? <Badge tone="neutral">Final review</Badge> : null}
+          <DayBadges day={day} />
         </div>
-        {day.minutes + day.doneMinutes > 0 ? (
-          <p className="mt-1 text-caption font-normal tabular text-fg-3">
-            {day.isToday && day.doneMinutes > 0
-              ? `${day.doneMinutes} min done, ${day.minutes} to go`
-              : `About ${day.minutes + day.doneMinutes} min`}
-          </p>
-        ) : null}
+        {minutes ? <p className="mt-1 text-caption font-normal tabular text-fg-3">{minutes}</p> : null}
       </div>
       {items.length > 0 ? (
-        <ul className="min-w-0 divide-y divide-border">
-          {items.map((item) => (
-            <ItemRow key={item.id} item={item} today={day.isToday} />
-          ))}
-        </ul>
+        <ItemList items={items} today={day.isToday} />
       ) : (
         <p className="py-2 text-small text-fg-3">Nothing planned. A good day to rest.</p>
       )}
@@ -105,7 +147,59 @@ function DayCard({ courseId, day }: { courseId: string; day: PlanDay }) {
   )
 }
 
-function WeekSection({ courseId, week, current }: { courseId: string; week: Week; current: boolean }) {
+/** A later day: one line (the date, what is on it, the time) that opens to its items. */
+function DayLine({ day, items }: { day: PlanDay; items: DescribedPlanItem[] }) {
+  const headingId = `day-${day.date}`
+  if (items.length === 0) {
+    return (
+      <li aria-labelledby={headingId} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-0.5 rounded-card border border-border bg-surface px-4 py-2">
+        <h3 id={headingId} className="w-[116px] shrink-0 text-body-strong text-fg-2">
+          {dayLabel(day.date)}
+        </h3>
+        <span className="text-small text-fg-3">Nothing planned. A good day to rest.</span>
+      </li>
+    )
+  }
+  const minutes = day.minutes + day.doneMinutes
+  return (
+    <li aria-labelledby={headingId} className="rounded-card border border-border bg-surface">
+      <details className="group">
+        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-0.5 rounded-card px-4 py-2 hover:bg-surface-2 sm:flex-nowrap [&::-webkit-details-marker]:hidden">
+          <h3 id={headingId} className="w-[116px] shrink-0 text-body-strong text-fg">
+            {dayLabel(day.date)}
+          </h3>
+          <span className="flex shrink-0 items-center gap-1.5 sm:order-last">
+            <DayBadges day={day} />
+            <span className="tabular text-caption font-normal text-fg-3">{minutes} min</span>
+            <CaretDown aria-hidden="true" className="size-4 text-fg-3 transition-transform duration-180 group-open:rotate-180" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-small text-fg-2 max-sm:order-last max-sm:basis-full">
+            {daySummary(items.map((item) => item.title))}
+          </span>
+        </summary>
+        <div className="border-t border-border px-4 py-1">
+          <ItemList items={items} today={false} />
+        </div>
+      </details>
+    </li>
+  )
+}
+
+type WeekProps = { describe: (day: PlanDay) => DescribedPlanItem[]; open: ReadonlySet<string> }
+
+function WeekDays({ week, describe, open }: WeekProps & { week: Week }) {
+  // Today and the next two days show their items; every other day is a line.
+  return (
+    <ol className="flex flex-col gap-3">
+      {week.days.map((day) => {
+        const items = describe(day)
+        return open.has(day.date) ? <DayCard key={day.date} day={day} items={items} /> : <DayLine key={day.date} day={day} items={items} />
+      })}
+    </ol>
+  )
+}
+
+function WeekSection({ week, current, describe, open }: WeekProps & { week: Week; current: boolean }) {
   const headingId = `week-${week.start}`
   return (
     <section aria-labelledby={headingId}>
@@ -118,13 +212,32 @@ function WeekSection({ courseId, week, current }: { courseId: string; week: Week
           Nothing planned this week. A good time to rest or catch up.
         </p>
       ) : (
-        <ol className="flex flex-col gap-3">
-          {week.days.map((day) => (
-            <DayCard key={day.date} courseId={courseId} day={day} />
-          ))}
-        </ol>
+        <WeekDays week={week} describe={describe} open={open} />
       )}
     </section>
+  )
+}
+
+/** A week in the middle of a long plan: one line with what it holds, opening to its days. */
+function FoldedWeek({ week, describe, open }: WeekProps & { week: Week }) {
+  const items = week.days.flatMap((day) => day.items)
+  const count = items.length
+  const minutes = week.days.reduce((sum, day) => sum + day.minutes + day.doneMinutes, 0)
+  return (
+    <li>
+      <details className="group rounded-card border border-border bg-surface">
+        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-0.5 rounded-card px-4 py-2 hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+          <h2 className="min-w-0 flex-1 text-body-strong text-fg">{weekLabel(week.start)}</h2>
+          <span className="flex shrink-0 items-center gap-2 text-small text-fg-2">
+            {count === 0 ? 'Nothing planned' : `${pluralize(count, 'item')}, about ${minutesLabel(minutes)}`}
+            <CaretDown aria-hidden="true" className="size-4 text-fg-3 transition-transform duration-180 group-open:rotate-180" />
+          </span>
+        </summary>
+        <div className="border-t border-border p-3">
+          <WeekDays week={week} describe={describe} open={open} />
+        </div>
+      </details>
+    </li>
   )
 }
 
@@ -143,8 +256,19 @@ function summaryLine(plan: Plan): string {
 }
 
 /** The study plan: a week by week list of what to do each day, today highlighted. */
-export function PlanView({ courseId, plan }: { courseId: string; plan: Plan }) {
+export function PlanView({
+  courseId,
+  plan,
+  unitTitles = {},
+}: {
+  courseId: string
+  plan: Plan
+  /** Unit names by id, so a learn row can say which unit it is in. */
+  unitTitles?: Record<string, string>
+}) {
   const base = `/courses/${courseId}`
+  const context = toContext(unitTitles)
+  const describe = (day: PlanDay) => day.items.map((item) => describePlanItem(item, courseId, context))
   const settings = (
     <Button asChild variant="secondary" icon={<Gear />}>
       <Link href={`${base}/settings`}>Exam date and time</Link>
@@ -191,10 +315,13 @@ export function PlanView({ courseId, plan }: { courseId: string; plan: Plan }) {
 
   const weeks = groupWeeks(plan.days)
   const thisWeek = weekStart(plan.today)
-  const lastOpen = plan.mode === 'exam' ? LAST_WEEKS_OPEN : 0
-  const head = weeks.slice(0, FIRST_WEEKS_OPEN)
-  const folded = weeks.slice(FIRST_WEEKS_OPEN, Math.max(FIRST_WEEKS_OPEN, weeks.length - lastOpen))
-  const tail = weeks.slice(head.length + folded.length)
+  const lastShown = plan.mode === 'exam' ? LAST_WEEKS_SHOWN : 0
+  const firstCount = Math.min(FIRST_WEEKS_SHOWN, weeks.length)
+  const head = weeks.slice(0, firstCount)
+  const tailStart = Math.max(firstCount, weeks.length - lastShown)
+  const middle = weeks.slice(firstCount, tailStart)
+  const tail = weeks.slice(tailStart)
+  const open = new Set(plan.days.slice(0, OPEN_DAYS).map((day) => day.date))
   const anyItems = plan.days.some((day) => day.items.length > 0)
   const notScheduled = plan.notScheduled
 
@@ -229,7 +356,7 @@ export function PlanView({ courseId, plan }: { courseId: string; plan: Plan }) {
                 <li key={topic.id}>
                   <Link
                     href={`${base}/topics/${topic.id}`}
-                    className="inline-flex min-h-7 items-center rounded-chip bg-surface-2 px-2 text-small text-fg-2 hover:text-fg"
+                    className="inline-flex min-h-7 items-center rounded-chip bg-surface-2 px-2 text-small text-fg-2 hover:text-fg max-sm:min-h-11"
                   >
                     {topic.name}
                   </Link>
@@ -255,22 +382,22 @@ export function PlanView({ courseId, plan }: { courseId: string; plan: Plan }) {
       ) : (
         <div className="mt-6 flex flex-col gap-10">
           {head.map((week) => (
-            <WeekSection key={week.start} courseId={courseId} week={week} current={week.start === thisWeek} />
+            <WeekSection key={week.start} week={week} current={week.start === thisWeek} describe={describe} open={open} />
           ))}
-          {folded.length > 0 ? (
-            <details>
-              <summary className="cursor-pointer rounded-chip text-heading text-fg">
-                Weeks in between <span className="text-small font-normal text-fg-3">({pluralize(folded.length, 'week')})</span>
-              </summary>
-              <div className="mt-6 flex flex-col gap-10">
-                {folded.map((week) => (
-                  <WeekSection key={week.start} courseId={courseId} week={week} current={false} />
+          {middle.length > 0 ? (
+            <section aria-labelledby="later-weeks-heading">
+              <h2 id="later-weeks-heading" className="mb-3 text-heading text-fg">
+                Later weeks <span className="text-small font-normal text-fg-3">({pluralize(middle.length, 'week')})</span>
+              </h2>
+              <ul className="flex flex-col gap-3">
+                {middle.map((week) => (
+                  <FoldedWeek key={week.start} week={week} describe={describe} open={open} />
                 ))}
-              </div>
-            </details>
+              </ul>
+            </section>
           ) : null}
           {tail.map((week) => (
-            <WeekSection key={week.start} courseId={courseId} week={week} current={false} />
+            <WeekSection key={week.start} week={week} current={false} describe={describe} open={open} />
           ))}
         </div>
       )}

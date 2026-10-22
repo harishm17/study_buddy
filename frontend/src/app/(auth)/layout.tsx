@@ -1,45 +1,46 @@
-import Image from 'next/image'
 import Link from 'next/link'
 import { Brand } from '@/components/shell/brand'
+import { SkipLink } from '@/components/shell/skip-link'
+import { BRAND_NAME } from '@/config/brand'
+import { Shot } from '@/features/marketing/shot'
+import { ThemeSwitch } from '@/components/ui/theme-switch'
 
 /**
- * Two columns on desktop: a 480px form column, and a product screenshot on a quiet panel.
- * The screenshots are the real topic notes page (public/screens/notes-light.webp and
- * notes-dark.webp), taken from the showcase course.
+ * Two columns on desktop: a form column, and a panel with the whole plan screen (never cropped) and one
+ * line about it. On a phone only the form shows, from the top of the page, so the button is above the fold.
+ * The screenshot is the real plan page from the showcase course (`npm run screens` refreshes it).
  */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-dvh lg:grid-cols-[480px_1fr]">
-      <div className="flex flex-col px-6 py-6 sm:px-12">
-        <Link href="/" className="w-fit rounded-chip" aria-label="Margins home">
-          <Brand />
-        </Link>
-        <main id="main" tabIndex={-1} className="flex flex-1 items-center outline-none">
-          <div className="mx-auto w-full max-w-[360px] py-10">{children}</div>
+    <div className="grid min-h-dvh lg:grid-cols-[minmax(440px,480px)_1fr]">
+      <SkipLink />
+      <div className="flex flex-col px-6 py-5 sm:px-12">
+        <header className="flex items-center justify-between">
+          <Link href="/" className="rounded-chip" aria-label={`${BRAND_NAME} home`}>
+            <Brand />
+          </Link>
+          <ThemeSwitch />
+        </header>
+        <main id="main" tabIndex={-1} className="flex flex-1 flex-col pt-8 outline-none sm:pt-14 lg:justify-center lg:pt-0">
+          <div className="mx-auto w-full max-w-[360px] pb-10 lg:pb-16">{children}</div>
         </main>
       </div>
-      <div aria-hidden="true" className="hidden p-4 lg:block">
-        <div className="relative h-full overflow-hidden rounded-card bg-surface-2">
-          <Image
-            src="/screens/notes-light.webp"
-            alt=""
-            width={1600}
-            height={1000}
-            sizes="(min-width: 1024px) 1100px, 0px"
-            className="absolute left-14 top-14 max-w-none rounded-card border border-border shadow-float dark:hidden"
-            style={{ width: 1100, height: 'auto' }}
-          />
-          <Image
-            src="/screens/notes-dark.webp"
-            alt=""
-            width={1600}
-            height={1000}
-            sizes="(min-width: 1024px) 1100px, 0px"
-            className="absolute left-14 top-14 hidden max-w-none rounded-card border border-border shadow-float dark:block"
-            style={{ width: 1100, height: 'auto' }}
-          />
+      <aside aria-label={`About ${BRAND_NAME}`} className="hidden p-4 lg:block">
+        <div className="flex h-full flex-col justify-between gap-10 rounded-card bg-surface-2 p-10 xl:p-14">
+          <p className="max-w-[26ch] text-title text-fg">
+            Know what to study today, and every day until the exam.
+          </p>
+          <div className="overflow-hidden rounded-card border border-border bg-surface">
+            <Shot
+              name="plan"
+              desktop={{ width: 1400, height: 957 }}
+              alt="The plan page of a course: Today lists a review and a quiz, and the days after it lead to the exam date"
+              sizes="(min-width: 1536px) 960px, 720px"
+              className="h-auto w-full"
+            />
+          </div>
         </div>
-      </div>
+      </aside>
     </div>
   )
 }

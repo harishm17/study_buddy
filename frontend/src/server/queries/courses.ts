@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/prisma'
 import { deriveSetup, type CourseSetup } from '@/lib/course-setup'
 import { applyPendingExamResults } from '@/lib/learning/exam-mastery'
 import { displayMastery } from '@/lib/learning/mastery-math'
+import { dueBoundary, isReviewDue } from '@/lib/learning/next-step'
 import { masteryLevel, type MasteryLevel } from '@/lib/mastery'
 
 /** Everything here is filtered by the user id; an id that is not theirs is simply not found. */
@@ -90,6 +91,8 @@ export type ShellTopic = {
   confirmed: boolean
   /** 0..1 from the review schedule, faded when the review is overdue; null with no signal yet. */
   mastery: number | null
+  /** The mastery the student earned, before any fade for a late review. */
+  earnedMastery: number | null
   dueAt: string | null
   progress: { notes: boolean; examples: boolean; quiz: boolean; quizScore: number | null }
   /** The content types that exist: section_notes, solved_examples, interactive_examples, topic_quiz. */
@@ -171,6 +174,7 @@ export const getCourseShell = cache(async (userId: string, courseId: string): Pr
       unitId: topic.unitId,
       confirmed: topic.userConfirmed,
       mastery: displayMastery(schedule?.mastery, schedule, now),
+      earnedMastery: schedule?.mastery ?? null,
       dueAt: schedule?.dueAt.toISOString() ?? null,
       progress: {
         notes: progress?.notesCompleted ?? false,
@@ -212,7 +216,7 @@ export type NavCourse = {
   name: string
   status: string
   updatedAt: string
-  /** Topics that are due for review by now. */
+  /** Confirmed topics whose review is due by the end of the student's today. */
   dueCount: number
   /** Topics exist but are not confirmed yet: the sidebar shows a dot on "Topics". */
   needsTopicReview: boolean
@@ -227,8 +231,9 @@ export type NavCourse = {
  * What the app shell needs on every page: the user's courses (most recent first) with topic
  * names and mastery, for the sidebar, the course switcher and the command palette.
  */
-export const getNavIndex = cache(async (userId: string): Promise<NavCourse[]> => {
+export const getNavIndex = cache(async (userId: string, timeZone = 'UTC'): Promise<NavCourse[]> => {
   const now = new Date()
+  const boundary = dueBoundary(now, timeZone)
   const projects = await prisma.project.findMany({
     where: { userId },
     orderBy: { updatedAt: 'desc' },
@@ -270,10 +275,8 @@ export const getNavIndex = cache(async (userId: string): Promise<NavCourse[]> =>
       name: project.name,
       status: project.status,
       updatedAt: project.updatedAt.toISOString(),
-      dueCount: project.topics.filter((topic) => {
-        const dueAt = topic.reviewSchedules[0]?.dueAt
-        return dueAt && dueAt <= now
-      }).length,
+      // The same meaning of "due" as the Review page, Home and the overview (lib/learning/next-step.ts).
+      dueCount: project.topics.filter((topic) => topic.userConfirmed && isReviewDue(topic.reviewSchedules[0]?.dueAt, boundary)).length,
       needsTopicReview: project.topics.length > 0 && confirmed < project.topics.length,
       active: setup.mode === 'active',
       units: project.units,

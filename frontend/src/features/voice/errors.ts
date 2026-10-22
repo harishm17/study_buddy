@@ -45,7 +45,7 @@ export function describeTurnFailure(failure: TurnFailure): TurnFailureView {
         fate: 'lobby',
         alert: {
           tone: 'warning',
-          title: 'Another voice review is open',
+          title: 'Another voice practice is open',
           text: 'End it in the other tab or window, then start again. It also clears by itself after about a minute.',
           action: 'none',
         },
@@ -87,7 +87,7 @@ export function describeTurnFailure(failure: TurnFailure): TurnFailureView {
         alert: {
           tone: 'warning',
           title: "You've used today's AI allowance",
-          text: `Voice review is paused. It resets ${resetPhrase()}.`,
+          text: `Voice practice is paused. It resets ${resetPhrase()}.`,
           action: 'none',
         },
       }
@@ -108,7 +108,7 @@ export function describeTurnFailure(failure: TurnFailure): TurnFailureView {
         fate: 'summary',
         alert: {
           tone: 'danger',
-          title: "Voice review isn't available right now",
+          title: "Voice practice isn't available right now",
           text: 'Something is wrong on our side. Try again later.',
           action: 'none',
         },

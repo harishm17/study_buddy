@@ -12,7 +12,7 @@ export type VoiceReviewProps = {
 
 function LobbySkeleton() {
   return (
-    <div className="flex max-w-[560px] flex-col gap-6" aria-busy="true" aria-label="Loading voice review">
+    <div className="flex max-w-[560px] flex-col gap-6" aria-busy="true" aria-label="Loading voice practice">
       <div className="flex flex-col gap-2">
         <Skeleton className="h-6 w-40 rounded-chip" />
         <Skeleton className="h-4 w-72 rounded-chip" />
@@ -34,8 +34,8 @@ const VoiceReviewImpl = dynamic(() => import('./voice-review-impl').then((module
 })
 
 /**
- * Voice review (docs/design/DESIGN.md 6.12): lobby, live session, summary. Render it inside the
- * topic page's Voice review view (mode "topic") or on the sprint page (mode "sprint").
+ * Voice practice (docs/design/DESIGN.md 6.12): lobby, live session, summary. Render it inside the
+ * topic page's Voice practice view (mode "topic") or on the sprint page (mode "sprint").
  */
 export function VoiceReview(props: VoiceReviewProps) {
   return <VoiceReviewImpl {...props} />

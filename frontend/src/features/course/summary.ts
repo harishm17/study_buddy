@@ -1,11 +1,13 @@
 import { formatDueLabel, formatRelative, pluralize } from '@/lib/format'
+import { dueBoundary, isReviewDue } from '@/lib/learning/next-step'
 import type { MasteryCounts } from '@/lib/mastery'
 
-/** "12 topics, 4 strong, 2 due for review". Parts that are zero are left out. */
-export function courseSummary(topicCount: number, counts: MasteryCounts, dueCount: number): string {
+/** "12 topics, 4 strong, 2 due for review, exam in 3 days". Parts that are zero or unknown are left out. */
+export function courseSummary(topicCount: number, counts: MasteryCounts, dueCount: number, exam?: string | null): string {
   const parts = [pluralize(topicCount, 'topic')]
   if (counts.strong > 0) parts.push(`${counts.strong} strong`)
   if (dueCount > 0) parts.push(`${dueCount} due for review`)
+  if (exam) parts.push(exam.charAt(0).toLowerCase() + exam.slice(1))
   return parts.join(', ')
 }
 
@@ -57,13 +59,11 @@ export function needsWorkOrder<T extends { mastery: number | null; dueAt: string
 
 /**
  * When a topic is next reviewed: "Due today" (or "Overdue 2d") for anything due by the end of
- * today in UTC, otherwise "Next review in 4 days". Null when there is no schedule yet.
+ * the student's today, otherwise "Next review in 4 days". Null when there is no schedule yet.
  */
-export function reviewTiming(dueAt: string | null, now: number): { due: boolean; text: string } | null {
+export function reviewTiming(dueAt: string | null, now: number, timeZone = 'UTC'): { due: boolean; text: string } | null {
   if (!dueAt) return null
-  const endOfToday = new Date(now)
-  endOfToday.setUTCHours(23, 59, 59, 999)
-  if (new Date(dueAt) <= endOfToday) return { due: true, text: formatDueLabel(dueAt, now) }
+  if (isReviewDue(dueAt, dueBoundary(new Date(now), timeZone))) return { due: true, text: formatDueLabel(dueAt, now) }
   return { due: false, text: `Next review ${formatRelative(dueAt, now)}` }
 }
 

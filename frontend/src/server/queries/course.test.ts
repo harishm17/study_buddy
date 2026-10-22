@@ -11,6 +11,7 @@ const topic = (id: string, mastery: number | null, confirmed = true) => ({
   unitId: null,
   confirmed,
   mastery,
+  earnedMastery: mastery,
   dueAt: null,
   progress: { notes: false, examples: false, quiz: false, quizScore: null },
   content: [],

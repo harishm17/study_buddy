@@ -6,7 +6,8 @@ import { Check, Monitor, Moon, Sun } from '@phosphor-icons/react/dist/ssr'
 import { cn } from '@/lib/utils'
 import * as MenuPrimitive from '@radix-ui/react-dropdown-menu'
 import { menuItem } from './styles'
-import { SegmentedControl } from './segmented-control'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from './dropdown-menu'
+import { IconButton } from './icon-button'
 
 export type ThemeChoice = 'light' | 'dark' | 'system'
 
@@ -30,30 +31,39 @@ export function useThemeChoice(): { choice: ThemeChoice | null; setChoice: (choi
 }
 
 /**
- * Light, Dark or System as one control: a segmented radio group with an icon and a word on each
- * option (the words are never dropped, so the state is not carried by an icon alone). Use it
- * anywhere a page has room for it: the public header, a settings page. Inside a dropdown menu
- * use `ThemeMenuRadios`, which has the same options as menu items.
+ * The theme control for pages without the app's account menu (the public pages, sign in and sign
+ * up): an icon button that opens Light, Dark and System. The icon follows the theme class on
+ * <html> through CSS, so the server and the browser render the same markup. Inside the signed-in
+ * account menu the same choices are `ThemeMenuRadios`; both read and write the theme through
+ * `useThemeChoice`.
  */
-export function ThemeSwitch({ className, fullWidth }: { className?: string; fullWidth?: boolean }) {
+export function ThemeSwitch({ align = 'end' }: { align?: 'start' | 'center' | 'end' }) {
   const { choice, setChoice } = useThemeChoice()
   return (
-    <SegmentedControl<ThemeChoice>
-      aria-label="Theme"
-      value={choice ?? ('' as ThemeChoice)}
-      onValueChange={setChoice}
-      fullWidth={fullWidth}
-      className={className}
-      options={THEME_OPTIONS.map(({ value, label, icon: Icon }) => ({
-        value,
-        label: (
-          <span className="inline-flex items-center gap-1.5">
-            <Icon aria-hidden="true" className="size-3.5" />
-            {label}
-          </span>
-        ),
-      }))}
-    />
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <IconButton
+          label="Theme"
+          noTooltip
+          icon={
+            <>
+              <Sun className="dark:hidden" />
+              <Moon className="hidden dark:block" />
+            </>
+          }
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align} className="min-w-[160px]">
+        <DropdownMenuRadioGroup value={choice ?? 'system'} onValueChange={(next) => setChoice(next as ThemeChoice)}>
+          {THEME_OPTIONS.map(({ value, label, icon: Icon }) => (
+            <DropdownMenuRadioItem key={value} value={value}>
+              <Icon aria-hidden="true" className="mr-2 inline size-4 align-[-3px] text-fg-3" />
+              {label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

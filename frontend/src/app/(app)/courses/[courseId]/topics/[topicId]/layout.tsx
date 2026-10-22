@@ -55,6 +55,7 @@ export default async function TopicLayout({
           name={topic.name}
           description={topic.description}
           mastery={topic.mastery}
+          earnedMastery={topic.earnedMastery}
           dueAt={topic.dueAt}
           daysUntilDue={topic.daysUntilDue}
           bestQuiz={topic.progress.quizScore}

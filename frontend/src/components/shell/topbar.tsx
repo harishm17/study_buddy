@@ -6,51 +6,45 @@ import { usePathname } from 'next/navigation'
 import { List, SidebarSimple } from '@phosphor-icons/react/dist/ssr'
 import { IconButton } from '@/components/ui/icon-button'
 import { cn } from '@/lib/utils'
-import { buildCrumbs } from './breadcrumbs'
+import { buildCrumbs, mobileContext, type MobileContext } from './breadcrumbs'
 import { useShell } from './shell-provider'
 import { setSidebarCollapsed, useSidebarCollapsed } from './sidebar-state'
 import { SlotTarget, useSlots, type Crumb } from './slots'
 
-function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
+function Breadcrumbs({ crumbs, mobile }: { crumbs: Crumb[]; mobile: MobileContext }) {
   if (crumbs.length === 0) return <div className="min-w-0 flex-1" />
-  const middle = crumbs.length > 2
   return (
     <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
-      <ol className="flex min-w-0 items-center gap-1.5 text-body">
+      {/* Phones: the page name with the course (and unit) above it, each cut only at its end. */}
+      <div className="flex min-w-0 flex-col justify-center sm:hidden">
+        {mobile.context ? <p className="truncate text-caption font-normal leading-4 text-fg-3">{mobile.context}</p> : null}
+        <p aria-current="page" className="truncate text-body-strong text-fg">
+          {mobile.title}
+        </p>
+      </div>
+      <ol className="flex min-w-0 items-center gap-1.5 text-body max-sm:hidden">
         {crumbs.map((crumb, index) => {
           const last = index === crumbs.length - 1
-          const hiddenOnSmall = middle && index > 0 && !last
           return (
-            <React.Fragment key={`${index}-${crumb.label}`}>
-              {index === 1 && middle ? (
-                <li aria-hidden="true" className="flex items-center gap-1.5 text-fg-3 sm:hidden">
-                  <span>...</span>
-                  <span>/</span>
-                </li>
-              ) : null}
-              <li
-                className={cn(
-                  'flex min-w-0 items-center gap-1.5',
-                  last ? 'shrink' : 'shrink-[3]',
-                  hiddenOnSmall && 'max-sm:hidden'
-                )}
-              >
-                {crumb.href && !last ? (
-                  <Link href={crumb.href} className="truncate rounded-chip text-fg-3 transition-colors duration-120 hover:text-fg">
-                    {crumb.label}
-                  </Link>
-                ) : (
-                  <span aria-current={last ? 'page' : undefined} className={cn('truncate', last ? 'text-body-strong text-fg' : 'text-fg-3')}>
-                    {crumb.label}
-                  </span>
-                )}
-                {last ? null : (
-                  <span aria-hidden="true" className="text-fg-3">
-                    /
-                  </span>
-                )}
-              </li>
-            </React.Fragment>
+            <li key={`${index}-${crumb.label}`} className={cn('flex min-w-0 items-center gap-1.5', last ? 'shrink' : 'shrink-[3]')}>
+              {crumb.href && !last ? (
+                <Link
+                  href={crumb.href}
+                  className="inline-flex min-h-6 items-center truncate rounded-chip text-fg-3 transition-colors duration-120 hover:text-fg"
+                >
+                  {crumb.label}
+                </Link>
+              ) : (
+                <span aria-current={last ? 'page' : undefined} className={cn('truncate', last ? 'text-body-strong text-fg' : 'text-fg-3')}>
+                  {crumb.label}
+                </span>
+              )}
+              {last ? null : (
+                <span aria-hidden="true" className="text-fg-3">
+                  /
+                </span>
+              )}
+            </li>
           )
         })}
       </ol>
@@ -101,7 +95,7 @@ export function Topbar() {
         tooltipSide="bottom"
         onClick={() => setSidebarCollapsed(!collapsed)}
       />
-      <Breadcrumbs crumbs={crumbs} />
+      <Breadcrumbs crumbs={crumbs} mobile={mobileContext(pathname, nav, crumbs)} />
       <SlotTarget name="actions" className="flex shrink-0 items-center gap-2" />
     </header>
   )

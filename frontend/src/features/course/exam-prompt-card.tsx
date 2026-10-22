@@ -3,18 +3,18 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { InlineAlert } from '@/components/ui/inline-alert'
 import { apiFetch, isApiError } from '@/lib/api/client'
 
 /**
- * "When is your exam?" on the overview until a date is set. Saving plans the days up to it; "Not now"
- * closes the card for good (it is remembered on the course, so it stays closed on every device).
+ * A slim line under "Up next" while the course has no exam date and the line was not closed: it asks
+ * once, in a row, and never outranks the next step. Saving plans the days up to the date; "Not now"
+ * closes it for good (it is remembered on the course, so it stays closed on every device). A date given
+ * when the course was made means this never shows.
  */
 export function ExamPromptCard({ courseId }: { courseId: string }) {
   const router = useRouter()
-  const headingId = React.useId()
   const inputId = React.useId()
   const [date, setDate] = React.useState('')
   const [pending, setPending] = React.useState<'save' | 'dismiss' | null>(null)
@@ -45,36 +45,37 @@ export function ExamPromptCard({ courseId }: { courseId: string }) {
 
   if (hidden) return null
   return (
-    <Card role="region" aria-labelledby={headingId} className="flex flex-col gap-3">
-      <div>
-        <h2 id={headingId} className="text-heading text-fg">
-          When is your exam?
-        </h2>
-        <p className="mt-1 text-small text-fg-2">Margins plans your days up to it, and tells you if time is short.</p>
-      </div>
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={inputId} className="text-small font-medium text-fg">
-            Exam date
-          </label>
-          <Input id={inputId} type="date" value={date} onChange={(event) => setDate(event.target.value)} containerClassName="sm:w-52" />
-        </div>
-        <div className="flex items-center gap-2">
-          <Button type="submit" variant="primary" loading={pending === 'save'} disabled={pending === 'dismiss'}>
-            Save date
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            loading={pending === 'dismiss'}
-            disabled={pending === 'save'}
-            onClick={() => void patch({ examPromptDismissed: true }, 'dismiss')}
-          >
-            Not now
-          </Button>
-        </div>
+    <section
+      role="region"
+      aria-label="When is your exam?"
+      className="flex flex-col gap-3 rounded-card border border-border bg-surface px-4 py-3 lg:flex-row lg:flex-wrap lg:items-center lg:gap-4"
+    >
+      <p className="min-w-0 flex-1 text-small text-fg-2">
+        <span className="font-medium text-fg">No exam date yet.</span> Add one and Margins plans your days up to it, and tells you if time is short.
+      </p>
+      <form onSubmit={onSubmit} noValidate className="flex flex-wrap items-center gap-2">
+        <label htmlFor={inputId} className="sr-only">
+          Exam date
+        </label>
+        <Input id={inputId} type="date" value={date} onChange={(event) => setDate(event.target.value)} containerClassName="w-44 max-sm:flex-1" />
+        <Button type="submit" variant="secondary" loading={pending === 'save'} disabled={pending === 'dismiss'}>
+          Save date
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          loading={pending === 'dismiss'}
+          disabled={pending === 'save'}
+          onClick={() => void patch({ examPromptDismissed: true }, 'dismiss')}
+        >
+          Not now
+        </Button>
       </form>
-      {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
-    </Card>
+      {error ? (
+        <div className="lg:basis-full">
+          <InlineAlert tone="danger">{error}</InlineAlert>
+        </div>
+      ) : null}
+    </section>
   )
 }

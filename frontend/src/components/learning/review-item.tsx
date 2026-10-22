@@ -170,7 +170,7 @@ export function ReviewItem({
         <div className="flex items-start gap-3">
           <div className="flex min-w-0 flex-1 items-start gap-2 text-body-strong text-fg">
             <span className="tabular text-fg-3">{number}</span>
-            <div className="min-w-0 flex-1">{blocks ? <QuestionText>{questionText}</QuestionText> : <MathText>{questionText}</MathText>}</div>
+            <div className="min-w-0 flex-1">{blocks ? <QuestionText compact>{questionText}</QuestionText> : <MathText>{questionText}</MathText>}</div>
           </div>
           <span className="shrink-0 tabular text-small text-fg-2">
             {formatPoints(pointsEarned)}/{formatPoints(points)}

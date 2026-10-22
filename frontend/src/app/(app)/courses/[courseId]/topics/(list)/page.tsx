@@ -7,6 +7,7 @@ import { TopicsList } from '@/features/course/topics-list'
 import { countMasteryLevels, masteryLevel } from '@/lib/mastery'
 import { getTopicsData } from '@/server/queries/course'
 import { requireUser } from '@/server/session'
+import { getTimeZone } from '@/server/timezone'
 
 export const metadata: Metadata = { title: 'Topics' }
 
@@ -54,7 +55,8 @@ export default async function TopicsPage({
   // eslint-disable-next-line react-hooks/purity -- a server component: one timestamp per request
   const now = Date.now()
   const counts = countMasteryLevels(data.topics.map((topic) => masteryLevel(topic.mastery)))
-  const due = data.topics.filter((topic) => reviewTiming(topic.dueAt, now)?.due).length
+  const timeZone = await getTimeZone()
+  const due = data.topics.filter((topic) => reviewTiming(topic.dueAt, now, timeZone)?.due).length
 
   return (
     <Page>
@@ -73,7 +75,7 @@ export default async function TopicsPage({
           examRelevant: topic.examRelevant,
           mastery: topic.mastery,
           dueAt: topic.dueAt,
-          timing: reviewTiming(topic.dueAt, now),
+          timing: reviewTiming(topic.dueAt, now, timeZone),
           path: studyPath({ content: topic.content, progress: topic.progress, practiceDone: topic.practiceDone }),
         }))}
       />

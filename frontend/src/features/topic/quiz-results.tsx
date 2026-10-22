@@ -11,6 +11,8 @@ import { apiFetch } from '@/lib/api/client'
 import { formatScore } from '@/lib/format'
 import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import type { QuizReviewItem } from '@/lib/learning/quiz-review'
+import { studyOutcome, nextReviewLabel } from '@/lib/learning/consequence'
+import { browserTimeZone } from '@/lib/utils/timezone'
 import { cn } from '@/lib/utils'
 import { buildEntries, ReviewList } from './quiz-review-list'
 
@@ -21,6 +23,8 @@ export type QuizResult = {
   bestScore: number
   review: QuizReviewItem[]
   answers: Record<string, string>
+  /** What the attempt changed: when the topic is next reviewed, and how its mastery moved. */
+  outcome?: { nextReviewAt: string | null; mastery: number | null; previousMastery: number | null }
 }
 
 const points = (value: number) => (Number.isInteger(value) ? String(value) : value.toFixed(1))
@@ -30,14 +34,20 @@ const CONFIDENCE_LABELS = ['Guessing', 'Unsure', 'Okay', 'Fairly sure', 'Certain
 function ConfidencePrompt({ topicId }: { topicId: string }) {
   const [chosen, setChosen] = React.useState<number | null>(null)
   const [saving, setSaving] = React.useState(false)
+  const [next, setNext] = React.useState<string | null>(null)
 
   async function choose(value: number) {
     if (saving) return
     setSaving(true)
     try {
-      await apiFetch(`/api/topics/${topicId}/confidence`, { method: 'POST', json: { source: 'quiz', value } })
+      const saved = await apiFetch<{ nextReviewAt: string | null }>(`/api/topics/${topicId}/confidence`, {
+        method: 'POST',
+        json: { source: 'quiz', value },
+      })
       setChosen(value)
-      toast.success('Thanks, your review schedule is updated.')
+      const next = nextReviewLabel(saved?.nextReviewAt, new Date(), browserTimeZone())
+      setNext(next)
+      toast.success(next ? `Saved. ${next}.` : 'Saved. Your review date is updated.')
     } catch {
       toast.error("Couldn't save that. Try again.")
     } finally {
@@ -75,7 +85,9 @@ function ConfidencePrompt({ topicId }: { topicId: string }) {
           )
         })}
       </div>
-      <p className="text-caption font-normal text-fg-3">1 is a guess, 5 is certain.</p>
+      <p className="text-caption font-normal text-fg-3" aria-live="polite">
+        {next ? `${next}.` : 'Your rating moves the next review: 1 or 2 brings it back tomorrow. 1 is a guess, 5 is certain.'}
+      </p>
     </div>
   )
 }
@@ -106,6 +118,8 @@ export function QuizResults({
   const missed = entries.filter((entry) => !entry.review.isCorrect)
   const shown = filter === 'missed' ? missed : entries
   const score = formatScore(result.score)
+  // What this quiz changed, in the student's own days (the browser's zone).
+  const outcomeText = result.outcome ? studyOutcome(result.outcome, new Date(), browserTimeZone()) : null
 
   return (
     <div className="max-w-[720px]">
@@ -120,6 +134,7 @@ export function QuizResults({
           <p className="mt-0.5 text-small text-fg-2">
             Your best is <span className="tabular">{formatScore(result.bestScore)}</span>.
           </p>
+          {outcomeText ? <p className="mt-0.5 text-small text-fg-2">{outcomeText}</p> : null}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" icon={<ArrowCounterClockwise />} onClick={onRetake}>
@@ -127,7 +142,7 @@ export function QuizResults({
           </Button>
           <Button asChild variant="secondary" icon={<Microphone />}>
             <Link href={voiceHref} scroll={false}>
-              Voice review
+              Voice practice
             </Link>
           </Button>
         </div>

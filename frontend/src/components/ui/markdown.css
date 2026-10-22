@@ -54,6 +54,10 @@
   letter-spacing: -0.01em;
 }
 
+.md-stem-compact > p {
+  font-weight: 500;
+}
+
 .md-inline {
   display: inline;
 }

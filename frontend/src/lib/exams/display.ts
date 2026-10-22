@@ -1,17 +1,18 @@
 import { formatDate } from '@/lib/format'
 
-const GENERATED_NAME = /^Sample Exam - \d{4}-\d{2}-\d{2}$/
+/** The AI service names an exam "Sample Exam - 2026-10-20" (older exams) or "Mock exam - 2026-10-20". */
+const GENERATED_NAME = /^(?:Sample|Mock) [Ee]xam - \d{4}-\d{2}-\d{2}$/
 
-/** "Sample exam, Oct 20" for generated names (dated by when the exam was made); a custom name is kept as it is. */
+/** "Mock exam, Oct 20" for generated names (dated by when the exam was made); a custom name is kept as it is. */
 export function examTitle(name: string, createdAt: string | Date): string {
-  return GENERATED_NAME.test(name) ? `Sample exam, ${formatDate(createdAt)}` : name
+  return GENERATED_NAME.test(name) ? `Mock exam, ${formatDate(createdAt)}` : name
 }
 
 type TitledExam = { id: string; name: string; createdAt: string | Date }
 
 /**
  * Titles for all the exams of one course, with no two alike. Generated names carry only a date, so
- * two exams made on the same day would both read "Sample exam, Oct 21": the second and later ones
+ * two exams made on the same day would both read "Mock exam, Oct 21": the second and later ones
  * (by creation time) get " (2)", " (3)". A custom name is kept as the student wrote it.
  */
 export function examTitles(exams: readonly TitledExam[]): Map<string, string> {

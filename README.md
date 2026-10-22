@@ -13,7 +13,7 @@ Upload your lecture notes, textbook chapters and past exams. Margins splits them
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Claude](https://img.shields.io/badge/LLM-Claude-D97757)](https://docs.anthropic.com/)
 
-<img src="frontend/public/screens/notes-light.webp" alt="Topic notes in Margins, with sources linked to the uploaded files" width="860">
+<img src="frontend/public/screens/plan-light.webp" alt="The Margins plan page: Today lists a review and a quiz, and each day after it leads to the exam date" width="860">
 
 </div>
 
@@ -32,8 +32,12 @@ Upload your lecture notes, textbook chapters and past exams. Margins splits them
 
 | | |
 |---|---|
-| <img src="frontend/public/screens/practice-light.webp" alt="Interactive practice problem"> | <img src="frontend/public/screens/exam-light.webp" alt="Timed practice exam"> |
-| <img src="frontend/public/screens/ask-light.webp" alt="Ask your materials, with citations"> | <img src="frontend/public/screens/quiz-results-light.webp" alt="Quiz results with explanations"> |
+| <img src="frontend/public/screens/topics-edit-light.webp" alt="The course plan: units and topics, each tied to the file and pages it is taught from"> | <img src="frontend/public/screens/notes-detail-light.webp" alt="Topic notes with code, an outline and the source files and pages"> |
+| <img src="frontend/public/screens/practice-light.webp" alt="Interactive practice problem, one step at a time"> | <img src="frontend/public/screens/exam-light.webp" alt="A timed mock exam with its question navigator"> |
+| <img src="frontend/public/screens/exam-new-light.webp" alt="New mock exam with Match my past exams ticked"> | <img src="frontend/public/screens/ask-light.webp" alt="Ask your materials, with a citation open"> |
+| <img src="frontend/public/screens/quiz-results-light.webp" alt="Quiz results with the right answer, an explanation and the source page"> | <img src="frontend/public/screens/plan-exam-day-light.webp" alt="The last days of a plan: a final review, then exam day"> |
+
+Every image here and on [the landing page](https://studymargins.com) comes from the real app, with a hand-written showcase course, in light and dark. `npm run screens` in `frontend/` refreshes them (see [Screenshots](#screenshots)).
 
 ## How it works
 
@@ -80,6 +84,20 @@ The [generation eval](evals/README.md#generation-eval) runs the app's own genera
 | Cost per topic (all four types) | $0.585 |
 
 It also picked the model: [Sonnet and Haiku made maths errors and fell short of the bar set before the run](evals/results/2026-10-21-model-decision.md), so generation stays on Opus and cost is held down by generating each topic only when it is opened.
+
+## Screenshots
+
+The product screenshots on the landing page, on the sign-in and sign-up pages and in this README are generated from the running app, so they never show an old navigation. [`frontend/scripts/capture-screens.ts`](frontend/scripts/capture-screens.ts) seeds a showcase student and course (written by hand in [`frontend/scripts/screens/`](frontend/scripts/screens/), no model output), signs in, and captures each screen in light and dark as WebP into `frontend/public/screens/`, with phone-sized crops for the landing page.
+
+```bash
+# a migrated database and the e2e stack (scripts/e2e-stack.sh start), then:
+cd frontend
+DATABASE_URL=postgresql://... PLAYWRIGHT_BASE_URL=http://localhost:3000 npm run screens
+npm run screens -- --only plan,ask      # a few screens
+npm run screens -- --no-seed            # reuse the showcase account already in the database
+```
+
+It only runs against a local web app and a local database (the showcase password is public), and needs no AI calls: nothing is generated while it runs.
 
 ## Run it locally
 
