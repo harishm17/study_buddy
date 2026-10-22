@@ -383,7 +383,17 @@ async function ensureMathTopic(api: APIRequestContext, courseId: string): Promis
   return topicId
 }
 
+// The demo password is in this public repo, so the account may only ever exist on a local stack.
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
+
 export async function seedDemo(baseURL: string): Promise<DemoIds> {
+  const host = new URL(baseURL).hostname.replace(/^\[|\]$/g, '')
+  if (!LOCAL_HOSTS.has(host)) {
+    throw new Error(
+      `Refusing to seed the demo account on ${host}: its password is public. Run the e2e suite ` +
+        'against a local stack (PLAYWRIGHT_BASE_URL=http://localhost:<port>).',
+    )
+  }
   const api = await request.newContext({ baseURL, timeout: 120_000 })
   try {
     await signIn(api, baseURL)

@@ -6,6 +6,9 @@ Everything needed to run a live demo or record a video.
 
 ## Demo Credentials
 
+Local development only. `frontend/scripts/seed-demo.ts` refuses to run against anything but a local
+database (this machine or docker compose), so this account never exists on studymargins.com.
+
 | Field    | Value                  |
 |----------|------------------------|
 | Email    | demo@studymargins.com |
@@ -24,7 +27,7 @@ cd frontend
 npx prisma db push
 
 # 3. Seed demo data (pre-populates a project with topics + content)
-npx tsx ../scripts/seed-demo.ts
+npx tsx scripts/seed-demo.ts
 
 # 4. Open the app
 # Browser → http://localhost:3000
