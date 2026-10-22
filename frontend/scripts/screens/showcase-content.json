@@ -1,0 +1,818 @@
+{
+ "notes": "# Graph traversal\n\n## Overview\n\nA graph $G = (V, E)$ is a set of vertices connected by edges. Traversal is the systematic way to visit every vertex you can reach from a starting vertex $s$, touching each edge only a constant number of times. Two strategies cover almost every problem in this course: **breadth-first search** (BFS) explores in rings around $s$, and **depth-first search** (DFS) follows one path as far as it can before backing up. Both run in $O(V + E)$ time when the graph is stored as an adjacency list.\n\n## Key concepts\n\n- **Adjacency list.** For each vertex, a list of its neighbours. It uses $O(V + E)$ space and lets a traversal walk the edges of a vertex without scanning the whole graph.\n- **Frontier.** The vertices that have been discovered but not yet processed. BFS keeps it in a queue, DFS in a stack (or the call stack).\n- **Visited set.** A vertex is marked the moment it is discovered, so no vertex enters the frontier twice.\n- **Parent pointers.** Record which vertex discovered each vertex. Following them backwards from $v$ to $s$ rebuilds a path.\n- **Discovery and finish times.** DFS stamps each vertex when it is first reached and again when all of its neighbours are done. The finish order is what makes topological sorting work.\n\n## How it works\n\n### Breadth-first search\n\nBFS keeps a queue of vertices that are waiting to be expanded. It removes the oldest vertex, looks at its neighbours, and adds every neighbour it has not seen before. Because the queue is first in, first out, every vertex at distance $k$ is expanded before any vertex at distance $k + 1$.\n\n```python\nfrom collections import deque\n\ndef bfs(graph, source):\n    dist = {source: 0}\n    queue = deque([source])\n    while queue:\n        u = queue.popleft()\n        for v in graph[u]:\n            if v not in dist:          # mark when discovered, not when dequeued\n                dist[v] = dist[u] + 1\n                queue.append(v)\n    return dist\n```\n\nThe value `dist[v]` is the length of a shortest path from the source to $v$, counted in edges. That only holds for unweighted graphs: once edges have different weights, BFS no longer orders vertices by true distance.\n\n### Depth-first search\n\nDFS commits to one neighbour at a time. It recurses into the first unvisited neighbour, and only when that whole branch is finished does it return and try the next one. Each vertex gets a discovery time on the way in and a finish time on the way out. Sorting the vertices by decreasing finish time gives a topological order of a directed acyclic graph.\n\nAn edge that leads back to a vertex still on the recursion stack is a **back edge**, and a directed graph has a cycle exactly when DFS finds one.\n\n### Running time\n\nEvery vertex is enqueued (or recursed into) once, and every adjacency list is read once. Summing the work over all vertices gives\n\n$$\nT(G) = \\sum_{v \\in V} \\bigl(1 + \\deg(v)\\bigr) = O(V + E),\n$$\n\nbecause the degrees of an undirected graph add up to $2|E|$.\n\n### Choosing between them\n\n| | BFS | DFS |\n|---|---|---|\n| Frontier | Queue | Stack or recursion |\n| Shortest path (unweighted) | Yes | No |\n| Extra memory | Up to one level of the graph | Up to the longest path |\n| Typical uses | Fewest hops, level order, nearest target | Cycles, topological order, connected components |\n\n## Common pitfalls\n\n- **Marking at dequeue time.** If you mark a vertex visited only when it leaves the queue, it can be added several times. Mark it when you discover it.\n- **Using BFS on weighted graphs.** BFS counts edges, not weight. For weights you need Dijkstra's algorithm or Bellman-Ford.\n- **Forgetting the outer loop.** A traversal from one source only reaches its own component. To visit a whole disconnected graph, start a new search from every vertex that is still unvisited.\n- **Deep recursion.** A recursive DFS on a long path can overflow the stack. Switch to an explicit stack for large inputs.\n\n## Exam-ready recap\n\n- BFS uses a queue and visits vertices in order of distance from the source.\n- DFS uses a stack or recursion and records discovery and finish times.\n- Both run in $O(V + E)$ on an adjacency list and $O(V^2)$ on an adjacency matrix.\n- BFS gives shortest paths in unweighted graphs, measured in edges.\n- A back edge in a directed graph means there is a cycle.\n- Decreasing finish time order is a topological order of a DAG.\n- Mark vertices when you discover them, and loop over every vertex for disconnected graphs.\n",
+ "examples": [
+  {
+   "title": "Fewest hops in a small network",
+   "difficulty": "easy",
+   "problem_statement": "An undirected graph has vertices $A$ to $F$ and edges $A$-$B$, $A$-$C$, $B$-$D$, $C$-$D$, $C$-$E$, $D$-$F$ and $E$-$F$. Find the smallest number of edges on a path from $A$ to $F$, and give one such path.",
+   "solution_steps": [
+    {
+     "step_number": 1,
+     "description": "Start the queue with the source.",
+     "work": "$d[A] = 0$, queue $= [A]$",
+     "explanation": "BFS starts at the source, which is at distance 0 from itself."
+    },
+    {
+     "step_number": 2,
+     "description": "Expand $A$.",
+     "work": "Discover $B$ and $C$. $d[B] = d[C] = 1$, queue $= [B, C]$.",
+     "explanation": "The neighbours of the source are exactly one edge away."
+    },
+    {
+     "step_number": 3,
+     "description": "Expand $B$, then $C$.",
+     "work": "$B$ discovers $D$. $C$ discovers $E$ (it sees that $D$ is already marked). $d[D] = d[E] = 2$, queue $= [D, E]$.",
+     "explanation": "A vertex is marked when it is discovered, so $D$ is added only once even though two vertices touch it."
+    },
+    {
+     "step_number": 4,
+     "description": "Expand $D$.",
+     "work": "$D$ discovers $F$. $d[F] = 3$ and the parent of $F$ is $D$.",
+     "explanation": "$F$ is first reached from $D$, which is processed before $E$."
+    },
+    {
+     "step_number": 5,
+     "description": "Read the path back through the parents.",
+     "work": "$F \\leftarrow D \\leftarrow B \\leftarrow A$",
+     "explanation": "Parent pointers form a tree rooted at the source, so following them from $F$ gives a shortest path."
+    }
+   ],
+   "final_answer": "- The fewest number of edges is **3**.\n- One shortest path is $A \\to B \\to D \\to F$. The path $A \\to C \\to E \\to F$ is equally short.",
+   "key_concepts": [
+    "Queue order",
+    "Distance labels",
+    "Parent pointers"
+   ]
+  },
+  {
+   "title": "Ordering tasks with depth-first search",
+   "difficulty": "medium",
+   "problem_statement": "You are getting dressed. The rules are: shirt before tie, tie before jacket, trousers before belt, trousers before shoes, belt before jacket, and socks before shoes. Use DFS finish times to find an order that respects every rule.",
+   "solution_steps": [
+    {
+     "step_number": 1,
+     "description": "Run DFS from the shirt.",
+     "work": "shirt $\\to$ tie $\\to$ jacket. The jacket has no outgoing edges, so it finishes first, then tie, then shirt.",
+     "explanation": "A vertex finishes only after everything reachable from it has finished."
+    },
+    {
+     "step_number": 2,
+     "description": "Start a new search from the trousers.",
+     "work": "trousers $\\to$ belt (jacket is already finished) $\\to$ belt finishes. Then trousers $\\to$ shoes, shoes finishes, trousers finishes.",
+     "explanation": "The outer loop starts a new search at every vertex that is still unvisited."
+    },
+    {
+     "step_number": 3,
+     "description": "Finish with the socks.",
+     "work": "socks $\\to$ shoes (already finished), so socks finishes last.",
+     "explanation": "Shoes finished earlier, so socks will end up before shoes in the final order."
+    },
+    {
+     "step_number": 4,
+     "description": "List the vertices by decreasing finish time.",
+     "work": "Finish order: jacket, tie, shirt, belt, shoes, trousers, socks. Reversed: socks, trousers, shoes, belt, shirt, tie, jacket.",
+     "explanation": "For every edge $u \\to v$ in a DAG, $u$ finishes after $v$, so $u$ comes first in the reversed list."
+    }
+   ],
+   "final_answer": "- A valid order is **socks, trousers, shoes, belt, shirt, tie, jacket**.\n- Every rule holds, for example trousers come before both belt and shoes.",
+   "key_concepts": [
+    "Finish times",
+    "Topological order",
+    "Outer loop"
+   ]
+  },
+  {
+   "title": "Does this directed graph have a cycle?",
+   "difficulty": "hard",
+   "problem_statement": "A directed graph has edges $1 \\to 2$, $2 \\to 3$, $3 \\to 4$, $4 \\to 2$ and $1 \\to 5$. Use DFS with three colours (white: unvisited, grey: on the stack, black: finished) to decide whether it has a cycle.",
+   "solution_steps": [
+    {
+     "step_number": 1,
+     "description": "Start at vertex 1.",
+     "work": "Colour 1 grey and follow $1 \\to 2$.",
+     "explanation": "Grey means the vertex is on the current recursion path."
+    },
+    {
+     "step_number": 2,
+     "description": "Follow the chain $2 \\to 3 \\to 4$.",
+     "work": "Colour 2, 3 and 4 grey in turn. The stack is now $1, 2, 3, 4$.",
+     "explanation": "Each recursive call adds one vertex to the path."
+    },
+    {
+     "step_number": 3,
+     "description": "Examine the edge $4 \\to 2$.",
+     "work": "Vertex 2 is grey, so $4 \\to 2$ points back to a vertex on the stack.",
+     "explanation": "That is the definition of a back edge, and a back edge closes a cycle."
+    },
+    {
+     "step_number": 4,
+     "description": "Read the cycle from the stack.",
+     "work": "The stack from vertex 2 to vertex 4 plus the back edge gives $2 \\to 3 \\to 4 \\to 2$.",
+     "explanation": "Vertices 1 and 5 are not on the cycle. Vertex 1 only leads into it."
+    }
+   ],
+   "final_answer": "- Yes, the graph has a cycle.\n- The cycle is $2 \\to 3 \\to 4 \\to 2$, found through the back edge $4 \\to 2$.",
+   "key_concepts": [
+    "Back edge",
+    "Vertex colours",
+    "Cycle detection"
+   ]
+  }
+ ],
+ "practice": [
+  {
+   "title": "Shortest route through a grid of rooms",
+   "difficulty": "medium",
+   "estimated_time_minutes": 8,
+   "key_concepts": [
+    "BFS",
+    "Queue",
+    "Distance"
+   ],
+   "problem_statement": "Nine rooms are laid out in a 3 by 3 grid and numbered 1 to 9, row by row. You can walk between rooms that share a wall (up, down, left or right). The door to room 5 is locked. You start in room 1 and want to reach room 9 in as few moves as possible.",
+   "steps": [
+    {
+     "step_number": 1,
+     "question": "Which traversal finds a route with the fewest moves?\nA) Depth-first search\nB) Breadth-first search\nC) Topological sort\nD) Binary search",
+     "hint": "You want the rooms closest to the start to be visited first.",
+     "answer_type": "multiple_choice",
+     "correct_answer": "B",
+     "acceptable_answers": [
+      "Breadth-first search",
+      "BFS"
+     ],
+     "explanation": "BFS expands vertices in order of their distance from the source, so the first time it reaches room 9 it has used the fewest moves.",
+     "feedback_correct": "Right. BFS visits rooms in order of how many moves they are from the start.",
+     "feedback_incorrect": "Not quite. Think about which search visits nearer rooms before farther ones."
+    },
+    {
+     "step_number": 2,
+     "question": "Which data structure does BFS use to hold the rooms it has found but not yet explored?",
+     "hint": "The room that was found first should be explored first.",
+     "answer_type": "text",
+     "correct_answer": "queue",
+     "acceptable_answers": [
+      "a queue",
+      "fifo queue",
+      "a fifo queue",
+      "FIFO"
+     ],
+     "explanation": "A queue is first in, first out, so rooms are explored in the order they were discovered. That is what keeps the search level by level.",
+     "feedback_correct": "Yes, a queue. First found, first explored.",
+     "feedback_incorrect": "Close, but think about the order. The oldest room in the frontier goes next."
+    },
+    {
+     "step_number": 3,
+     "question": "Run BFS from room 1 with room 5 locked. How many rooms are exactly 2 moves away from room 1?",
+     "hint": "Rooms 2 and 4 are one move away. List the unlocked rooms next to each of them.",
+     "answer_type": "numeric",
+     "correct_answer": "2",
+     "acceptable_answers": [
+      "two"
+     ],
+     "explanation": "Room 2 leads to 3 (room 5 is locked) and room 4 leads to 7. So rooms 3 and 7 are at distance 2.",
+     "feedback_correct": "Correct. Rooms 3 and 7 are both two moves away.",
+     "feedback_incorrect": "Not quite. Check the neighbours of rooms 2 and 4, and remember that room 5 is locked."
+    },
+    {
+     "step_number": 4,
+     "question": "What is the fewest number of moves from room 1 to room 9?",
+     "hint": "Continue the search one more level at a time until room 9 is discovered.",
+     "answer_type": "numeric",
+     "correct_answer": "4",
+     "acceptable_answers": [
+      "four"
+     ],
+     "explanation": "Distance 3 contains rooms 6 and 8, and both of them touch room 9. For example 1, 2, 3, 6, 9 is four moves.",
+     "feedback_correct": "Correct. Four moves, for example 1, 2, 3, 6, 9.",
+     "feedback_incorrect": "Not quite. Keep expanding level by level until room 9 is found."
+    }
+   ]
+  },
+  {
+   "title": "Counting connected components",
+   "difficulty": "easy",
+   "estimated_time_minutes": 6,
+   "key_concepts": [
+    "Connected components",
+    "Outer loop",
+    "Running time"
+   ],
+   "problem_statement": "An undirected graph has 8 vertices, labelled 1 to 8, and edges 1-2, 2-3, 4-5, 6-7, 7-8 and 6-8.",
+   "steps": [
+    {
+     "step_number": 1,
+     "question": "How many connected components does the graph have?",
+     "hint": "Group the vertices that can reach one another.",
+     "answer_type": "numeric",
+     "correct_answer": "3",
+     "acceptable_answers": [
+      "three"
+     ],
+     "explanation": "The components are {1, 2, 3}, {4, 5} and {6, 7, 8}.",
+     "feedback_correct": "Correct. The groups are {1, 2, 3}, {4, 5} and {6, 7, 8}.",
+     "feedback_incorrect": "Not quite. Try listing which vertices each edge joins together."
+    },
+    {
+     "step_number": 2,
+     "question": "A traversal loops over every vertex and starts a new search at each unvisited one. What is its total running time on an adjacency list?\nA) O(V^2)\nB) O(V + E)\nC) O(V log V)\nD) O(E^2)",
+     "hint": "Each vertex and each edge is handled a constant number of times.",
+     "answer_type": "multiple_choice",
+     "correct_answer": "B",
+     "acceptable_answers": [
+      "O(V + E)"
+     ],
+     "explanation": "The outer loop visits each vertex once, and each search reads every adjacency list at most once, so the total is $O(V + E)$.",
+     "feedback_correct": "Yes. Every vertex and every edge is touched a constant number of times.",
+     "feedback_incorrect": "Not quite. The outer loop does not repeat work, so the cost adds up to a sum over vertices and edges."
+    },
+    {
+     "step_number": 3,
+     "question": "Would the number of components change if each search used BFS instead of DFS? Answer yes or no.",
+     "hint": "Both searches reach exactly the vertices connected to the start.",
+     "answer_type": "text",
+     "correct_answer": "no",
+     "acceptable_answers": [
+      "No",
+      "it would not",
+      "it doesn't change",
+      "same"
+     ],
+     "explanation": "BFS and DFS both reach every vertex in the start vertex's component, so they find the same components.",
+     "feedback_correct": "Right. The order differs, but the set of reached vertices is the same.",
+     "feedback_incorrect": "Not quite. Think about which vertices each search can reach, not the order it reaches them in."
+    }
+   ]
+  },
+  {
+   "title": "Finding a back edge",
+   "difficulty": "hard",
+   "estimated_time_minutes": 7,
+   "key_concepts": [
+    "Back edge",
+    "Vertex colours",
+    "Cycles"
+   ],
+   "problem_statement": "A directed graph has edges a to b, b to c, c to d, d to b and a to e. You run DFS from a and visit b before e.",
+   "steps": [
+    {
+     "step_number": 1,
+     "question": "Which edge is the back edge? Write it as, for example, x to y.",
+     "hint": "Look for an edge that returns to a vertex that is still being explored.",
+     "answer_type": "text",
+     "correct_answer": "d to b",
+     "acceptable_answers": [
+      "d -> b",
+      "(d, b)",
+      "d,b",
+      "db"
+     ],
+     "explanation": "While DFS is at d, vertex b is still on the stack, so the edge from d to b points back to an ancestor.",
+     "feedback_correct": "Yes, d to b returns to b while b is still on the stack.",
+     "feedback_incorrect": "Not quite. Follow the DFS path a, b, c, d and see which edge goes back up it."
+    },
+    {
+     "step_number": 2,
+     "question": "How many vertices are on the cycle that this back edge creates?",
+     "hint": "Count the vertices from b to d along the DFS path.",
+     "answer_type": "numeric",
+     "correct_answer": "3",
+     "acceptable_answers": [
+      "three"
+     ],
+     "explanation": "The cycle is b, c, d and back to b, so it has three vertices.",
+     "feedback_correct": "Correct. The cycle is b, c, d.",
+     "feedback_incorrect": "Not quite. Count only the vertices from b down to d. Vertex a is not on the cycle."
+    },
+    {
+     "step_number": 3,
+     "question": "When DFS examines the edge d to b, what colour is b: white, grey or black?",
+     "hint": "Grey means on the stack, black means finished.",
+     "answer_type": "text",
+     "correct_answer": "grey",
+     "acceptable_answers": [
+      "Grey",
+      "gray"
+     ],
+     "explanation": "Vertex b has been discovered but not finished, because d is still being explored beneath it. That is grey.",
+     "feedback_correct": "Yes. A grey vertex is still on the stack, which is what makes the edge a back edge.",
+     "feedback_incorrect": "Not quite. Has b finished yet? It cannot finish until d does."
+    }
+   ]
+  }
+ ],
+ "quiz": [
+  {
+   "question_type": "multiple_choice",
+   "question_text": "What is the running time of breadth-first search on a graph stored as an adjacency list?",
+   "options": [
+    {
+     "id": "A",
+     "text": "$O(V)$"
+    },
+    {
+     "id": "B",
+     "text": "$O(V + E)$"
+    },
+    {
+     "id": "C",
+     "text": "$O(V^2)$"
+    },
+    {
+     "id": "D",
+     "text": "$O(E \\log V)$"
+    }
+   ],
+   "correct_answer": "B",
+   "explanation": "Each vertex is enqueued once and each adjacency list is read once, so the work is proportional to $V + E$.",
+   "points": 2,
+   "concepts_tested": [
+    "BFS running time"
+   ],
+   "difficulty": "easy"
+  },
+  {
+   "question_type": "multiple_choice",
+   "question_text": "BFS from a source $s$ finds shortest paths to every reachable vertex. In which kind of graph does that hold?",
+   "options": [
+    {
+     "id": "A",
+     "text": "Graphs with non-negative edge weights"
+    },
+    {
+     "id": "B",
+     "text": "Unweighted graphs, with length counted in edges"
+    },
+    {
+     "id": "C",
+     "text": "Only graphs without cycles"
+    },
+    {
+     "id": "D",
+     "text": "Only directed graphs"
+    }
+   ],
+   "correct_answer": "B",
+   "explanation": "BFS orders vertices by the number of edges from the source. It ignores weights, so it only gives true shortest paths when every edge counts the same.",
+   "points": 2,
+   "concepts_tested": [
+    "BFS shortest paths"
+   ],
+   "difficulty": "easy"
+  },
+  {
+   "question_type": "multiple_choice",
+   "question_text": "During a depth-first search of a directed graph you find an edge $u \\to v$ where $v$ is still on the recursion stack. What does this tell you?",
+   "options": [
+    {
+     "id": "A",
+     "text": "$v$ is a descendant of $u$ in the DFS forest"
+    },
+    {
+     "id": "B",
+     "text": "The graph contains a cycle"
+    },
+    {
+     "id": "C",
+     "text": "The graph is not connected"
+    },
+    {
+     "id": "D",
+     "text": "$u$ must be the root of its tree"
+    }
+   ],
+   "correct_answer": "B",
+   "explanation": "An edge to a vertex that is still on the stack is a back edge. Together with the tree path from $v$ down to $u$ it closes a cycle.",
+   "points": 2,
+   "concepts_tested": [
+    "Back edges",
+    "Cycle detection"
+   ],
+   "difficulty": "medium"
+  },
+  {
+   "question_type": "true_false",
+   "question_text": "Marking a vertex as visited when it is dequeued, instead of when it is discovered, can put the same vertex in the BFS queue more than once.",
+   "correct_answer": true,
+   "explanation": "Until a vertex is dequeued it is still unmarked, so every neighbour that touches it adds another copy to the queue.",
+   "points": 1,
+   "concepts_tested": [
+    "Visited marking"
+   ],
+   "difficulty": "medium"
+  },
+  {
+   "question_type": "numerical",
+   "question_text": "An undirected graph with 9 edges is stored as an adjacency list. How many entries are there across all of the lists?",
+   "correct_answer": 18,
+   "tolerance": 0,
+   "explanation": "Each undirected edge $\\{u, v\\}$ appears twice, once in the list of $u$ and once in the list of $v$. So the lists hold $2 \\times 9 = 18$ entries.",
+   "points": 2,
+   "concepts_tested": [
+    "Adjacency lists",
+    "Degree sum"
+   ],
+   "difficulty": "easy"
+  },
+  {
+   "question_type": "short_answer",
+   "question_text": "Explain why BFS, and not DFS, is the right choice for finding the route with the fewest edges between two vertices of an unweighted graph.",
+   "sample_answer": "BFS visits vertices in order of their distance from the source: everything one edge away, then everything two edges away, and so on. The first time it reaches the target it has used the fewest edges possible. DFS follows one path to its end before trying others, so the first path it finds to the target can be much longer than the shortest one.",
+   "key_points": [
+    "BFS explores in order of distance",
+    "The first arrival at the target is a shortest path",
+    "DFS can find a longer path first"
+   ],
+   "explanation": "A full answer says why BFS is correct and also why DFS is not.",
+   "points": 3,
+   "concepts_tested": [
+    "BFS vs DFS"
+   ],
+   "difficulty": "medium"
+  }
+ ],
+ "quizAnswersBest": {
+  "0": "B",
+  "1": "B",
+  "2": "A",
+  "3": "true",
+  "4": "18",
+  "5": "BFS explores level by level, so the first time it reaches the target is along the shortest path. DFS just goes deep."
+ },
+ "quizResultsBest": {
+  "0": {
+   "isCorrect": true,
+   "pointsEarned": 2,
+   "pointsPossible": 2
+  },
+  "1": {
+   "isCorrect": true,
+   "pointsEarned": 2,
+   "pointsPossible": 2
+  },
+  "2": {
+   "isCorrect": false,
+   "pointsEarned": 0,
+   "pointsPossible": 2
+  },
+  "3": {
+   "isCorrect": true,
+   "pointsEarned": 1,
+   "pointsPossible": 1
+  },
+  "4": {
+   "isCorrect": true,
+   "pointsEarned": 2,
+   "pointsPossible": 2
+  },
+  "5": {
+   "isCorrect": false,
+   "pointsEarned": 2,
+   "pointsPossible": 3,
+   "feedback": "You have the main idea: BFS explores level by level, so the first arrival at the target uses the fewest edges. To earn full marks, also say why DFS can fail: it may reach the target through a much longer path first."
+  }
+ },
+ "quizAnswersFirst": {
+  "0": "A",
+  "1": "B",
+  "2": "A",
+  "3": "false",
+  "4": "9",
+  "5": "BFS is faster than DFS."
+ },
+ "quizResultsFirst": {
+  "0": {
+   "isCorrect": false,
+   "pointsEarned": 0,
+   "pointsPossible": 2
+  },
+  "1": {
+   "isCorrect": true,
+   "pointsEarned": 2,
+   "pointsPossible": 2
+  },
+  "2": {
+   "isCorrect": false,
+   "pointsEarned": 0,
+   "pointsPossible": 2
+  },
+  "3": {
+   "isCorrect": false,
+   "pointsEarned": 0,
+   "pointsPossible": 1
+  },
+  "4": {
+   "isCorrect": false,
+   "pointsEarned": 0,
+   "pointsPossible": 2
+  },
+  "5": {
+   "isCorrect": false,
+   "pointsEarned": 1.5,
+   "pointsPossible": 3,
+   "feedback": "Speed is not the reason. Compare the order in which the two searches visit vertices."
+  }
+ },
+ "examQuestions": [
+  {
+   "question_type": "multiple_choice",
+   "topic": 0,
+   "question_text": "Which of these functions grows fastest as $n$ becomes large?",
+   "options": [
+    {
+     "id": "A",
+     "text": "$n \\log n$"
+    },
+    {
+     "id": "B",
+     "text": "$n^2$"
+    },
+    {
+     "id": "C",
+     "text": "$2^n$"
+    },
+    {
+     "id": "D",
+     "text": "$n^3$"
+    }
+   ],
+   "correct_answer": "C",
+   "explanation": "Exponential functions eventually outgrow every polynomial.",
+   "points": 2
+  },
+  {
+   "question_type": "multiple_choice",
+   "topic": 2,
+   "question_text": "Which sorting algorithm has a worst-case running time of $\\Theta(n \\log n)$ and uses $\\Theta(n)$ extra space?",
+   "options": [
+    {
+     "id": "A",
+     "text": "Merge sort"
+    },
+    {
+     "id": "B",
+     "text": "Quicksort"
+    },
+    {
+     "id": "C",
+     "text": "Heapsort"
+    },
+    {
+     "id": "D",
+     "text": "Insertion sort"
+    }
+   ],
+   "correct_answer": "A",
+   "explanation": "Merge sort always splits evenly, and its merge step needs a temporary array. Quicksort is $\\Theta(n^2)$ in the worst case, and heapsort sorts in place.",
+   "points": 2
+  },
+  {
+   "question_type": "numerical",
+   "topic": 1,
+   "question_text": "Using the Master theorem on $T(n) = 4T(n/2) + n$, the solution is $\\Theta(n^c)$. What is $c$?",
+   "correct_answer": 2,
+   "tolerance": 0,
+   "explanation": "Here $a = 4$, $b = 2$, so $n^{\\log_b a} = n^2$, which grows faster than $f(n) = n$. The recursion is leaf-heavy and $T(n) = \\Theta(n^2)$.",
+   "points": 2
+  },
+  {
+   "question_type": "multiple_choice",
+   "topic": 3,
+   "question_text": "A DFS on a directed acyclic graph records finish times. Listing the vertices by decreasing finish time gives:",
+   "options": [
+    {
+     "id": "A",
+     "text": "A topological order"
+    },
+    {
+     "id": "B",
+     "text": "A breadth-first order"
+    },
+    {
+     "id": "C",
+     "text": "A shortest path tree"
+    },
+    {
+     "id": "D",
+     "text": "The strongly connected components"
+    }
+   ],
+   "correct_answer": "A",
+   "explanation": "For every edge $u \\to v$ in a DAG, $u$ finishes after $v$, so reversing the finish order puts $u$ before $v$.",
+   "points": 2
+  },
+  {
+   "question_type": "short_answer",
+   "topic": 3,
+   "question_text": "A social network has ten million users. You want everyone within three connections of one user. Which traversal would you use, and how would you stop it at the right depth?",
+   "sample_answer": "Use BFS from that user, because it visits people in order of how many connections away they are. Store a distance with each person, and do not add the neighbours of anyone whose distance is already 3.",
+   "key_points": [
+    "Chooses BFS",
+    "Tracks distance from the start",
+    "Stops expanding at distance 3"
+   ],
+   "explanation": "BFS explores in rings, so cutting it off at a distance limit gives exactly the people within that limit.",
+   "points": 3
+  },
+  {
+   "question_type": "numerical",
+   "topic": 4,
+   "question_text": "A graph has 8 vertices. What is the largest number of edges on a shortest path that does not repeat a vertex?",
+   "correct_answer": 7,
+   "tolerance": 0,
+   "explanation": "A path without repeated vertices visits at most 8 vertices, so it has at most 7 edges. This is why Bellman-Ford needs only $V - 1$ rounds.",
+   "points": 2
+  },
+  {
+   "question_type": "multiple_choice",
+   "topic": 4,
+   "question_text": "Why does Dijkstra's algorithm fail on graphs with negative edge weights?",
+   "options": [
+    {
+     "id": "A",
+     "text": "It only works on directed graphs"
+    },
+    {
+     "id": "B",
+     "text": "A vertex is finalised too early, and a later negative edge could still shorten its distance"
+    },
+    {
+     "id": "C",
+     "text": "Priority queues cannot hold negative numbers"
+    },
+    {
+     "id": "D",
+     "text": "It only works on trees"
+    }
+   ],
+   "correct_answer": "B",
+   "explanation": "Dijkstra assumes that the closest unfinished vertex can no longer be improved. A negative edge breaks that assumption.",
+   "points": 2
+  },
+  {
+   "question_type": "multiple_choice",
+   "topic": 5,
+   "question_text": "Which two properties must a problem have for dynamic programming to apply?",
+   "options": [
+    {
+     "id": "A",
+     "text": "Optimal substructure and overlapping subproblems"
+    },
+    {
+     "id": "B",
+     "text": "Greedy choice and independent subproblems"
+    },
+    {
+     "id": "C",
+     "text": "Sorted input and a unique solution"
+    },
+    {
+     "id": "D",
+     "text": "A graph structure and positive weights"
+    }
+   ],
+   "correct_answer": "A",
+   "explanation": "Optimal substructure lets a solution be built from solutions to subproblems, and overlap is what makes remembering them pay off.",
+   "points": 2
+  },
+  {
+   "question_type": "numerical",
+   "topic": 5,
+   "question_text": "To find the longest common subsequence of strings of length 6 and 8, a bottom-up table includes a row and a column for the empty prefix. How many cells does the table have?",
+   "correct_answer": 63,
+   "tolerance": 0,
+   "explanation": "The table has $(6 + 1) \\times (8 + 1) = 63$ cells.",
+   "points": 2
+  },
+  {
+   "question_type": "short_answer",
+   "topic": 5,
+   "question_text": "Explain the difference between memoization and bottom-up tabulation.",
+   "sample_answer": "Memoization is top down: you write the natural recursion and cache each result the first time it is computed. Tabulation is bottom up: you fill a table in an order that guarantees every subproblem is solved before it is needed. Both solve each subproblem once.",
+   "key_points": [
+    "Memoization is top down with a cache",
+    "Tabulation fills a table bottom up",
+    "Both solve each subproblem once"
+   ],
+   "explanation": "Both give the same running time. Memoization only solves the subproblems that are actually needed.",
+   "points": 3
+  },
+  {
+   "question_type": "multiple_choice",
+   "topic": 6,
+   "question_text": "Under simple uniform hashing with chaining and load factor $\\alpha$, what is the expected time of an unsuccessful search?",
+   "options": [
+    {
+     "id": "A",
+     "text": "$\\Theta(1)$"
+    },
+    {
+     "id": "B",
+     "text": "$\\Theta(1 + \\alpha)$"
+    },
+    {
+     "id": "C",
+     "text": "$\\Theta(n)$"
+    },
+    {
+     "id": "D",
+     "text": "$\\Theta(\\log n)$"
+    }
+   ],
+   "correct_answer": "B",
+   "explanation": "You hash to a slot in constant time and then scan a chain of expected length $\\alpha$.",
+   "points": 2
+  },
+  {
+   "question_type": "short_answer",
+   "topic": 6,
+   "question_text": "Why should a hash table with chaining resize when its load factor gets large?",
+   "sample_answer": "The expected chain length equals the load factor, so as the table fills up each search has to scan longer chains. Doubling the table and rehashing keeps the load factor, and so the expected search time, bounded by a constant.",
+   "key_points": [
+    "Chain length grows with load factor",
+    "Search time degrades",
+    "Resizing restores constant expected time"
+   ],
+   "explanation": "Resizing is what keeps the expected cost of each operation constant.",
+   "points": 3
+  }
+ ],
+ "examAnswers": {
+  "0": [
+   "C",
+   2,
+   null
+  ],
+  "1": [
+   "A",
+   2,
+   null
+  ],
+  "2": [
+   "2",
+   2,
+   null
+  ],
+  "3": [
+   "A",
+   2,
+   null
+  ],
+  "4": [
+   "BFS from the user, storing each person's distance. I stop adding neighbours once someone is at distance 3.",
+   3,
+   "Correct choice, and you named both the distance label and the cut-off."
+  ],
+  "5": [
+   "7",
+   2,
+   null
+  ],
+  "6": [
+   "A",
+   0,
+   null
+  ],
+  "7": [
+   "A",
+   2,
+   null
+  ],
+  "8": [
+   "56",
+   0,
+   null
+  ],
+  "9": [
+   "Memoization caches results while recursing from the top. Tabulation fills a table from the smallest subproblems up.",
+   2,
+   "Both strategies are described well. Add that each subproblem is solved only once, in both."
+  ],
+  "10": [
+   "B",
+   2,
+   null
+  ],
+  "11": [
+   "Long chains make searching slow, so you make the table bigger.",
+   1,
+   "You have the cause and the fix. Say how long the chains get (about the load factor) and that rehashing restores constant expected time."
+  ]
+ },
+ "chatQuestion": "When should I use BFS instead of DFS?",
+ "chatAnswer": "Use BFS when you need the fewest edges between two vertices, and DFS when you need to learn something about the structure of the graph, such as cycles, an ordering or connected pieces.\n\n**BFS** explores the graph in rings around the start vertex. Everything one edge away is visited first, then everything two edges away, so the first time it reaches a vertex is along a shortest path in an unweighted graph.\n\n**DFS** follows one path as far as it can before backing up. The order in which it finishes vertices is what makes topological sorting and cycle detection work: an edge back to a vertex that is still on the stack means the graph has a cycle.\n\nBoth take $O(V + E)$ time on an adjacency list, so the choice is about what you need from the traversal, not about speed.",
+ "chatMarks": [
+  [
+   "is along a shortest path in an unweighted graph.",
+   1
+  ],
+  [
+   "means the graph has a cycle.",
+   2
+  ],
+  [
+   "not about speed.",
+   3
+  ]
+ ]
+}
