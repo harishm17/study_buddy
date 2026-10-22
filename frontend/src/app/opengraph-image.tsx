@@ -13,7 +13,7 @@ export const contentType = 'image/png'
 export default async function OpengraphImage() {
   const [font, screenshot] = await Promise.all([
     readFile(path.join(process.cwd(), 'node_modules/geist/dist/fonts/geist-sans/Geist-SemiBold.ttf')),
-    readFile(path.join(process.cwd(), 'public/screens/notes-light.png')),
+    readFile(path.join(process.cwd(), 'public/screens/plan-light.png')),
   ])
   const screenshotUrl = `data:image/png;base64,${screenshot.toString('base64')}`
 
@@ -43,11 +43,10 @@ export default async function OpengraphImage() {
             src={screenshotUrl}
             alt=""
             width={900}
-            height={563}
+            height={615}
             style={{
               borderRadius: 16,
               border: '1px solid #e1e3e5',
-              boxShadow: '0 24px 48px -16px rgba(20, 30, 40, 0.28)',
             }}
           />
         </div>

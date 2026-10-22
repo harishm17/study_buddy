@@ -1,34 +1,53 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
-test('the landing page tells the story with real screenshots', async ({ page }) => {
+const nav = (page: Page) => page.getByRole('navigation', { name: 'Account' })
+
+test('the landing page tells the loop from files to exam day', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { level: 1, name: 'Turn your course files into a study plan.' })).toBeVisible()
-  await expect(page.getByRole('navigation', { name: 'Account' }).getByRole('link', { name: 'Get started' })).toHaveAttribute('href', '/signup')
-  await expect(page.getByRole('navigation', { name: 'Account' }).getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+  await expect(page.getByRole('heading', { level: 1, name: 'Your course files, planned to exam day.' })).toBeVisible()
+  await expect(nav(page).getByRole('link', { name: 'Get started' })).toHaveAttribute('href', '/signup')
+  await expect(nav(page).getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')
+  await expect(page.getByRole('link', { name: 'See how it works' })).toHaveAttribute('href', '#how-it-works')
+
+  // The hero shows the plan, and it is the current app (Plan and Review in the navigation).
+  await expect(page.getByRole('img', { name: /The Margins plan page/ })).toBeVisible()
 
   // Sections in order, each with its heading.
-  for (const name of ['How it works', 'What you get', 'Explain it out loud', 'Start with one course.']) {
+  for (const name of ['From your files to exam day', 'Sources you can check', 'Common questions', 'Start with one course.']) {
     await page.getByRole('heading', { level: 2, name }).scrollIntoViewIfNeeded()
     await expect(page.getByRole('heading', { level: 2, name })).toBeVisible()
   }
-  await expect(page.getByText('Your files stay in your account. Delete a course and its files go with it.')).toBeVisible()
 
-  // The five bento cells and the three steps.
-  for (const name of [
-    'Notes with sources',
-    'Practice that checks each step',
-    'Quizzes graded with feedback',
-    'Ask your materials, with citations',
-    'Mock exams with a real timer',
-  ]) {
-    await expect(page.getByRole('heading', { level: 3, name })).toBeVisible()
-  }
-  await expect(page.getByRole('listitem').filter({ hasText: 'Upload your materials' })).toBeVisible()
+  // The loop: six steps, one screenshot beside them, arrow keys move between steps.
+  const tabs = page.getByRole('tablist', { name: 'From your files to exam day' }).getByRole('tab')
+  await expect(tabs).toHaveCount(6)
+  await expect(tabs.first()).toHaveAttribute('aria-selected', 'true')
+  await tabs.first().focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByRole('tab', { name: 'Check the course plan' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tabpanel', { name: 'Check the course plan' }).getByRole('img', { name: /topic editor/ })).toBeVisible()
+  await page.getByRole('tab', { name: 'Sit mocks that match your exams' }).click()
+  await expect(page.getByRole('tablist').getByText('follow the wording, task verbs and answer length')).toBeVisible()
+  await expect(page.getByRole('tabpanel', { name: 'Sit mocks that match your exams' }).getByRole('img')).toBeVisible()
 
-  // Every visible screenshot has loaded, has alt text, and none overflows the page sideways.
+  // Trust: claims with their links.
+  await expect(page.getByRole('link', { name: /Read the evaluation/ })).toHaveAttribute('href', /evals\/results\/2026-10-21-structure\.md$/)
+  await expect(page.getByRole('link', { name: /View the code on GitHub/ })).toHaveAttribute('href', 'https://github.com/harishm17/margins')
+  await expect(page.getByText('correctness scored 4.88 out of 5 and grounding in the source pages 4.91')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Read the privacy policy' })).toHaveAttribute('href', '/privacy')
+
+  // The questions: the first is open, the free answer says what is true, and opening another closes it.
+  await expect(page.getByText('Yes. Margins is free to use, with no paid plan and no card.')).toBeVisible()
+  await expect(page.getByText('daily AI allowance', { exact: false }).first()).toBeVisible()
+  await page.getByText('Which files can I upload?').click()
+  await expect(page.getByText('scanned pages are not read yet')).toBeVisible()
+  await expect(page.getByText('Yes. Margins is free to use, with no paid plan and no card.')).toBeHidden()
+
+  // Every visible screenshot has loaded and has alt text, and nothing overflows the page sideways.
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 500) {
       window.scrollTo(0, y)
@@ -47,9 +66,41 @@ test('the landing page tells the story with real screenshots', async ({ page }) 
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
   expect(errors).toEqual([])
 
-  // Structured data and the canonical link are present.
+  // Structured data (the app, the organisation and the questions) and the canonical link are present.
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://studymargins.com')
   expect(await page.locator('script[type="application/ld+json"]').count()).toBe(1)
+  const types = await page.evaluate(() => JSON.parse(document.querySelector('script[type="application/ld+json"]')?.textContent ?? '[]').map((item: { '@type': string }) => item['@type']))
+  expect(types).toEqual(['SoftwareApplication', 'Organization', 'FAQPage'])
+})
+
+test('on a phone every step shows its own phone-sized screenshot', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await expect(page.getByRole('tablist')).toBeHidden()
+  const steps = page.locator('#how-it-works ol > li')
+  await expect(steps).toHaveCount(6)
+  await steps.nth(2).scrollIntoViewIfNeeded()
+  const image = steps.nth(2).locator('img:visible')
+  await expect(image).toHaveCount(1)
+  // The phone picture is used (390 px page, 2x), and it is shown near its natural size, not shrunk to a thumbnail.
+  await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true)
+  const shown = await image.evaluate((node: HTMLImageElement) => node.getBoundingClientRect().width)
+  const natural = await image.evaluate((node: HTMLImageElement) => node.naturalWidth)
+  expect(await image.evaluate((node: HTMLImageElement) => decodeURIComponent(node.currentSrc))).toContain('-mobile-')
+  expect(shown / (natural / 2)).toBeGreaterThan(0.8)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
+})
+
+test('the theme can be switched on the public pages', async ({ page }) => {
+  for (const url of ['/', '/login', '/signup', '/privacy']) {
+    await page.goto(url)
+    await page.getByRole('button', { name: 'Theme' }).click()
+    await page.getByRole('menuitemradio', { name: 'Dark' }).click()
+    await expect(page.locator('html')).toHaveClass(/dark/)
+    await page.getByRole('button', { name: 'Theme' }).click()
+    await page.getByRole('menuitemradio', { name: 'Light' }).click()
+    await expect(page.locator('html')).not.toHaveClass(/dark/)
+  }
 })
 
 test('a signed-in visitor sees Open Margins instead of sign in', async ({ page }) => {
@@ -67,15 +118,35 @@ test('a signed-in visitor sees Open Margins instead of sign in', async ({ page }
 
   await page.goto('/')
   await expect(page).toHaveURL(/\/$/)
-  const nav = page.getByRole('navigation', { name: 'Account' })
-  await expect(nav.getByRole('link', { name: 'Open Margins' })).toHaveAttribute('href', '/home')
-  await expect(nav.getByRole('link', { name: 'Sign in' })).toHaveCount(0)
+  await expect(nav(page).getByRole('link', { name: 'Open Margins' })).toHaveAttribute('href', '/home')
+  await expect(nav(page).getByRole('link', { name: 'Sign in' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Open Margins' }).first()).toBeVisible()
 })
 
-test('the auth pages show the real notes screenshot', async ({ page }) => {
+test('the auth pages show the whole plan screen, not a crop of it', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
-  await page.goto('/login')
-  const image = page.locator('img[src*="notes-light"]')
-  await expect(image).toHaveCount(1)
-  await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true)
+  for (const url of ['/login', '/signup']) {
+    await page.goto(url)
+    const image = page.getByRole('complementary').getByRole('img')
+    await expect.poll(() => image.evaluate((node: HTMLImageElement) => node.complete && node.naturalWidth > 0)).toBe(true)
+    const [panel, shot] = await Promise.all([page.getByRole('complementary').boundingBox(), image.boundingBox()])
+    // Inside the panel on every side, shown at its own proportions.
+    expect(shot!.x).toBeGreaterThanOrEqual(panel!.x)
+    expect(shot!.x + shot!.width).toBeLessThanOrEqual(panel!.x + panel!.width)
+    expect(shot!.y + shot!.height).toBeLessThanOrEqual(panel!.y + panel!.height)
+    const natural = await image.evaluate((node: HTMLImageElement) => node.naturalWidth / node.naturalHeight)
+    expect(Math.abs(shot!.width / shot!.height - natural)).toBeLessThan(0.02)
+  }
+})
+
+test('on a phone the sign-in form starts at the top, with its button above the fold', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  for (const [url, button] of [
+    ['/login', 'Sign in'],
+    ['/signup', 'Create account'],
+  ] as const) {
+    await page.goto(url)
+    const box = await page.getByRole('button', { name: button }).boundingBox()
+    expect(box!.y + box!.height).toBeLessThan(844)
+  }
 })

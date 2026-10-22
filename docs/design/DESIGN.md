@@ -356,33 +356,41 @@ a `loading.tsx` skeleton matching its layout and an `error.tsx` with a retry but
 
 ### 6.1 Landing (`/`)
 
-Light/dark aware, same tokens. Sections (each a different layout family):
-1. **Nav**: brand left; right: "Sign in" (ghost) and "Get started" (primary). Signed in: "Open
-   Margins" (primary) only.
-2. **Hero**, split 5/7: left: headline "Turn your course files into a study plan." (title is
-   display-xl, max 2 lines), subtext (max 20 words): "Upload lecture notes and past exams.
-   Margins builds notes, practice, quizzes and mock exams from them." CTAs: "Get started"
-   (primary lg) and "Sign in" (secondary lg). Right: real screenshot of the topic notes page
-   (light theme in light mode, dark in dark mode; `next/image`, priority) in a frame: radius 12,
-   border, the float shadow, slightly cropped by the viewport edge on the right. No pills over it.
-3. **How it works**: a vertical list of three rows, each: a verb heading ("Upload your
-   materials", "Check the topics", "Study, practise, test"), one sentence, and a small cropped
-   screenshot on alternating sides only for the middle row (no zigzag of three).
-4. **What you get**: bento grid with exactly 5 cells: Notes with sources (large, screenshot),
-   Practice that checks each step (screenshot), Quizzes graded with feedback (screenshot), Mock
-   exams with a real timer (accent-soft tile with a large timer number rendered in Geist Mono),
-   Ask your materials, with citations (screenshot of an answer with a citation hover card).
-   Cell copy: heading + one sentence.
-5. **Voice review**: full-width band (surface-2) with the voice orb illustration (CSS, not an
-   image) and one paragraph: practise explaining concepts out loud.
-6. **Privacy line**: "Your files stay in your account. Delete a course and its files go with
-   it." (small, centred, fg-2).
-7. **Final CTA**: heading "Start with one course." + "Get started" button.
-8. **Footer**: brand, GitHub link, "Made for students" style line is not used; keep it to the
-   brand, links (Sign in, GitHub) and year.
+Light/dark aware, same tokens, no shadows on cards, no gradients, one accent. Every number and claim
+on the page is checkable (the sources are in `src/features/marketing/content.ts`). Sections, each a
+different layout family:
+1. **Nav** (64px, one line): brand; links to the page's sections (How it works, Sources, FAQ; from
+   `md`); right: the theme switch (Light, Dark, System in a menu; also on sign in, sign up and the
+   legal pages), "Sign in" (ghost) and "Get started" (primary). Signed in: "Open Margins" only.
+2. **Hero**, split 4/7: headline "Your course files, planned to exam day." (max 2 lines), subtext
+   (max 20 words), CTAs "Get started" (primary lg) and "See how it works" (secondary lg, anchor).
+   Right: the real plan page with Today on top (`plan`, sidebar included, so it shows the current
+   navigation) in a bordered 12px frame. Below 768px the same screen as one legible phone crop
+   (`plan-mobile`, 390px page at 2x) instead of a shrunken desktop page.
+3. **From your files to exam day** (`#how-it-works`): one story in six steps: upload your files, check
+   the course plan, follow a daily plan, study each topic, sit mocks that match your exams, review
+   what you missed. At `lg` and up a vertical tab list (arrow keys; the open step explains itself)
+   with one 4:3 screenshot beside it; below `lg` every step shows its own phone-sized screenshot
+   under its text. Screenshots are `materials`, `topics-edit`, `plan-exam-day`, `notes-detail`,
+   `exam-new` and `quiz-results` (and their `-mobile` crops).
+4. **Sources you can check** (`#trust`, surface-2 band): one bordered cell with the cited-answer
+   screenshot (the citation hover card open) and, beside it, three plain blocks separated by hairlines:
+   quality is measured (the numbers exactly as in `evals/results/2026-10-21-structure.md`, with a link),
+   open source (MIT, GitHub link), your files stay yours (the privacy page's wording).
+5. **Common questions** (`#faq`): native `<details>` rows, one open at a time: is it free (daily AI
+   allowance per account, a site-wide daily cap, resets after midnight UTC), which files work, does it
+   make things up, what happens to my files, which model, can I run it myself. The same text is in the
+   `FAQPage` structured data.
+6. **Closing call to action**: "Start with one course.", one line (free, daily AI allowance), "Get
+   started".
+7. **Footer**: brand and one line; Product, Open source (GitHub, evaluation results, MIT license) and
+   Company (Privacy, Terms, contact) columns; year and "built by".
 
-Screenshots are produced from the real app with demo data (light and dark), saved under
-`public/screens/`. Use `next/image` with explicit sizes.
+Screenshots are made from the real app with hand-written showcase data by
+`frontend/scripts/capture-screens.ts` (`npm run screens`, see the README), in light and dark, saved
+under `public/screens/`. `src/features/marketing/shot.tsx` serves them with `getImageProps` and a
+`<picture>` for the phone crop, with width and height on both the `<source>` and the `<img>` so
+nothing shifts.
 
 ### 6.2 Sign in / Sign up
 
@@ -394,7 +402,11 @@ fields Email, Password (with show/hide toggle), primary lg "Sign in" full width,
 here? Create an account". Errors: inline InlineAlert (danger) above the button: "That email and
 password don't match." Google errors from `?error=` mapped via `GOOGLE_SIGN_IN_ERRORS`.
 
-Sign up: heading "Create your account", subtext "Free, and it takes a minute." Fields Name
+The auth layout has the theme switch beside the brand, and on desktop a panel with the whole plan
+screen (never cropped, shown at its own proportions) and one line. On a phone only the form shows,
+from the top of the page, so the button is above the fold.
+
+Sign up: heading "Create your account", subtext "Free to use, with a daily AI allowance." Fields Name
 (optional), Email, Password (hint "At least 8 characters"; live check mark when met). No confirm
 password field (use show/hide instead). Button "Create account". After success sign in and go to
 `/courses/new?welcome=1`. Errors: 409 shows "An account with this email already exists. Sign in
@@ -1220,13 +1232,13 @@ Site: **https://studymargins.com** (apex is canonical). Brand "Margins".
   `/login` is `index: false, follow: true`.
 - Open Graph and Twitter cards for `/`: `src/app/opengraph-image.tsx` (next/og, 1200x630): canvas
   background, brand tile + wordmark top left, headline "Study from your own course files." in
-  64px Geist 600, and a cropped real product screenshot on the right (load from
-  `public/screens/notes-light.png`). `twitter-image` re-exports it. `og:type website`,
+  64px Geist 600, and the real plan screen on the right (load from
+  `public/screens/plan-light.png`). `twitter-image` re-exports it. `og:type website`,
   `og:site_name Margins`, `twitter:card summary_large_image`.
 - JSON-LD on `/` (script type application/ld+json): `SoftwareApplication` with name "Margins",
   url, `applicationCategory: "EducationalApplication"`, `operatingSystem: "Web"`,
   `offers: { price: 0, priceCurrency: "USD" }`, description; plus an `Organization` with name,
-  url and logo (`/icon-512.png`).
+  url and logo (`/icon-512.png`), and a `FAQPage` with the questions from the page.
 - Icons: `src/app/icon.tsx` (32px brand tile), `apple-icon.tsx` (180px), and static
   `public/icon-192.png`, `public/icon-512.png`; `src/app/manifest.ts` (name "Margins",
   short_name "Margins", start_url "/home", display "standalone", background and theme colours
@@ -1235,7 +1247,7 @@ Site: **https://studymargins.com** (apex is canonical). Brand "Margins".
   signed-in state is a tiny client island reading the session) so it is cacheable and fast.
   Target Lighthouse SEO 100, performance >= 95.
 - Semantic structure on public pages: one h1, logical h2s, descriptive link text, alt text on
-  every screenshot ("Margins notes page showing Graph traversal notes with sources").
+  every screenshot ("The Margins plan page. Today lists a review and a quiz, ...").
 
 ### 10.2 Legal pages (`/privacy`, `/terms`)
 Marketing layout, a 680px reading column (reading typography), last-updated date at the top,

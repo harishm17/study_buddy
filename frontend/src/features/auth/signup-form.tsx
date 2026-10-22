@@ -72,7 +72,7 @@ export function SignupForm({ googleEnabled }: { googleEnabled: boolean }) {
   return (
     <div>
       <h1 className="text-title text-fg">Create your account</h1>
-      <p className="mt-1.5 text-body text-fg-2">Free, and it takes a minute.</p>
+      <p className="mt-1.5 text-body text-fg-2">Free to use, with a daily AI allowance.</p>
 
       <div className="mt-8 flex flex-col gap-5">
         {googleEnabled ? (
