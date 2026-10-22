@@ -8,11 +8,40 @@
  *   cd frontend && npx prisma db push   (schema applied)
  *
  * Run (from the frontend directory):
- *   cd frontend && npx tsx ../scripts/seed-demo.ts
+ *   cd frontend && npx tsx scripts/seed-demo.ts
  */
 
 import { PrismaClient } from '@prisma/client'
 import { hashSync } from 'bcryptjs'
+
+// The demo account has a published password (DEMO.md), so it must never exist on a deployed
+// site. Refuse to run unless the database is a local one (this machine or docker compose).
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'postgres'])
+
+function assertLocalDatabase(): void {
+  const raw = process.env.DATABASE_URL ?? ''
+  let host = ''
+  try {
+    host = new URL(raw).hostname.replace(/^\[|\]$/g, '')
+  } catch {
+    // An unparseable URL is not provably local.
+  }
+  const reason =
+    process.env.NODE_ENV === 'production'
+      ? 'NODE_ENV is production'
+      : !LOCAL_DB_HOSTS.has(host)
+        ? `DATABASE_URL host "${host || '(none)'}" is not a local database`
+        : ''
+  if (reason) {
+    console.error(
+      `Refusing to seed the demo account: ${reason}. The demo password is public, so this ` +
+        'script is for local development only.',
+    )
+    process.exit(1)
+  }
+}
+
+assertLocalDatabase()
 
 const prisma = new PrismaClient()
 
