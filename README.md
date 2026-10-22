@@ -20,14 +20,15 @@ Upload your lecture notes, textbook chapters and past exams. Margins splits them
 ## What it does
 
 1. **Upload** PDF, DOCX, PPTX or DOC files: lecture notes, book chapters, sample exams.
-2. **Review the topics** Margins proposes. Rename, merge, add or remove them before anything is generated.
+2. **Review the course plan** Margins proposes: units (the syllabus's chapters or weeks) of topics, each tied to the pages that teach it, with learning objectives, prerequisites and an estimated time. Rename, merge, move, add or remove topics before anything is generated.
 3. **Study each topic** in four views:
-   - **Notes**: overview, key concepts, how it works, common pitfalls and a recap, rendered with KaTeX math and highlighted code. Every set of notes lists the files and pages it came from.
+   - **Notes**: a lesson (what you'll learn, the idea, key concepts, a worked example, a check-yourself question, pitfalls and a summary), rendered with KaTeX math and highlighted code, written from that topic's own pages and listing the files and pages it came from.
    - **Examples**: solved problems with step-by-step reasoning, and interactive problems you solve one step at a time with hints.
    - **Quiz**: multiple choice, true/false, numerical and short answer. Scores are computed on the server; short answers are graded by the model with partial credit.
    - **Voice**: a spoken session with three styles (quiz me, walk me through it, just talk) in ten languages.
-4. **Take practice exams** across topics: timed, autosaved, with per-question feedback and regrading.
-5. **Ask your materials**: a chat that answers from your files with numbered citations, and says so when the files don't cover the question.
+4. **Take practice exams** across topics: timed, autosaved, with per-question feedback and regrading. Upload past exams and **Match my past exams** writes new ones in their style (question mix, points, phrasing, conventions); the topics those exams test are flagged.
+5. **Plan to your exam date.** Give the date and your daily minutes and Margins lays out each day: new topics in prerequisite order, a quiz the next day, spaced reviews, a mock exam after each unit and two full mocks before the exam. Mastery comes from quizzes, exams, voice and practice; **Retry what you missed** and **Fresh review** target weak spots.
+6. **Ask your materials**: a chat that answers from your files with numbered citations, and says so when the files don't cover the question.
 
 | | |
 |---|---|
@@ -47,12 +48,14 @@ Browser ──▶ Next.js 16 (web) ──────────────▶
 - **Parsing and chunking.** Files are read as markdown (PDFs with pymupdf4llm; DOCX, PPTX, and DOC through LibreOffice when installed) and split at headings and paragraphs into chunks of about 350 tokens, each tagged with its heading path and pages.
 - **Local embeddings.** Chunks are embedded in-process with `BAAI/bge-small-en-v1.5` (384 dimensions, no API cost) and stored in pgvector with an HNSW index.
 - **Topic-scoped retrieval.** Each topic is mapped to at most 24 chunks by hybrid search: vector similarity and Postgres full-text search, merged with Reciprocal Rank Fusion, with a similarity floor so a barely covered topic gets a short list instead of loose matches. Generators only ever see those chunks, so prompt size stays flat as a course grows, and the shared excerpt block is prompt-cached across notes, examples, quizzes and exams.
-- **Models.** Claude Opus writes notes, examples, quizzes and exams; Claude Haiku handles validation, topic extraction, short-answer grading and the voice coach.
+- **Models.** Claude Opus writes notes, examples, quizzes and exams, plans each course in one low-effort call and answers Ask questions; Claude Haiku handles file validation, short-answer grading and the voice coach.
 - **Voice without a speech API.** The browser does speech-to-text and text-to-speech (Web Speech API). The server runs Claude with drill tools (next question, record answer, hint) and streams each turn back as NDJSON.
-- **Jobs.** Long tasks run as jobs that are claimed with one atomic update and hold a lease; a reaper re-dispatches jobs whose worker died. Each job records its tokens and cost, and a per-user daily budget caps spend.
+- **Jobs.** Long tasks run as jobs that are claimed with one atomic update and hold a lease; a reaper re-dispatches jobs whose worker died. Each job records its tokens and cost; a per-user daily budget and a site-wide daily cap bound spend.
 - **Isolation.** Only the web service can call the AI service (shared internal token), which is reachable only on Railway's private network.
 
-## Retrieval eval
+## Evals
+
+### Retrieval
 
 Everything a topic teaches comes from its 24 mapped chunks, so the mapping is measured. [`evals/`](evals/README.md) holds a retrieval eval over 38 topics in three OpenStax textbook chapters (CS, biology, psychology; about 300 chunks), using the app's real chunker, embedder and search. It needs no API key and runs in under a minute.
 
@@ -61,7 +64,22 @@ Everything a topic teaches comes from its 24 mapped chunks, so the mapping is me
 | Before: keyword `ILIKE` + vector, flat keyword score | 0.935 | 0.830 | 0.777 | 0.895 |
 | Now: vector + full-text, Reciprocal Rank Fusion | **0.989** | **0.961** | **0.932** | **1.000** |
 
-Full results are in [`evals/results/`](evals/results/). There is no generation-quality eval (faithfulness of notes and quizzes) yet.
+Full results are in [`evals/results/`](evals/results/).
+
+### Generation
+
+The [generation eval](evals/README.md#generation-eval) runs the app's own generators (notes, worked examples, practice problems, quizzes) on two real MIT OpenCourseWare courses, 18.05 (probability and statistics) and 6.006 (algorithms), then checks the output with code and grades it with an Opus judge that does not know which model wrote it. It makes paid API calls behind a spend cap.
+
+| Latest run ([2026-10-21](evals/results/2026-10-21-structure.md), 8 topics, Opus) | |
+|---|---|
+| Correctness (judge, out of 5) | 4.88 |
+| Grounding in the source pages | 4.91 |
+| Teaching quality | 4.78 |
+| Quiz question quality | 4.50 |
+| Quiz questions that restate a worked example | 12% (4 of 32) |
+| Cost per topic (all four types) | $0.585 |
+
+It also picked the model: [Sonnet and Haiku made maths errors and fell short of the bar set before the run](evals/results/2026-10-21-model-decision.md), so generation stays on Opus and cost is held down by generating each topic only when it is opened.
 
 ## Run it locally
 
@@ -154,7 +172,7 @@ Hosted on [Railway](https://railway.com/): the web and AI services, Postgres wit
 .railway/railway.ts   Railway project as code
 frontend/             Next.js app: pages, API routes, Prisma schema, Playwright e2e
 ai-service/           FastAPI service: parsing, embeddings, generation, grading
-evals/                retrieval eval and results
+evals/                retrieval and generation evals, results
 docs/                 design spec and deployment guide
 ```
 
