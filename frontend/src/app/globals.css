@@ -21,9 +21,13 @@
   --surface-3: oklch(0.94 0.004 255);
   --border: oklch(0.915 0.004 255);
   --border-strong: oklch(0.85 0.006 255);
+  /* The outline of a form control (input, select, checkbox, radio, toggle): 3.4:1 on the surface
+     it sits on, the minimum WCAG 1.4.11 asks for. Hairlines and dividers keep --border. */
+  --control-border: oklch(0.63 0.008 255);
   --fg: oklch(0.22 0.012 255);
   --fg-2: oklch(0.43 0.012 255);
-  --fg-3: oklch(0.54 0.01 255);
+  /* Meta text: 4.6:1 even on the grey fills (surface-3), where 0.54 was 4.2:1. */
+  --fg-3: oklch(0.52 0.01 255);
 
   --accent: oklch(0.52 0.11 168);
   --accent-hover: oklch(0.47 0.11 168);
@@ -31,7 +35,9 @@
   --accent-soft: oklch(0.955 0.03 168);
   --accent-soft-fg: oklch(0.38 0.09 168);
 
-  --warning: oklch(0.74 0.14 72);
+  /* Amber as a graphic (dots, rings, bars, the flag): 3.7:1 on the canvas and 3.2:1 on the grey
+     track behind it. Mastery "Learning" also has a dashed pattern, colour is never the only cue. */
+  --warning: oklch(0.61 0.14 66);
   --warning-soft: oklch(0.965 0.04 85);
   --warning-soft-fg: oklch(0.45 0.1 60);
 
@@ -64,9 +70,10 @@
   --surface-3: oklch(0.265 0.009 255);
   --border: oklch(0.29 0.008 255);
   --border-strong: oklch(0.37 0.01 255);
+  --control-border: oklch(0.53 0.01 255);
   --fg: oklch(0.95 0.004 255);
   --fg-2: oklch(0.77 0.008 255);
-  --fg-3: oklch(0.63 0.008 255);
+  --fg-3: oklch(0.65 0.008 255);
 
   --accent: oklch(0.74 0.12 168);
   --accent-hover: oklch(0.79 0.12 168);
@@ -100,6 +107,7 @@
   --color-surface-3: var(--surface-3);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-control: var(--control-border);
   --color-fg: var(--fg);
   --color-fg-2: var(--fg-2);
   --color-fg-3: var(--fg-3);
@@ -334,6 +342,17 @@
   z-index: 70;
 }
 
+/* Mastery "Learning" as a fill (bars, swatches, squares): amber with diagonal gaps, so the level is
+   readable without the colour. Rings use dashed arcs instead (progress-ring.tsx). */
+@utility bg-learning {
+  background-color: var(--warning);
+  background-image: repeating-linear-gradient(
+    135deg,
+    transparent 0 2.5px,
+    color-mix(in oklab, var(--surface) 70%, transparent) 2.5px 4px
+  );
+}
+
 /* Numbers that update or are compared. */
 @utility tabular {
   font-variant-numeric: tabular-nums;
@@ -392,6 +411,18 @@
   :focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  /* A link inside a sentence is underlined at rest: colour alone (1.6:1 against the text around
+     it) does not mark it as a link (WCAG 1.4.1). Buttons drawn as links and elements that opt out
+     with `no-underline` are left alone; utilities in a higher layer still win. */
+  :where(p, dd, figcaption) a:where(:not([data-slot='button'], .no-underline)) {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  :where(p, dd, figcaption) a:where(:not([data-slot='button'], .no-underline)):hover {
+    text-decoration-thickness: 2px;
   }
 
   /* Autofill keeps the field's own surface instead of the browser's yellow or blue. */

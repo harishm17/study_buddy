@@ -11,10 +11,12 @@ type EmptyStateProps = {
   action?: React.ReactNode
   /** A quieter second option, usually a link. */
   secondary?: React.ReactNode
+  /** The title is a level-2 heading; a page that has nothing else on it (a 404) makes it the h1. */
+  as?: 'h1' | 'h2'
   className?: string
 }
 
-export function EmptyState({ icon, title, children, action, secondary, className }: EmptyStateProps) {
+export function EmptyState({ icon, title, children, action, secondary, as: Heading = 'h2', className }: EmptyStateProps) {
   return (
     <div className={cn('flex flex-col items-center px-4 py-12 text-center', className)}>
       <div
@@ -23,7 +25,7 @@ export function EmptyState({ icon, title, children, action, secondary, className
       >
         {icon}
       </div>
-      <h2 className="mt-4 text-subheading text-fg">{title}</h2>
+      <Heading className="mt-4 text-subheading text-fg">{title}</Heading>
       {children ? <div className="mt-1.5 max-w-[52ch] text-small text-fg-2">{children}</div> : null}
       {action ? <div className="mt-5">{action}</div> : null}
       {secondary ? <div className="mt-3 text-small">{secondary}</div> : null}

@@ -19,7 +19,12 @@ export const buttonVariants = cva(
         secondary: 'border border-border-strong bg-surface text-fg hover:bg-surface-2',
         ghost: 'text-fg hover:bg-surface-2',
         danger: 'bg-danger text-danger-fg hover:bg-danger/90',
-        link: 'h-auto rounded-chip p-0 text-accent hover:underline active:scale-100',
+        // Underlined at rest: a link in a sentence must not rely on colour alone (WCAG 1.4.1). The
+        // pseudo-element widens the hit area to 24px, 44px on a phone, without moving the text.
+        link: [
+          'h-auto min-h-6 rounded-chip p-0 text-accent underline decoration-1 underline-offset-[3px] hover:decoration-2 active:scale-100',
+          'after:absolute after:inset-x-0 after:top-1/2 after:h-6 after:-translate-y-1/2 after:content-[""] max-sm:after:h-11',
+        ].join(' '),
       },
       size: {
         sm: 'h-7 gap-1.5 px-2.5 text-small max-sm:h-11',

@@ -31,8 +31,10 @@ import { Check, Copy, Eye, EyeSlash } from '@phosphor-icons/react/dist/ssr'
 import { formatLearningMarkdown } from '@/lib/utils/learning-markdown'
 import { protectMathText } from '@/lib/utils/math-text'
 import { createSlugger } from '@/lib/markdown-outline'
+import { rehypeBindMathPunctuation } from '@/lib/markdown/bind-math'
 import { parseCheckBlock } from '@/lib/markdown/check-block'
 import { Button } from './button'
+import { useScrollableFocus } from './scrollable'
 import { cn } from '@/lib/utils'
 
 const LANGUAGES = { bash, c, cpp, go, java, javascript, json, latex, python, rust, sql, typescript }
@@ -76,6 +78,7 @@ const remarkPlugins = [remarkGfm, remarkMath]
 const rehypePlugins = [
   rehypeHeadingIds,
   [rehypeKatex, { throwOnError: false, strict: 'ignore' }],
+  rehypeBindMathPunctuation,
   [
     rehypeHighlight,
     {
@@ -203,8 +206,11 @@ function buildComponents(renderCitation?: CitationRenderer, inline = false): Com
 
 type MarkdownProps = {
   children: string
-  /** "reading" is 17px for notes and answers; "compact" is 14px for cards and feedback. */
-  variant?: 'reading' | 'compact'
+  /**
+   * "reading" is 17px for notes and answers; "compact" is 14px for cards and feedback; "stem" is a
+   * question: its paragraphs are drawn like the heading of a question, tables and code stay body size.
+   */
+  variant?: 'reading' | 'compact' | 'stem'
   /** Run the notes normaliser first (escaped newlines, dense prose). */
   learning?: boolean
   /** Renders `[n](#cite-n)` links. Chat passes this; the renderer knows nothing else about citations. */
@@ -215,8 +221,10 @@ type MarkdownProps = {
 export function Markdown({ children, variant = 'reading', learning, renderCitation, className }: MarkdownProps) {
   const source = protectMathText(learning ? formatLearningMarkdown(children) : children)
   const components = React.useMemo(() => buildComponents(renderCitation), [renderCitation])
+  const ref = React.useRef<HTMLDivElement>(null)
+  useScrollableFocus(ref, source)
   return (
-    <div className={cn('md', variant === 'reading' ? 'md-reading' : 'md-compact', className)}>
+    <div ref={ref} className={cn('md', variant === 'reading' ? 'md-reading' : 'md-compact', variant === 'stem' && 'md-stem', className)}>
       <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
         {source}
       </ReactMarkdown>
@@ -249,8 +257,10 @@ const BLOCK_ELEMENTS = [
 /** Inline-only markdown for question text and option labels: emphasis, code and math, no blocks. */
 export function MarkdownInline({ children, className }: { children: string; className?: string }) {
   const components = React.useMemo(() => buildComponents(undefined, true), [])
+  const ref = React.useRef<HTMLSpanElement>(null)
+  useScrollableFocus(ref, children)
   return (
-    <span className={cn('md md-inline', className)}>
+    <span ref={ref} className={cn('md md-inline', className)}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}

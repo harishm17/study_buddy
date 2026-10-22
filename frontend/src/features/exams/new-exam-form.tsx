@@ -182,7 +182,7 @@ export function NewExamForm({ courseId, topics, preselected, activeJob, hasExamS
                   className={cn(
                     'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-control border px-3 py-2 text-body text-fg',
                     'transition-colors duration-120 hover:bg-surface-2',
-                    checked ? 'border-accent bg-accent-soft hover:bg-accent-soft' : 'border-border-strong bg-surface'
+                    checked ? 'border-accent bg-accent-soft hover:bg-accent-soft' : 'border-control bg-surface'
                   )}
                 >
                   <Checkbox checked={checked} onCheckedChange={(value) => toggle(topic.id, value === true)} className="mt-0" />
@@ -251,7 +251,7 @@ export function NewExamForm({ courseId, topics, preselected, activeJob, hasExamS
             className={cn(
               'flex min-h-11 cursor-pointer items-start gap-2.5 rounded-control border px-3 py-2.5 text-body text-fg',
               'transition-colors duration-120 hover:bg-surface-2',
-              matchPastExams ? 'border-accent bg-accent-soft hover:bg-accent-soft' : 'border-border-strong bg-surface'
+              matchPastExams ? 'border-accent bg-accent-soft hover:bg-accent-soft' : 'border-control bg-surface'
             )}
           >
             <Checkbox

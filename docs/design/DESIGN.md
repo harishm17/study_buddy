@@ -87,16 +87,17 @@ teal-green that reads as focus and growth. No purple, no gradients in the app UI
 | `--surface-2` | `oklch(0.968 0.003 255)` | `oklch(0.228 0.008 255)` | hover fill, segmented track, code bg |
 | `--surface-3` | `oklch(0.94 0.004 255)` | `oklch(0.265 0.009 255)` | selected neutral, progress track |
 | `--border` | `oklch(0.915 0.004 255)` | `oklch(0.29 0.008 255)` | hairlines |
-| `--border-strong` | `oklch(0.85 0.006 255)` | `oklch(0.37 0.01 255)` | inputs, hover borders |
+| `--border-strong` | `oklch(0.85 0.006 255)` | `oklch(0.37 0.01 255)` | decorative strong lines, hover borders |
+| `--control-border` | `oklch(0.63 0.008 255)` | `oklch(0.53 0.01 255)` | outline of an input, select, checkbox or option (3:1 against its surface, WCAG 1.4.11); utility `border-control` |
 | `--fg` | `oklch(0.22 0.012 255)` | `oklch(0.95 0.004 255)` | primary text |
 | `--fg-2` | `oklch(0.43 0.012 255)` | `oklch(0.77 0.008 255)` | secondary text |
-| `--fg-3` | `oklch(0.56 0.01 255)` | `oklch(0.63 0.008 255)` | meta, placeholders (never body copy) |
+| `--fg-3` | `oklch(0.52 0.01 255)` | `oklch(0.65 0.008 255)` | meta, placeholders (never body copy) |
 | `--accent` | `oklch(0.52 0.11 168)` | `oklch(0.74 0.12 168)` | primary buttons, links, focus, correct |
 | `--accent-hover` | `oklch(0.47 0.11 168)` | `oklch(0.79 0.12 168)` | |
 | `--accent-fg` | `oklch(0.99 0.01 168)` | `oklch(0.18 0.03 168)` | text on accent |
 | `--accent-soft` | `oklch(0.955 0.03 168)` | `oklch(0.27 0.045 168)` | tinted backgrounds |
 | `--accent-soft-fg` | `oklch(0.38 0.09 168)` | `oklch(0.86 0.09 168)` | text on accent-soft |
-| `--warning` | `oklch(0.74 0.14 72)` | `oklch(0.8 0.13 75)` | due, low mastery, timer < 5 min |
+| `--warning` | `oklch(0.61 0.14 66)` | `oklch(0.8 0.13 75)` | due, low mastery, timer < 5 min. As a graphic it is 3.7:1 on the canvas in light mode; "Learning" also has a non-colour cue (dashed ring arcs, the striped `bg-learning` fill) |
 | `--warning-soft` | `oklch(0.965 0.04 85)` | `oklch(0.29 0.05 75)` | |
 | `--warning-soft-fg` | `oklch(0.45 0.1 60)` | `oklch(0.88 0.1 80)` | |
 | `--danger` | `oklch(0.56 0.19 27)` | `oklch(0.68 0.17 25)` | destructive, wrong, failed |

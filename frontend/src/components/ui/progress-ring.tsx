@@ -23,6 +23,18 @@ const LABEL_CLASS: Record<RingSize, string> = {
   96: 'text-title',
 }
 
+/** The arc of a "learning" ring as ten segments around the circle, each followed by a gap of a quarter of its width. */
+function dashes(circumference: number, fraction: number): { start: number; length: number }[] {
+  const segment = circumference / 10
+  const drawn = segment * 0.75
+  const filled = circumference * fraction
+  const out: { start: number; length: number }[] = []
+  for (let start = 0; start < filled - 0.01; start += segment) {
+    out.push({ start, length: Math.min(drawn, filled - start) })
+  }
+  return out
+}
+
 export function ProgressRing({ value, size = 28, tone = 'accent', label, className, ...aria }: ProgressRingProps) {
   const stroke = STROKE[size]
   const radius = (size - stroke) / 2
@@ -49,7 +61,22 @@ export function ProgressRing({ value, size = 28, tone = 'accent', label, classNa
           className={empty ? 'stroke-border-strong' : 'stroke-surface-3'}
           strokeDasharray={empty ? `${Math.max(2, stroke)} ${Math.max(2, stroke) + 1}` : undefined}
         />
-        {empty || clamped === 0 ? null : (
+        {empty || clamped === 0 ? null : tone === 'warning' ? (
+          // "Learning" is not carried by amber alone: the arc is drawn as separate dashes.
+          dashes(circumference, clamped).map((dash) => (
+            <circle
+              key={dash.start}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              fill="none"
+              strokeWidth={stroke}
+              strokeDasharray={`${dash.length} ${circumference}`}
+              strokeDashoffset={-dash.start}
+              className="stroke-warning"
+            />
+          ))
+        ) : (
           <circle
             cx={size / 2}
             cy={size / 2}

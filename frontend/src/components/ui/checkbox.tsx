@@ -21,7 +21,9 @@ export function Checkbox({ className, label, description, trailing, id, ...props
     <CheckboxPrimitive.Root
       id={inputId}
       className={cn(
-        'mt-px grid size-4 shrink-0 place-items-center rounded-[5px] border border-border-strong bg-surface text-accent-fg',
+        'relative mt-px grid size-4 shrink-0 place-items-center rounded-[5px] border border-control bg-surface text-accent-fg',
+        // A 24px hit area around the 16px box (WCAG 2.5.8) that does not move anything.
+        'after:absolute after:-inset-1 after:content-[""] max-sm:after:-inset-3',
         'transition-colors duration-120',
         'data-[state=checked]:border-accent data-[state=checked]:bg-accent data-[state=indeterminate]:border-accent data-[state=indeterminate]:bg-accent',
         'disabled:opacity-50',
