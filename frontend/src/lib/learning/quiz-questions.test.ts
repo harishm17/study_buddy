@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { asQuestionList, reviewAnswer, toPublicContentData, toPublicQuestion, toPublicQuestions } from './quiz-questions'
+import { answerUnit, asQuestionList, reviewAnswer, toPublicContentData, toPublicQuestion, toPublicQuestions } from './quiz-questions'
 
 const KEY_FIELDS = ['correct_answer', 'sample_answer', 'key_points', 'explanation', 'acceptable_answers']
 
@@ -94,4 +94,25 @@ test('sources are not public before a quiz is answered, but reach the review aft
   const [item] = buildReview([question], { '0': { isCorrect: true, pointsEarned: 2, pointsPossible: 2 } })
   assert.deepEqual(item.sources, [{ materialId: 'm1', filename: 'bio.pdf', pageStart: 3, pageEnd: 5 }])
   assert.deepEqual(buildReview([full], {})[0].sources, [])
+})
+
+test('a quantity name is not printed as a unit', () => {
+  assert.equal(answerUnit('probability'), '')
+  assert.equal(answerUnit('Probability.'), '')
+  assert.equal(answerUnit('  '), '')
+  assert.equal(answerUnit(undefined), '')
+  assert.equal(answerUnit('a very long description of what the number means'), '')
+  assert.equal(answerUnit('m/s'), 'm/s')
+  assert.equal(answerUnit('%'), '%')
+  assert.equal(answerUnit(' mol/L '), 'mol/L')
+  assert.equal(answerUnit('square metres'), 'square metres')
+})
+
+test('"400 probability" is printed as "400", and a real unit stays', () => {
+  const dimensionless = { question_type: 'numerical', question_text: 'q', correct_answer: 400, unit: 'probability', points: 1 }
+  assert.equal(reviewAnswer(dimensionless), '400')
+  assert.equal('unit' in toPublicQuestion(dimensionless), false)
+  const speed = { question_type: 'numerical', question_text: 'q', correct_answer: 9.8, unit: 'm/s^2', points: 1 }
+  assert.equal(reviewAnswer(speed), '9.8 m/s^2')
+  assert.equal(toPublicQuestion(speed).unit, 'm/s^2')
 })

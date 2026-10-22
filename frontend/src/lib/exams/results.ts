@@ -4,7 +4,8 @@
  * only use it for a submitted, graded submission.
  */
 
-import { reviewAnswer } from '@/lib/learning/quiz-questions'
+import { answerUnit, reviewAnswer } from '@/lib/learning/quiz-questions'
+import { buildRubric, type RubricLine } from '@/lib/learning/rubric'
 import { parseSources, type SourceRef } from '@/lib/topics/sources'
 
 type RawQuestion = Record<string, unknown>
@@ -24,6 +25,8 @@ export type ExamQuestionResult = {
   needsReview: boolean
   /** Where in the files the question is based on (empty for exams written before sources existed). */
   sources: SourceRef[]
+  /** For short answers: what the grader looked for, with a verdict per line when it gave one. */
+  rubric: RubricLine[] | null
 }
 
 export type WeakTopic = {
@@ -57,7 +60,7 @@ export function displayStudentAnswer(question: RawQuestion, answer: unknown): st
       return picked ? `${String(picked.id)}. ${String(picked.text)}` : String(answer)
     }
     case 'numerical': {
-      const unit = asString(question.unit)
+      const unit = answerUnit(question.unit)
       return unit ? `${String(answer)} ${unit}` : String(answer)
     }
     default:
@@ -117,6 +120,7 @@ export function buildQuestionResults(
       feedback: asString(graded?.feedback),
       needsReview: graded?.needs_review === true,
       sources: parseSources(question.sources ?? graded?.sources),
+      rubric: buildRubric(question, graded?.criteria),
     }
   })
 }
