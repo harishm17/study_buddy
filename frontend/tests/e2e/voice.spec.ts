@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { clearVoiceSessions, ensureVoiceFixture, VOICE_TEST_EMAIL, VOICE_TEST_PASSWORD, type VoiceFixture } from './helpers/voice-fixture'
 import { installVoiceStubs } from './helpers/voice-stubs'
 
-// Voice review against the dev stack with the mock LLM (a scripted coach: the first turn asks a
+// Voice practice against the dev stack with the mock LLM (a scripted coach: the first turn asks a
 // question, the next message is graded as the answer). The mock stack cannot write questions the
 // voice backend accepts, so helpers/voice-fixture.ts gives a test account a small course with
 // hand-written ones. Headless Chromium has no microphone, so voice mode runs on stubs
@@ -35,19 +35,26 @@ test.beforeEach(async ({ page }) => {
   await signIn(page)
 })
 
-const startButton = (page: Page) => page.getByRole('button', { name: /Start (voice review|sprint)/ })
+const startButton = (page: Page) => page.getByRole('button', { name: /Start (voice practice|sprint)/ })
 
 async function waitForLobby(page: Page) {
   await expect(page.getByTestId('voice-lobby')).toBeVisible({ timeout: 30_000 })
   await expect(startButton(page)).toBeEnabled({ timeout: 15_000 })
 }
 
-test('sprint page: header, weakest topics line, lobby with minutes left', async ({ page }) => {
+test('the Review page links to voice practice, which has a screen of its own with the weakest topics and the lobby', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
   await page.goto(`/courses/${ids.courseId}/review`)
   await expect(page.getByRole('heading', { level: 1, name: 'Review' })).toBeVisible()
-  await expect(page.getByRole('heading', { level: 2, name: 'Voice review' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 2, name: 'Voice practice' })).toBeVisible()
+  // The session does not run inside the Review page: there is no lobby here, only the way in.
+  await expect(page.getByTestId('voice-lobby')).toHaveCount(0)
+  await page.getByRole('link', { name: 'Start voice practice' }).click()
+  await expect(page).toHaveURL(new RegExp(`/courses/${ids.courseId}/review/voice$`))
+  await expect(page.getByRole('heading', { level: 1, name: 'Voice practice' })).toBeVisible()
   await expect(page.getByText('Covers your 3 weakest topics: Recursion basics, Graph search and Sorting by comparison.')).toBeVisible()
+  // A focus screen: Exit leads back to Review.
+  await expect(page.getByRole('link', { name: 'Exit' })).toHaveAttribute('href', `/courses/${ids.courseId}/review`)
   await waitForLobby(page)
   await expect(page.getByText(/min left today$/)).toBeVisible()
   await expect(page.getByLabel('Focus (optional)')).toBeVisible()
@@ -57,7 +64,7 @@ test('sprint page: header, weakest topics line, lobby with minutes left', async 
 
 test('text mode: start, first question, answer, evaluation, end, summary', async ({ page }) => {
   await installVoiceStubs(page, { recognition: false, synthesis: false })
-  await page.goto(`/courses/${ids.courseId}/review`)
+  await page.goto(`/courses/${ids.courseId}/review/voice`)
   await waitForLobby(page)
   await startButton(page).click()
 
@@ -82,9 +89,9 @@ test('text mode: start, first question, answer, evaluation, end, summary', async
   // End shows the summary.
   await page.getByRole('button', { name: 'End', exact: true }).click()
   await expect(page.getByTestId('voice-summary')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Review finished' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Practice finished' })).toBeVisible()
   await expect(page.getByTestId('voice-stat-answered')).toHaveText('1')
-  await expect(page.getByRole('link', { name: 'Back to course' })).toHaveAttribute('href', `/courses/${ids.courseId}`)
+  await expect(page.getByRole('link', { name: 'Back to review' })).toHaveAttribute('href', `/courses/${ids.courseId}/review`)
 
   // Start again returns to the lobby.
   await page.getByRole('button', { name: 'Start again' }).click()
@@ -229,7 +236,7 @@ test('turn errors: active session and daily limit send you back to the lobby', a
 
   await page.route('**/api/voice/turn', (route) => route.fulfill(turnError(409, 'ACTIVE_SESSION', 'Another session is live', false)))
   await startButton(page).click()
-  await expect(page.getByText('Another voice review is open', { exact: true }).first()).toBeVisible({ timeout: 30_000 })
+  await expect(page.getByText('Another voice practice is open', { exact: true }).first()).toBeVisible({ timeout: 30_000 })
   await expect(page.getByTestId('voice-lobby')).toBeVisible()
 
   await page.unroute('**/api/voice/turn')

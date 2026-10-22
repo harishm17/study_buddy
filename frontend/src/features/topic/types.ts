@@ -9,7 +9,16 @@ export const VIEW_LABELS: Record<ViewId, string> = {
   examples: 'Worked examples',
   practice: 'Practice',
   quiz: 'Quiz',
-  voice: 'Voice review',
+  voice: 'Voice practice',
+}
+
+/** Shorter names for a phone, where five tabs share 358px. */
+export const SHORT_LABELS: Record<ViewId, string> = {
+  notes: 'Notes',
+  examples: 'Examples',
+  practice: 'Practice',
+  quiz: 'Quiz',
+  voice: 'Voice',
 }
 
 /** The four kinds of generated content; the voice view has none. */

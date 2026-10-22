@@ -73,7 +73,7 @@ export function SessionView({ state, orb, controller, title, hasQuestions, recog
 
   return (
     <section
-      aria-label="Voice review session"
+      aria-label="Voice practice session"
       data-testid="voice-session"
       className="max-md:fixed max-md:inset-0 max-md:z-modal max-md:overflow-y-auto max-md:bg-canvas"
     >

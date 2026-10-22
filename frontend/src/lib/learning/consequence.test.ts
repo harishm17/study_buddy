@@ -1,0 +1,51 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { fadeNote, masteryChange, nextReviewLabel, studyOutcome } from './consequence'
+
+// Wednesday 21 October 2026, 15:00 UTC: 8:00 in Los Angeles.
+const NOW = new Date('2026-10-21T15:00:00Z')
+const LA = 'America/Los_Angeles'
+
+test('the next review is named by the day, in the student\'s own days', () => {
+  assert.equal(nextReviewLabel('2026-10-21T20:00:00Z', NOW, LA), 'Next review today')
+  assert.equal(nextReviewLabel('2026-10-22T20:00:00Z', NOW, LA), 'Next review tomorrow')
+  assert.equal(nextReviewLabel('2026-10-23T20:00:00Z', NOW, LA), 'Next review Fri')
+  assert.equal(nextReviewLabel('2026-10-27T20:00:00Z', NOW, LA), 'Next review Tue')
+  // A week or more away it is a date, because a weekday would be ambiguous.
+  assert.equal(nextReviewLabel('2026-10-28T20:00:00Z', NOW, LA), 'Next review Oct 28')
+  assert.equal(nextReviewLabel('2026-11-04T20:00:00Z', NOW, LA), 'Next review Nov 4')
+  // 03:00 UTC on the 22nd is still the 21st in Los Angeles.
+  assert.equal(nextReviewLabel('2026-10-22T03:00:00Z', NOW, LA), 'Next review today')
+  assert.equal(nextReviewLabel('2026-10-22T03:00:00Z', NOW, 'UTC'), 'Next review tomorrow')
+  assert.equal(nextReviewLabel(null, NOW, LA), null)
+  assert.equal(nextReviewLabel('nonsense', NOW, LA), null)
+})
+
+test('mastery change is said in the words of the student, never as a bare number', () => {
+  assert.equal(masteryChange(0.62, 0.71), 'Mastery went from 62% to 71%.')
+  assert.equal(masteryChange(0.71, 0.55), 'Mastery went from 71% to 55%.')
+  assert.equal(masteryChange(0.5, 0.5), 'Mastery is 50%.')
+  assert.equal(masteryChange(0.5, 0.504), 'Mastery is 50%.')
+  assert.equal(masteryChange(null, 0.4), 'Mastery is now 40%.')
+  assert.equal(masteryChange(0.4, null), null)
+})
+
+test('a quiz says what changed: the next review and the mastery', () => {
+  const outcome = studyOutcome({ nextReviewAt: '2026-10-23T20:00:00Z', mastery: 0.71, previousMastery: 0.62 }, NOW, LA)
+  assert.equal(outcome, 'Next review Fri. Mastery went from 62% to 71%.')
+  assert.equal(studyOutcome({ nextReviewAt: '2026-10-22T20:00:00Z', mastery: 0.3, previousMastery: null }, NOW, LA), 'Next review tomorrow. Mastery is now 30%.')
+  assert.equal(studyOutcome({ nextReviewAt: null, mastery: 0.3, previousMastery: null }, NOW, LA), 'Mastery is now 30%.')
+  assert.equal(studyOutcome({ nextReviewAt: null, mastery: null, previousMastery: null }, NOW, LA), null)
+})
+
+test('why a ring dropped: mastery fades while a review is late', () => {
+  assert.equal(
+    fadeNote({ earned: 0.62, shown: 0.44, daysLate: 5 }),
+    'Showing 44%, faded from 62% because the review is 5 days late.'
+  )
+  assert.equal(fadeNote({ earned: 0.62, shown: 0.5, daysLate: 1 }), 'Showing 50%, faded from 62% because the review is 1 day late.')
+  // Nothing to explain when it did not fade or the review is not late.
+  assert.equal(fadeNote({ earned: 0.62, shown: 0.62, daysLate: 5 }), null)
+  assert.equal(fadeNote({ earned: 0.62, shown: 0.4, daysLate: 0 }), null)
+  assert.equal(fadeNote({ earned: null, shown: 0.4, daysLate: 2 }), null)
+})

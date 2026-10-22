@@ -24,6 +24,7 @@ import { DueLabel } from '@/components/ui/relative-time'
 import { toast } from '@/components/ui/toaster'
 import { apiFetch, isApiError } from '@/lib/api/client'
 import { formatDate, formatWeekday } from '@/lib/format'
+import { fadeNote } from '@/lib/learning/consequence'
 import type { TopicStructure } from '@/server/queries/topic'
 import { KIND_COPY } from './copy'
 import { RegenerateDialog } from './generation-ui'
@@ -42,6 +43,8 @@ type TopicHeaderProps = {
   name: string
   description: string | null
   mastery: number | null
+  /** Mastery as earned, before it faded for a late review. */
+  earnedMastery: number | null
   dueAt: string | null
   /** Days until the review is due, from the server's clock; zero or less means due now. */
   daysUntilDue: number | null
@@ -68,6 +71,7 @@ export function TopicHeader({
   name,
   description,
   mastery,
+  earnedMastery,
   dueAt,
   daysUntilDue,
   bestQuiz,
@@ -77,6 +81,11 @@ export function TopicHeader({
 }: TopicHeaderProps) {
   const router = useRouter()
   const view = useTopicView()
+  // Why the ring is lower than the last score: mastery fades while a review is late.
+  const fade =
+    daysUntilDue !== null && daysUntilDue < 0
+      ? fadeNote({ earned: earnedMastery, shown: mastery, daysLate: Math.floor(-daysUntilDue) })
+      : null
   const go = (target: TopicNeighbourLink | null) => {
     if (target) router.push(`/courses/${courseId}/topics/${target.id}?view=${view}`)
   }
@@ -128,6 +137,7 @@ export function TopicHeader({
           </span>
         ) : null}
       </div>
+      {fade ? <p className="mt-1.5 text-caption font-normal text-fg-3">{fade}</p> : null}
       <TopicStructureBlock courseId={courseId} structure={structure} />
     </header>
   )

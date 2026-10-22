@@ -1,6 +1,33 @@
 import type { Crumb } from './slots'
 
-type NavLike = { id: string; name: string; topics: { id: string; name: string }[] }
+type NavLike = {
+  id: string
+  name: string
+  units?: { id: string; title: string; weekLabel: string | null }[]
+  topics: { id: string; name: string; unitId?: string | null }[]
+}
+
+/** What the top bar shows on a phone, where a row of truncated crumbs says nothing: the page name, with where it is above it. */
+export type MobileContext = { title: string; context: string | null }
+
+/**
+ * Two lines instead of "CS... / ... / Discrete random v...". The page name is the last crumb. Above it
+ * the course, and for a topic its unit (with the week when there is one), in full and ellipsised only at
+ * the end. A page with deeper crumbs (an exam's results) lists the ones above it.
+ */
+export function mobileContext(pathname: string, nav: NavLike[], crumbs: Crumb[]): MobileContext {
+  if (crumbs.length === 0) return { title: '', context: null }
+  const title = crumbs[crumbs.length - 1].label
+  const parts = pathname.split('?')[0].split('/').filter(Boolean)
+  if (parts[0] === 'courses' && parts[2] === 'topics' && parts[3]) {
+    const course = nav.find((item) => item.id === parts[1])
+    const topic = course?.topics.find((item) => item.id === parts[3])
+    const unit = topic?.unitId ? course?.units?.find((item) => item.id === topic.unitId) : undefined
+    const unitLabel = unit ? (unit.weekLabel ? `${unit.weekLabel}: ${unit.title}` : unit.title) : null
+    return { title, context: [crumbs[0].label, unitLabel].filter(Boolean).join(' / ') }
+  }
+  return { title, context: crumbs.length > 1 ? crumbs.slice(0, -1).map((crumb) => crumb.label).join(' / ') : null }
+}
 
 /**
  * Breadcrumbs for a path, from the route table in the design (5.1). Names come from the nav

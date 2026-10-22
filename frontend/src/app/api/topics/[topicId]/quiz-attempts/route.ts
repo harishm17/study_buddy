@@ -191,7 +191,11 @@ export async function POST(
     })
 
     const mastery = await computeTopicMastery(session.user.id, topic.projectId, topicId)
-    await upsertReviewSchedule({
+    const scheduleBefore = await prisma.reviewSchedule.findUnique({
+      where: { userId_topicId: { userId: session.user.id, topicId } },
+      select: { mastery: true },
+    })
+    const schedule = await upsertReviewSchedule({
       userId: session.user.id,
       projectId: topic.projectId,
       topicId,
@@ -211,6 +215,12 @@ export async function POST(
       totalPoints: graded.total_points,
       // The answer key is released here, after grading.
       review: buildReview(questions, results),
+      // What the attempt changed, so the results can say it: when the topic is next reviewed and how mastery moved.
+      outcome: {
+        nextReviewAt: schedule.dueAt,
+        mastery: schedule.mastery,
+        previousMastery: scheduleBefore?.mastery ?? null,
+      },
     })
   } catch (error) {
     console.error('Save quiz attempt error:', error)

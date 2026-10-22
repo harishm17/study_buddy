@@ -43,7 +43,7 @@ export function Summary({ summary, reason, alert, back, onRestart }: SummaryProp
 
       <Card>
         <h2 ref={headingRef} tabIndex={-1} className="text-heading text-fg outline-none">
-          {quiz ? 'Review finished' : 'Conversation finished'}
+          {quiz ? 'Practice finished' : 'Conversation finished'}
         </h2>
         <p className="mt-1 text-small text-fg-2">
           {quiz

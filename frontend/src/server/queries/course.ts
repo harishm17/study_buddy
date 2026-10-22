@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db/prisma'
 import { examTitle } from '@/lib/exams/display'
-import { upNextFromPlan, type UpNextData } from '@/lib/learning/plan-copy'
+import { dueBoundary, isReviewDue, nextStepForCourse, type DueTopic, type NextStep } from '@/lib/learning/next-step'
 import { ACTIVE_JOB_STATUSES } from '@/lib/jobs/active-jobs'
 import {
   contentTypeLabel,
@@ -276,25 +276,18 @@ export type TodayTopic = {
   name: string
   mastery: number | null
   dueAt: string | null
+  /** The review is due by the end of the student's today. */
+  due: boolean
 }
 
 export type TodayData = {
   topicCount: number
   counts: MasteryCounts
-  dueCount: number
   /** Course mastery (0..1): mean over all topics, not-started ones counting as 0. Null with no topics. */
   averageMastery: number | null
   tiles: TodayTopic[]
-  /** Today's items from the study plan: still to do, done, and the next day's first item when today is clear. */
-  upNext: UpNextData
-  /** The plan in a line: days to the exam, and the warning when time is short. */
-  planSummary: {
-    examDate: string | null
-    daysToExam: number | null
-    short: boolean
-    shortMessage: string | null
-    notScheduledCount: number
-  }
+  /** What to do next: the one function the home page, this card and the sidebar share. */
+  next: NextStep
   /** Ask "When is your exam?": no date yet and the card was not dismissed. */
   examPrompt: boolean
   recentExams: RecentExam[]
@@ -318,23 +311,28 @@ export type CourseOverview =
   | { mode: 'today'; course: CourseShell; today: TodayData }
   | { mode: 'setup'; course: CourseShell; setup: SetupData }
 
-const endOfTodayUtc = () => {
-  const end = new Date()
-  end.setUTCHours(23, 59, 59, 999)
-  return end
-}
-
-export const isDueToday = (dueAt: string | null): boolean => !!dueAt && new Date(dueAt) <= endOfTodayUtc()
-
 export function summarizeTopics(topics: ShellTopic[]) {
   const confirmed = topics.filter((topic) => topic.confirmed)
   const levels = confirmed.map((topic) => masteryLevel(topic.mastery))
   return {
     topicCount: confirmed.length,
     counts: countMasteryLevels(levels),
-    dueCount: confirmed.filter((topic) => isDueToday(topic.dueAt)).length,
     averageMastery: courseMastery(confirmed.map((topic) => topic.mastery)),
   }
+}
+
+/** The confirmed topics whose review is due by the end of the student's today (see lib/learning/next-step.ts). */
+export function dueTopicsOf(topics: ShellTopic[], now: Date, timeZone: string): DueTopic[] {
+  const boundary = dueBoundary(now, timeZone)
+  return topics
+    .filter((topic) => topic.confirmed && isReviewDue(topic.dueAt, boundary))
+    .map((topic) => ({ topicId: topic.id, name: topic.name, dueAt: topic.dueAt as string, mastery: topic.mastery }))
+}
+
+/** Due topics first (most overdue first), the rest in course order. */
+function dueFirst<T extends { due: boolean; dueAt: string | null }>(topics: T[]): T[] {
+  const due = topics.filter((topic) => topic.due).sort((a, b) => Date.parse(a.dueAt as string) - Date.parse(b.dueAt as string))
+  return [...due, ...topics.filter((topic) => !topic.due)]
 }
 
 /** The Today view or the setup guide for a course, with everything either needs. Null if not theirs. */
@@ -387,24 +385,28 @@ export async function getCourseOverview(
   if (!planData) return null
   const { plan } = planData
 
+  const now = new Date()
   const summary = summarizeTopics(course.topics)
+  const boundary = dueBoundary(now, timeZone)
+  const next = nextStepForCourse({
+    courseId,
+    setup: course.setup,
+    plan,
+    due: dueTopicsOf(course.topics, now, timeZone),
+    now,
+    timeZone,
+  })
   return {
     mode: 'today',
     course,
     today: {
       ...summary,
-      tiles: course.topics
-        .filter((topic) => topic.confirmed)
-        .slice(0, 8)
-        .map((topic) => ({ id: topic.id, name: topic.name, mastery: topic.mastery, dueAt: topic.dueAt })),
-      upNext: upNextFromPlan(plan, courseId),
-      planSummary: {
-        examDate: plan.examDate,
-        daysToExam: plan.daysToExam,
-        short: plan.short,
-        shortMessage: plan.shortMessage,
-        notScheduledCount: plan.notScheduled?.topics.length ?? 0,
-      },
+      tiles: dueFirst(
+        course.topics
+          .filter((topic) => topic.confirmed)
+          .map((topic) => ({ id: topic.id, name: topic.name, mastery: topic.mastery, dueAt: topic.dueAt, due: isReviewDue(topic.dueAt, boundary) }))
+      ).slice(0, 8),
+      next,
       examPrompt: course.examDate === null && !course.examPromptDismissed,
       generation,
       topicsToPrepare: course.topics.filter(

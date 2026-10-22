@@ -1,11 +1,13 @@
 import { prisma } from '@/lib/db/prisma'
-import { upNextFromPlan } from '@/lib/learning/plan-copy'
+import { nextStepForCourse, type NextStep } from '@/lib/learning/next-step'
 import { mostRecentActivity } from '@/features/home/recent-course'
+import { dueTopicsOf } from './course'
 import { getPlanData } from './plan'
 
 export type ContinueAction = {
   course: { id: string; name: string }
-  action: { title: string; reason: string; etaLabel: string; href: string }
+  /** The same next step the course overview and the sidebar show (lib/learning/next-step.ts). */
+  step: NextStep
 }
 
 /**
@@ -50,9 +52,8 @@ async function continueCourse(userId: string): Promise<{ id: string; name: strin
 }
 
 /**
- * The first thing to do today in the plan of the course the student worked on most recently (or the
- * first thing on the next day with work when today is done). Null when the user has no courses or
- * nothing is planned.
+ * The next step of the course the student worked on most recently: the first thing to do today in
+ * its plan, or the reviews that are due, or the setup step. Null when the user has no courses.
  */
 export async function continueAction(userId: string, timeZone: string): Promise<ContinueAction | null> {
   const course = await continueCourse(userId)
@@ -60,19 +61,14 @@ export async function continueAction(userId: string, timeZone: string): Promise<
 
   const data = await getPlanData(userId, course.id, timeZone)
   if (!data) return null
-  if (data.course.setup.mode === 'setup') {
-    return {
-      course,
-      action: {
-        title: data.course.setup.label,
-        reason: 'Finish setting up this course to get your study plan.',
-        etaLabel: 'A few minutes',
-        href: `/courses/${course.id}`,
-      },
-    }
-  }
-  const { upNext, later } = upNextFromPlan(data.plan, course.id)
-  const first = upNext[0] ?? later?.item
-  if (!first) return null
-  return { course, action: { title: first.title, reason: first.reason, etaLabel: first.etaLabel, href: first.href } }
+  const now = new Date()
+  const step = nextStepForCourse({
+    courseId: course.id,
+    setup: data.course.setup,
+    plan: data.plan,
+    due: dueTopicsOf(data.course.topics, now, timeZone),
+    now,
+    timeZone,
+  })
+  return { course, step }
 }
