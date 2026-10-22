@@ -73,6 +73,8 @@ type Shot = {
 }
 
 const SIDEBAR = 248
+/** A phone: the whole page is kept, so the top bar and the bottom tab bar of a course show. */
+const PHONE = { width: 390, height: 700 }
 const course = (ids: ShowcaseIds) => `/courses/${ids.courseId}`
 const topic = (ids: ShowcaseIds) => `${course(ids)}/topics/${ids.graphTopicId}`
 
@@ -98,6 +100,16 @@ async function openThread(page: Page) {
   await settle(page)
 }
 
+/** Opens the plan's folded days whose line carries one of these labels (the final review and exam day by default). */
+async function openLastDays(page: Page, labels = ['Final review', 'Exam day']) {
+  for (const label of labels) {
+    await page.locator('main details > summary', { hasText: label }).first().click()
+  }
+  // Park the pointer in a corner, so no row is drawn in its hover state.
+  await page.mouse.move(2, 2)
+  await page.waitForTimeout(300)
+}
+
 async function scrollMainTo(page: Page, where: 'bottom' | number) {
   await page.evaluate((target) => {
     const scrollers = Array.from(document.querySelectorAll<HTMLElement>('*')).filter(
@@ -115,21 +127,24 @@ const SHOTS: Shot[] = [
   { name: 'plan', viewport: { width: 1024, height: 700 }, url: (ids) => `${course(ids)}/plan`, width: 1400, png: 1200 },
   {
     name: 'plan-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${course(ids)}/plan`,
-    crop: [0, 0, 390, 590],
   },
   {
     name: 'plan-exam-day',
-    viewport: { width: 1180, height: 800 },
+    viewport: { width: 1180, height: 1000 },
     url: (ids) => `${course(ids)}/plan`,
-    // The last two days before the exam: the final review, then exam day.
-    prepare: (page) => scrollMainTo(page, 'bottom'),
+    // The last week before the exam, with exam day opened.
+    prepare: async (page) => {
+      await openLastDays(page, ['Exam day'])
+      await scrollMainTo(page, 'bottom')
+    },
     crop: async (page) => {
-      const badge = await page.getByText('Final review', { exact: true }).boundingBox()
-      if (!badge) throw new Error('the plan has no final review day')
-      const top = Math.round(badge.y - 52)
-      return [SIDEBAR, top, 1180 - SIDEBAR, Math.min(700, 800 - top)]
+      const heading = await page.getByRole('heading', { name: / to / }).last().boundingBox()
+      const exam = await page.locator('main details', { hasText: 'Exam day' }).last().boundingBox()
+      if (!heading || !exam) throw new Error('the plan has no last week')
+      const top = Math.max(Math.round(heading.y - 16), 60)
+      return [SIDEBAR, top, 1180 - SIDEBAR, Math.min(Math.round(exam.y + exam.height + 20) - top, 700)]
     },
     width: 1200,
   },
@@ -169,7 +184,7 @@ const SHOTS: Shot[] = [
   },
   {
     name: 'exam-new',
-    viewport: { width: 1180, height: 820 },
+    viewport: { width: 1180, height: 860 },
     url: (ids) => `${course(ids)}/exams/new`,
     // From "Questions" to the Create exam button: the options, and the Match my past exams choice.
     prepare: async (page) => {
@@ -179,22 +194,25 @@ const SHOTS: Shot[] = [
           (node) => node.scrollHeight > node.clientHeight + 40 && /(auto|scroll)/.test(getComputedStyle(node).overflowY)
         )
         const main = scrollers.sort((a, b) => b.scrollHeight - a.scrollHeight)[0]
-        const delta = element.getBoundingClientRect().top - 96
+        const delta = element.getBoundingClientRect().top - 120
         if (main) main.scrollTop += delta
         else window.scrollBy(0, delta)
       })
       await page.waitForTimeout(400)
     },
     crop: async (page) => {
+      const heading = await page.getByRole('heading', { name: 'Questions', exact: true }).boundingBox()
       const create = await page.getByRole('button', { name: 'Create exam' }).boundingBox()
-      if (!create || create.y + create.height + 24 > 780) throw new Error('the Create exam button is not in the crop')
-      return [SIDEBAR, 80, 1180 - SIDEBAR, 700]
+      if (!heading || !create) throw new Error('the new exam form is not on the page')
+      // From just above "Questions" to just under the Create exam button (the page may not scroll any further).
+      const top = Math.round(heading.y - 24)
+      return [SIDEBAR, top, 1180 - SIDEBAR, Math.min(Math.round(create.y + create.height + 28) - top, 700)]
     },
     width: 1200,
   },
   {
     name: 'quiz-results',
-    viewport: { width: 1180, height: 820 },
+    viewport: { width: 1180, height: 860 },
     url: (ids) => `${topic(ids)}?view=quiz`,
     prepare: async (page) => {
       await page.locator('main').getByRole('button', { name: 'Review' }).first().click()
@@ -249,75 +267,64 @@ const SHOTS: Shot[] = [
   // Phone versions of the same screens: a 390 px page, kept at its real size so the text stays readable.
   {
     name: 'materials-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${course(ids)}/materials`,
     prepare: (page) => scrollTo(page.getByText('Drop files here'), 100),
-    crop: [0, 60, 390, 640],
   },
   {
     name: 'topics-edit-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${course(ids)}/topics?edit=1`,
-    crop: [0, 0, 390, 640],
   },
   {
     name: 'plan-exam-day-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${course(ids)}/plan`,
-    prepare: (page) => scrollMainTo(page, 'bottom'),
-    crop: async (page) => {
-      const badge = await page.getByText('Exam day', { exact: true }).boundingBox()
-      if (!badge) throw new Error('the plan has no exam day')
-      const top = Math.round(badge.y - 52)
-      return [0, top, 390, Math.min(844 - top, 330)]
+    prepare: async (page) => {
+      await openLastDays(page, ['Exam day'])
+      await scrollMainTo(page, 'bottom')
     },
   },
   {
     name: 'notes-detail-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${topic(ids)}?view=notes`,
     prepare: async (page) => {
-      await scrollTo(page.getByRole('heading', { name: 'Breadth-first search', level: 3 }), 130)
+      await scrollTo(page.getByRole('heading', { name: 'How it works', level: 2 }).first(), 140)
     },
-    crop: [0, 108, 390, 640],
   },
   {
     name: 'exam-new-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${course(ids)}/exams/new`,
     prepare: async (page) => {
-      await scrollTo(page.getByRole('heading', { name: 'Questions', exact: true }), 110)
-    },
-    crop: async (page) => {
-      const create = await page.getByRole('button', { name: 'Create exam' }).boundingBox()
-      if (!create) throw new Error('the new exam form is not on the page')
-      return [0, 72, 390, Math.min(create.y + create.height + 28, 844) - 72]
+      await scrollTo(page.getByRole('heading', { name: 'Style', exact: true }), 120)
     },
   },
   {
     name: 'quiz-results-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${topic(ids)}?view=quiz`,
     prepare: async (page) => {
       await page.locator('main').getByRole('button', { name: 'Review' }).first().click()
       const missed = page.getByText('During a depth-first search')
       await missed.waitFor()
-      await scrollTo(missed, 150)
+      await scrollTo(missed, 176)
     },
-    crop: [0, 108, 390, 640],
   },
   {
     name: 'ask-mobile',
-    viewport: { width: 390, height: 844 },
+    viewport: PHONE,
     url: (ids) => `${course(ids)}/ask`,
     prepare: async (page) => {
       await openThread(page)
       await page.getByText('Both take').waitFor()
+      // Scroll the answer up, so the citation card opens above the tab bar and not over it.
+      await scrollTo(page.getByRole('button', { name: /Source 1/ }).first(), 250)
       await page.getByRole('button', { name: /Source 1/ }).first().click()
       await page.getByText('Open page').first().waitFor()
       await page.waitForTimeout(400)
     },
-    crop: [0, 56, 390, 760],
   },
   // Last: it needs an exam attempt in progress.
   {

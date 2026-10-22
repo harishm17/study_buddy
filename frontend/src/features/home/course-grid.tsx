@@ -10,7 +10,7 @@ const MAX_SQUARES = 40
 
 const SQUARE: Record<MasteryLevel, string> = {
   none: 'bg-surface-3',
-  learning: 'bg-warning',
+  learning: 'bg-learning',
   getting: 'bg-accent/50',
   strong: 'bg-accent',
 }
