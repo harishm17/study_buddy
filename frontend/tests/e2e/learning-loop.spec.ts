@@ -58,18 +58,19 @@ test.describe('plan', () => {
     )
 
     // The first quiz is the day after it was learned, and the unit has its mock exam.
-    await expect(page.getByRole('link', { name: 'Quiz: Sorting', exact: true })).toHaveCount(1)
-    await expect(page.getByRole('link', { name: 'Mock exam: Unit A', exact: true })).toHaveCount(1)
+    await expect(page.getByRole('link', { name: 'Quiz: Sorting', exact: true, includeHidden: true })).toHaveCount(1)
+    await expect(page.getByRole('link', { name: 'Mock exam: Unit A', exact: true, includeHidden: true })).toHaveCount(1)
     // Unit B has one topic, so no unit mock; two full mocks sit in the final week.
-    await expect(page.getByRole('link', { name: 'Mock exam: Unit B', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('link', { name: 'Full mock exam', exact: true })).toHaveCount(2)
+    await expect(page.getByRole('link', { name: 'Mock exam: Unit B', exact: true, includeHidden: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: 'Full mock exam', exact: true, includeHidden: true })).toHaveCount(2)
+    // Later days are one line each, and the exam week is open: the badges are on those lines.
     await expect(page.getByText('Exam day', { exact: true }).locator('visible=true')).toBeVisible()
     await expect(page.getByText('Final review', { exact: true }).locator('visible=true')).toBeVisible()
     await expect(page.getByRole('heading', { name: /Time is short/ })).toHaveCount(0)
 
     // The plan is in the course nav, and the mock links open the form with the topics chosen.
     await expect(page.getByRole('navigation', { name: 'Course' }).getByRole('link', { name: 'Plan' })).toHaveAttribute('aria-current', 'page')
-    const mock = page.getByRole('link', { name: 'Mock exam: Unit A', exact: true })
+    const mock = page.getByRole('link', { name: 'Mock exam: Unit A', exact: true, includeHidden: true })
     await expect(mock).toHaveAttribute('href', new RegExp(`/exams/new\\?topics=`))
   })
 
@@ -97,7 +98,7 @@ test.describe('plan', () => {
     const heading = page.getByRole('heading', { level: 2, name: /^Not scheduled: \d+ topics?$/ })
     await expect(heading).toBeVisible()
     const listed = await page.locator('section[aria-labelledby="not-scheduled-heading"] li').allInnerTexts()
-    const planned = await page.getByRole('link', { name: /^Learn / }).allInnerTexts()
+    const planned = await page.getByRole('link', { name: /^Learn /, includeHidden: true }).evaluateAll((links) => links.map((link) => link.textContent ?? ''))
     const learn = [...new Set(planned.map((text) => text.replace('Learn ', '').trim()))]
     expect([...listed, ...learn].sort()).toEqual([...names].sort())
     expect(learn.length).toBeGreaterThan(0)
@@ -268,7 +269,7 @@ test.describe('practice progress', () => {
 })
 
 test.describe('reviews', () => {
-  test('a due topic offers a fresh review focused on what was missed, and "Retry what you missed" runs a quiz of those questions', async ({ page }) => {
+  test('a due topic offers new questions focused on what was missed, and "Retry what you missed" runs a quiz of those questions', async ({ page }) => {
     test.setTimeout(240_000)
     const user = await signUpAndIn(page, 'review')
     const courseId = await createEmptyCourse(page, 'Review course')
@@ -296,12 +297,12 @@ test.describe('reviews', () => {
     const card = page.locator(`#review-${graph}:visible`)
     await expect(card).toContainText('You missed 2 questions lately.')
     await expect(card.getByRole('button', { name: 'Retry what you missed for Graph traversal' })).toBeVisible()
-    await expect(card.getByRole('button', { name: 'Fresh review for Graph traversal' })).toBeVisible()
+    await expect(card.getByRole('button', { name: 'New questions for Graph traversal' })).toBeVisible()
     await expect(page.locator(`#review-${course.topics['Sorting algorithms']}`)).toHaveCount(0)
 
-    // Fresh review: a new 6-question set, focused on the concepts that were missed, with a question
+    // New questions: a new 6-question set, focused on the concepts that were missed, with a question
     // or two from the prerequisite topic. It is written by the regeneration path.
-    await card.getByRole('button', { name: 'Fresh review for Graph traversal' }).click()
+    await card.getByRole('button', { name: 'New questions for Graph traversal' }).click()
     await expect(page).toHaveURL(/view=quiz/)
     await expect(page.getByRole('combobox', { name: 'Quiz set' })).toBeVisible({ timeout: 120_000 })
     const job = await withPrisma((prisma) =>
@@ -339,18 +340,18 @@ test.describe('reviews', () => {
     await page.goto(`/courses/${courseId}/review`)
     await expect(page.getByRole('heading', { name: 'Nothing is due' }).first()).toBeVisible()
 
-    // Due again, and now nothing is left to retry: only the fresh review is offered.
+    // Due again, and now nothing is left to retry: only the new questions are offered.
     await makeDue(graph, user.email, { mastery: 0.7 })
     await page.reload()
     const again = page.locator(`#review-${graph}:visible`)
     await expect(again).toContainText('No missed questions to retry.')
     await expect(again.getByRole('button', { name: /^Retry what you missed/ })).toHaveCount(0)
-    await expect(again.getByRole('button', { name: 'Fresh review for Graph traversal' })).toBeVisible()
+    await expect(again.getByRole('button', { name: 'New questions for Graph traversal' })).toBeVisible()
 
     // The retry is also offered on the topic's own quiz page while it is due.
     await page.goto(`/courses/${courseId}/topics/${graph}?view=quiz`)
     await expect(page.getByRole('heading', { name: 'Due for review' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Fresh review' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'New questions' })).toBeVisible()
   })
 })
 

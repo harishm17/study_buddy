@@ -109,7 +109,7 @@ function PaletteBody() {
         { id: 'action:new-exam', label: 'New mock exam', icon: Exam, group: 'Actions', run: ({ router }) => router.push(`${base}/exams/new`) },
         { id: 'action:plan', label: 'Open the plan', icon: CalendarCheck, group: 'Actions', keywords: ['today', 'schedule', 'exam date'], run: ({ router }) => router.push(`${base}/plan`) },
         { id: 'action:review', label: 'Review what is due', icon: ArrowsClockwise, group: 'Actions', keywords: ['retry', 'missed'], run: ({ router }) => router.push(`${base}/review`) },
-        { id: 'action:voice', label: 'Start voice review', icon: Microphone, group: 'Actions', run: ({ router }) => router.push(`${base}/review`) }
+        { id: 'action:voice', label: 'Start voice practice', icon: Microphone, group: 'Actions', keywords: ['speak', 'talk', 'oral'], run: ({ router }) => router.push(`${base}/review/voice`) }
       )
     }
     list.push(

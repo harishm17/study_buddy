@@ -188,6 +188,7 @@ export function SidebarContent({ allowRail = false }: { allowRail?: boolean }) {
   const collapsed = useSidebarCollapsed()
   const isMac = useIsMac()
   const rail = allowRail && collapsed
+  const topicsLabelId = React.useId()
 
   const course = nav.find((item) => item.id === params.courseId)
   const base = course ? `/courses/${course.id}` : null
@@ -280,8 +281,12 @@ export function SidebarContent({ allowRail = false }: { allowRail?: boolean }) {
       )}
 
       {course?.active && course.topics.length > 0 ? (
-        <div className="mt-5 flex min-h-0 flex-1 flex-col rail:hidden">
-          <h2 className="px-5 pb-1.5 text-caption text-fg-3">Topics</h2>
+        // A labelled group, not a heading: the sidebar comes before <main> in the page, and its label
+        // must not be the first heading a screen reader meets (the page's h1 is).
+        <div role="group" aria-labelledby={topicsLabelId} className="mt-5 flex min-h-0 flex-1 flex-col rail:hidden">
+          <p id={topicsLabelId} className="px-5 pb-1.5 text-caption text-fg-3">
+            Topics
+          </p>
           <TopicList course={course} activeTopicId={params.topicId} />
         </div>
       ) : (

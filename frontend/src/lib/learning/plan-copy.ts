@@ -4,6 +4,8 @@ import type { Plan, PlanItem } from './plan'
 export type DescribedPlanItem = {
   id: string
   kind: PlanItem['kind']
+  /** The topic it is about, when it is about one. */
+  topicId: string | null
   /** "Learn Sorting algorithms". */
   title: string
   /** One plain sentence on why or what. */
@@ -42,10 +44,31 @@ export function planItemHref(item: PlanItem, courseId: string): string {
   }
 }
 
-export function describePlanItem(item: PlanItem, courseId: string): DescribedPlanItem {
+/** Names the copy can use, so a row says more than "Read the notes". */
+export type DescribeContext = { unitTitles?: Record<string, string> }
+
+const percent = (mastery: number) => `${Math.round(mastery * 100)}%`
+
+/** What a review row says: when it was due and how the topic stands, so five rows do not read the same. */
+function reviewReason(item: PlanItem): string {
+  const late = /^Overdue by (\d+) days?$/.exec(item.note ?? '')
+  const mastery = typeof item.mastery === 'number' ? `mastery ${percent(item.mastery)}` : null
+  if (late) {
+    const days = Number(late[1])
+    const when = days === 1 ? 'Due yesterday' : `Due ${days} days ago`
+    return mastery ? `${when}, ${mastery}.` : `${when}.`
+  }
+  if (item.note === 'One of your weakest topics') return mastery ? `One of your weakest topics, ${mastery}.` : 'One of your weakest topics.'
+  if (item.note) return item.note
+  if (item.projected) return mastery ? `A short check before it fades, ${mastery}.` : 'A spaced review, timed to keep it fresh.'
+  return mastery ? `Due for review, ${mastery}.` : 'Due for review.'
+}
+
+export function describePlanItem(item: PlanItem, courseId: string, context: DescribeContext = {}): DescribedPlanItem {
   const common = {
     id: item.id,
     kind: item.kind,
+    topicId: item.topicId,
     title: item.title,
     href: planItemHref(item, courseId),
     etaLabel: eta(item.minutes),
@@ -54,20 +77,22 @@ export function describePlanItem(item: PlanItem, courseId: string): DescribedPla
     partLabel: item.part ? `Part ${item.part.number} of ${item.part.of}` : null,
   }
   switch (item.kind) {
-    case 'learn':
-      return {
-        ...common,
-        reason: item.note === 'On past exams' ? 'This topic is on your past exams.' : 'Read the notes, then work through the examples.',
-        verb: item.note === 'You have started this one' ? 'Continue' : 'Start',
-      }
+    case 'learn': {
+      const unit = item.unitId ? context.unitTitles?.[item.unitId] : undefined
+      let reason = unit ? `${unit}: read the notes, then work through the examples.` : 'Read the notes, then work through the examples.'
+      if (item.part && item.part.number > 1) reason = 'Pick up where you stopped.'
+      else if (item.note === 'On past exams') reason = 'This topic is on your past exams.'
+      else if (item.note === 'You have started this one') reason = 'You have started this one. Finish the notes and the examples.'
+      return { ...common, reason, verb: item.note === 'You have started this one' ? 'Continue' : 'Start' }
+    }
     case 'quiz':
-      return { ...common, reason: 'A quiz the day after learning is what makes it stick.', verb: 'Take quiz' }
-    case 'review':
       return {
         ...common,
-        reason: item.note ?? (item.projected ? 'A spaced review, timed to keep it fresh.' : 'Due for review.'),
-        verb: 'Review',
+        reason: 'Your first quiz on this topic. It sets your mastery and when you review it next.',
+        verb: 'Take quiz',
       }
+    case 'review':
+      return { ...common, reason: reviewReason(item), verb: 'Review' }
     case 'mixed':
       return { ...common, reason: 'Questions from a few topics mixed together, to find what is still shaky.', verb: 'Create' }
     case 'unit_mock':

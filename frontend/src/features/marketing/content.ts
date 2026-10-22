@@ -73,7 +73,7 @@ export const LOOP_STEPS: LoopStep[] = [
   {
     id: 'review',
     title: 'Review what you missed',
-    // Quiz review shows the answer, "Why" and "From <file>, p. N"; Retry what you missed and Voice review exist.
+    // Quiz review shows the answer, "Why" and "From <file>, p. N"; Retry what you missed and Voice practice exist.
     text: 'Results show the right answer, why, and the page it is from. Retry what you missed, or let the voice coach quiz you out loud.',
     shot: 'quiz-results',
     desktop: { width: 1200, height: 901 },
@@ -114,7 +114,7 @@ export const FAQ: Faq[] = [
     // site-wide, reset after midnight UTC); voice has its own daily minutes (VOICE_DAILY_MINUTES).
     answer: [
       `Yes. ${BRAND_NAME} is free to use, with no paid plan and no card.`,
-      'Every AI request costs real money, so each account has a daily AI allowance, and the whole site has a daily cap. When one is used up, anything that needs the AI (new notes, quizzes, chat answers, voice review) waits until it resets after midnight UTC. What is already written stays readable. Voice review also has its own daily time limit.',
+      'Every AI request costs real money, so each account has a daily AI allowance, and the whole site has a daily cap. When one is used up, anything that needs the AI (new notes, quizzes, chat answers, voice practice) waits until it resets after midnight UTC. What is already written stays readable. Voice practice also has its own daily time limit.',
     ],
   },
   {
@@ -142,7 +142,7 @@ export const FAQ: Faq[] = [
     // Privacy page, "What we store", "How it's used", "Services we use", "Your choices".
     answer: [
       'They stay in your account and are used only to run Margins for you. The text of your files and your questions are sent to Anthropic to write study material and answers; Anthropic does not use this data to train its models by default. We do not sell your data, show ads or use your files to train AI models.',
-      `Delete a course and its files, and everything made from them, are deleted. To delete your account, email ${CONTACT_EMAIL}. Voice review uses your browser's speech recognition, which may send audio to Google (Chrome) or Apple (Safari).`,
+      `Delete a course and its files, and everything made from them, are deleted. To delete your account, email ${CONTACT_EMAIL}. Voice practice uses your browser's speech recognition, which may send audio to Google (Chrome) or Apple (Safari).`,
     ],
   },
   {

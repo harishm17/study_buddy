@@ -128,6 +128,8 @@ export type PlanItem = {
   note: string | null
   /** A review projected on the interval ladder (no review date is stored for it yet). */
   projected: boolean
+  /** The topic's mastery (0..1) when the plan was made, for reviews: it lets the copy say something specific. */
+  mastery?: number | null
 }
 
 export type PlanDay = {
@@ -488,6 +490,7 @@ function simulate(options: SimOptions): Simulation {
           done: false,
           part: null,
           projected: false,
+          mastery: topic.mastery,
           note: 'One of your weakest topics',
         })
       }
@@ -548,6 +551,7 @@ function simulate(options: SimOptions): Simulation {
           done: false,
           part: null,
           projected: entry.projected,
+          mastery: entry.topic.mastery,
           note: entry.note,
         })
       }
@@ -854,12 +858,17 @@ export function buildPlan(input: PlanInput): Plan {
     const total = todo.length
     const fits = total - unplaced.length
     const anyRelevant = todo.some((topic) => topic.examRelevant)
+    const needs = hoursLabel(remainingMinutes)
+    const opening =
+      fits === 0
+        ? `Time is short. The ${total === 1 ? 'topic' : `${total} topics`} left ${total === 1 ? 'needs' : 'need'} about ${needs}, and there is no room for ${total === 1 ? 'it' : 'them'} before your exam.`
+        : `Time is short. ${fits} of the ${plural(total, 'topic')} left fit before your exam (about ${hoursLabel(placedMinutes)} of the ${needs} they need).`
     shortMessage =
-      `Time is short. You have room to learn ${fits} of the ${plural(total, 'topic')} left before your exam ` +
-      `(about ${hoursLabel(placedMinutes)} of the ${hoursLabel(remainingMinutes)} they need). ` +
-      (anyRelevant ? 'Topics that appear on your past exams come first, then course order.' : 'They are in course order.') +
+      opening +
+      (fits === 0 ? '' : anyRelevant ? ' Topics that appear on your past exams come first, then course order.' : ' They are in course order.') +
       (unitMocksSkipped ? ' The mock exams after each unit are left out to make room.' : '') +
-      (fullMocksReduced ? ' Only one full mock exam is planned, so there is more time to learn.' : '')
+      (fullMocksReduced ? ' Only one full mock exam is planned, so there is more time to learn.' : '') +
+      ' Add study time or move the date to fit more.'
   }
 
   let mockNote: string | null = null

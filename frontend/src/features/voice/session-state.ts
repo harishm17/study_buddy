@@ -1,5 +1,5 @@
 /**
- * The UI state of a voice review, as a pure reducer. The hook in use-voice-session.ts does the
+ * The UI state of a voice practice, as a pure reducer. The hook in use-voice-session.ts does the
  * imperative work (fetch, recognition, speech) and reports what happened here.
  */
 import type { VoiceOption } from '@/lib/voice/turn-client'

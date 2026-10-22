@@ -52,20 +52,34 @@ density 5 (daily app). Landing page only: variance 7, motion 4, density 3.
 | topic_quiz | **Quiz** (a quiz set is "Set 1", "Set 2"...) |
 | SampleExam | **Mock exam** |
 | chat | **Ask** (page title "Ask your materials") |
-| voice coach | **Voice review** |
+| voice coach | **Voice practice** |
 | next actions (today's items of the plan) | **Up next** |
 | study plan | **Plan** (days, "Today", "Not scheduled: N topics") |
 | Project.examDate / dailyMinutes | **Exam date**, **Time to study each day** |
 | review schedule due | **Due for review** |
 | missed questions quiz | **Retry what you missed** |
-| new review set | **Fresh review** |
+| new review set | **New questions** |
 | Topic.examRelevant | a small **On past exams** tag |
+
+**Names, one meaning each.** *Review* is only the spaced review of a topic that is due: the Review page,
+"Due for review", the plan's "Review X" rows and the sidebar badge. The two ways to do one are
+**Retry what you missed** and **New questions**. Speaking answers aloud is **Voice practice** (a topic
+tab, and the screen the Review page links to), never "voice review". Timed papers are **Mock exam**
+everywhere, including generated titles ("Mock exam, Oct 20"); "Sample exam" is not used.
+
+**One next step.** Home's "Up next", the overview's "Up next", the sidebar badge and the Review page
+all read `lib/learning/next-step.ts` (`nextStep`): a pure function of the plan and the due reviews.
+"Due" means the review date falls before the end of the student's today, in their time zone, on every
+screen. The step is one of: *work* (the first item left in today's plan), *reviews due* (today's plan
+is done or full but reviews are due: it names the most overdue one), *clear* ("You're done for today"
+only when something was done; "Nothing planned for today" otherwise), *exam passed*, *no topics* and
+*setup*. "You're done for today" is never shown while a review is due.
 
 Mastery labels (from `ReviewSchedule.mastery`, 0..1; no row = no signal):
 Not started (no data), Learning (< 0.40), Getting there (0.40 to 0.79), Strong (>= 0.80).
 The value shown everywhere is the **displayed mastery**: a topic whose review is overdue fades
 (`mastery * 0.5^(overdueDays / (2 * intervalDays))`, never below half), worked out when it is read.
-Mastery is blended from quizzes (45%), mock exams (25%), voice review (15%) and practice (15%),
+Mastery is blended from quizzes (45%), mock exams (25%), voice practice (15%) and practice (15%),
 over the sources the student has used.
 
 ---
@@ -249,7 +263,8 @@ listing them. Feature components live in `src/features/<area>/*`.
 | `/courses/[courseId]/exams/[examId]` | Exam lobby | Start/resume, attempt history. |
 | `/courses/[courseId]/exams/[examId]/take` | Taking the exam | Focus layout (no sidebar). |
 | `/courses/[courseId]/exams/[examId]/results/[submissionId]` | Results | |
-| `/courses/[courseId]/review` | Review | Topics due (Retry what you missed, Fresh review), coming up, then the voice sprint. Topic voice review lives in the topic page. |
+| `/courses/[courseId]/review` | Review | Topics due (Retry what you missed, New questions), coming up, and a link to voice practice. |
+| `/courses/[courseId]/review/voice` | Voice practice | Focus screen for the weakest-topics voice session. Topic voice practice lives in the topic page. |
 | `/courses/[courseId]/settings` | Course settings | Rename, description, exam date, daily time, delete. |
 
 Old URLs redirect permanently in `next.config.js`: `/dashboard` to `/home`,
@@ -277,7 +292,7 @@ Mobile: form only.
 |  Materials       |                                                         |
 |  Ask             |                                                         |
 |  Mock exams      |                                                         |
-|  Voice review    |                                                         |
+|  Voice practice    |                                                         |
 |                  |                                                         |
 |  TOPICS          |                                                         |
 |  o Sorting       |                                                         |
@@ -296,7 +311,7 @@ Sidebar (surface bg, right hairline, full height, sticky):
   dropdown: courses (most recent first, check on current), separator, "All courses" (to /home),
   "New course". Outside a course it shows "All courses" selected.
 - Primary nav (inside a course): Overview (House), Topics (ListBullets), Materials (Files), Ask
-  (ChatCircleText), Mock exams (Exam), Voice review (Microphone). Items 34px, radius 8, 14px/500,
+  (ChatCircleText), Mock exams (Exam), Voice practice (Microphone). Items 34px, radius 8, 14px/500,
   icon 18 fg-3; active item surface-2 bg, fg text, icon fill weight in accent. Badges on the
   right only for real counts: Topics shows a warning dot when topics need review; Overview shows
   the number of due reviews.
@@ -319,7 +334,13 @@ Sidebar (surface bg, right hairline, full height, sticky):
 - Collapsible to a 64px icon rail via a button in the topbar (state persisted in localStorage);
   in the rail, labels become tooltips and the topics section hides.
 - Mobile (< 1024px): sidebar hidden; topbar shows a menu button that opens the sidebar as a left
-  sheet (same content).
+  sheet (same content). Inside a course a **bottom tab bar** (56px plus the safe area, 5 equal targets, all
+  at least 44px) holds Overview (with the due count), Plan, Topics, Ask and **More**; More is a bottom
+  sheet with Review (due count), Mock exams, Materials, Course settings and "All courses and topics"
+  (the left sheet). Pages leave room for it (`--tabbar-height`, set by the bar). Below 640px the top bar
+  shows two lines instead of crumbs: the course and, on a topic, its unit (with the week) in small grey
+  type, then the page name, each cut only at its end. The sidebar's "Topics" label is a labelled group,
+  not a heading, so the first heading in the page is its h1.
 
 Topbar (56px, canvas bg with 80% opacity + backdrop blur when scrolled, bottom hairline only
 when scrolled): breadcrumbs (fg-3 for ancestors, fg for current, `/` separators in fg-3, each
@@ -334,7 +355,7 @@ with "Exit" (or the exam name), the key status (timer) centred or right, and the
 Ctrl K / Cmd K anywhere in the app, also the sidebar Search row. 600px wide dialog at 20vh from
 the top, input 48px, results grouped: "Topics" (current course first, then others with course
 name in fg-3), "Courses", "Actions" (New course, Upload materials, Ask a question, New mock
-exam, Start voice review, Toggle theme, Sign out). Arrow keys, Enter, Escape. Recent items when
+exam, Start voice practice, Toggle theme, Sign out). Arrow keys, Enter, Escape. Recent items when
 empty. Data comes from a server-provided list in the app layout (courses + topics, ids and names
 only) so it opens instantly.
 
@@ -515,7 +536,7 @@ CS 161 Algorithms                                  [ Ask ]  [ Mock exam ]  [...]
 | Then                                        |  +--------------------------+
 |  Study Graph traversal         15 min   ->  |
 |  Take the Sorting quiz         10 min   ->  |
-|  Voice review: Hashing          8 min   ->  |
+|  Voice practice: Hashing          8 min   ->  |
 +---------------------------------------------+
 
 Topics                                                       [ View all ]
@@ -526,7 +547,7 @@ Topics                                                       [ View all ]
 +------------+ +------------+ +------------+ +------------+
 
 Recent mock exams                          Building content (only while jobs run)
- Sample Exam, Oct 20   72%   [Results]      JobStatus aggregate + failures list
+ Mock exam, Oct 20   72%   [Results]      JobStatus aggregate + failures list
  [ New mock exam ]
 ```
 
@@ -545,11 +566,12 @@ Recent mock exams                          Building content (only while jobs run
   learn -> the topic ("Continue" once started); quiz -> the topic's quiz; review -> `/review#review-<topic>`;
   unit mock / full mock -> the new exam form with the topics ticked. Data: `getPlanData`, rendered on
   the server in the student's time zone; refreshed with `router.refresh()` on window focus.
-- "When is your exam?" card (above Up next, only while the course has no exam date and the card was
-  not dismissed): Card with a heading, one sentence ("Margins plans your days up to it, and tells you
-  if time is short."), a date Input labelled "Exam date", "Save date" (primary) and "Not now" (ghost).
-  Saving or dismissing hides it at once and stores the choice on the course (it stays closed on every
-  device).
+- "When is your exam?" line (below Up next and the mastery card, never above; only while the course has
+  no exam date and the line was not dismissed): one slim row with a sentence ("No exam date yet. Add one
+  and Margins plans your days up to it, and tells you if time is short."), a date Input labelled "Exam
+  date", "Save date" (secondary) and "Not now" (ghost). A date given when the course was made means it
+  never shows. Saving or dismissing hides it at once and stores the choice on the course (it stays
+  closed on every device). The overview has one primary button: the one on Up next.
 - Course mastery card: big ProgressRing (mean mastery over all topics, not-started ones counting
   as 0; label "Course mastery"), and the four mastery buckets as a 2x2 list with counts.
 - Topic tiles: 4 columns desktop (2 mobile), interactive cards: ring 28 + percent, name (2 lines
@@ -690,7 +712,7 @@ Graph traversal                                                  [<] [>]
 How BFS and DFS explore a graph, and when to use each.
 (ring) Getting there 62%  .  Best quiz 70%  .  Next review Thu
 
- Notes (check)   Worked examples (check)   Practice (2/5)   Quiz 70%   Voice review
+ Notes (check)   Worked examples (check)   Practice (2/5)   Quiz 70%   Voice practice
 -------------------------------------------------------------------------------------
 
  [ view content ]                                              | On this page
@@ -723,7 +745,7 @@ Header:
   options), Open in Ask (full page), Edit topic (rename inline dialog).
 
 Study path tabs (Tabs component, links with `?view=`): Notes, Worked examples, Practice, Quiz,
-Voice review. Trailing glyph per tab: check (accent) when completed; for Practice "2/5" steps
+Voice practice. Trailing glyph per tab: check (accent) when completed; for Practice "2/5" steps
 solved; for Quiz the best score; a small dashed circle when the content is missing; a spinner
 when it is being generated. Sticky under the topbar on scroll.
 
@@ -837,7 +859,7 @@ id is plain text. Nothing is shown when the item has no sources (content written
   indeterminate Progress.
 - Results:
 ```
- (ring 96: 70%)  7 of 10 points                       [ Retake ]  [ Voice review ]
+ (ring 96: 70%)  7 of 10 points                       [ Retake ]  [ Voice practice ]
  Your best is 70%.
  [ All 10 ]  [ Missed 3 ]                             (segmented filter)
  1  (check)  What is BFS...                          2/2
@@ -853,7 +875,7 @@ id is plain text. Nothing is shown when the item has no sources (content written
   your review schedule is updated."). This is a new use of an existing route.
 - Past attempts: list (date, score badge, Review link that expands the stored review).
 
-**Voice review**: the VoiceCoach component in topic mode (6.12).
+**Voice practice**: the VoiceCoach component in topic mode (6.12).
 
 Generation states for any view (content missing):
 - EmptyState inside the view: icon per view (Notebook, Lightbulb, PencilSimpleLine, Exam,
@@ -933,8 +955,8 @@ Full page: two panes inside the content area (no outer card):
 Mock exams                                                    [ New mock exam ]
 Timed practice exams built from your topics.
 
- Sample exam, Oct 20      20 questions, 60 min, medium      Best 72%   [ Open ]
- Sample exam, Oct 18      ...                                In progress [ Resume ]
+ Mock exam, Oct 20      20 questions, 60 min, medium      Best 72%   [ Open ]
+ Mock exam, Oct 18      ...                                In progress [ Resume ]
 ```
 Rows with hairlines. Empty: EmptyState (icon Exam) "No mock exams yet" "Pick topics, set a time
 limit, and take an exam under real conditions." + "New mock exam" (disabled with explanation when
@@ -965,7 +987,7 @@ show "Grading" with a spinner, failed grading shows "Grade again").
 
 **Taking** (focus layout):
 ```
- [x Exit]   Sample exam, Oct 20        (clock) 41:07        Saved      [ Submit ]
+ [x Exit]   Mock exam, Oct 20        (clock) 41:07        Saved      [ Submit ]
  -------------------------------------------------------------------------------------
   Question 7 of 20                                   | Questions
   ...QuestionRenderer...                             | [1][2][3][4][5]
@@ -985,7 +1007,7 @@ show "Grading" with a spinner, failed grading shows "Grade again").
 **Results** (`/results/[submissionId]`):
 ```
  (ring 96: 72%)  58 of 80 points
- Sample exam, Oct 20, submitted 3:41 pm
+ Mock exam, Oct 20, submitted 3:41 pm
  [ Retake exam ]  [ Back to exams ]
 
  Where to focus                       (weakest first)
@@ -1008,33 +1030,37 @@ it."), **Time to study each day** (Select: 20, 30, 45, 60, 90 minutes, 2 hours, 
 45), Save. The same two fields are on the create-course form (6.4), the date optional. Danger zone (hairline-separated section, not a red box):
 "Delete course" with explanation and a ConfirmDialog requiring the course name to be typed.
 
-### 6.12 Review (`/courses/[courseId]/review`) and Voice review
+### 6.12 Review (`/courses/[courseId]/review`) and Voice practice
 
-The Review page (h1 "Review", "Go over what is due, then practise out loud."):
+The Review page (h1 "Review", "Go over the topics that are due, most overdue first."):
 
 ```
  Due for review (2)
  +--------------------------------------------------------------+
  | Graph traversal                                    Due today |
  | (ring) Getting there 44%   You missed 2 questions lately.     |
- | [ Retry what you missed ]  [ Fresh review ]                   |
+ | [ Retry what you missed ]  [ New questions ]                   |
  +--------------------------------------------------------------+
  | Hash tables                                        Overdue 2d |
  | (ring) Learning 21%        No missed questions to retry.      |
- | [ Fresh review ]                                              |
+ | [ New questions ]                                              |
  +--------------------------------------------------------------+
  Coming up
   Sorting algorithms                                       Oct 28
- Voice review
- Covers your 3 weakest topics: ...      (the voice lobby below)
+ Voice practice: Covers your 3 weakest topics: ...        [ Start voice practice ]
 ```
 
 - Due = review date reached by the end of today in the student's time zone, most overdue first.
   Each is a list item with an id `review-<topicId>` (plan items link to it; the target is outlined in
   accent). Empty: EmptyState "Nothing is due" with the date of the next review.
-- **Retry what you missed** (primary; hidden when nothing was missed): a quiz of the questions
+- One filled button on the page: the first (most overdue) topic's main action. Every other row's buttons
+  are secondary, so five rows do not compete. A caption says what a review changes: score 70% or more
+  and the next review moves out; below that it comes back tomorrow. When mastery reads lower than the
+  last score because the review is late, the row says so ("Showing 44%, faded from 62% because the
+  review is 5 days late."). Names are at least 44px tall on a phone. Empty: a one-line card.
+- **Retry what you missed** (primary on the first row; hidden when nothing was missed): a quiz of the questions
   wrong in the last two attempts, no model call. It opens the topic's quiz on a set named "Retry"
-  and starts it. **Fresh review** (secondary, primary when it is the only one): a new 6-question set
+  and starts it. **New questions** (secondary, primary when it is the only action of the first row): a new 6-question set
   focused on the missed concepts, difficulty from mastery, with a question or two from a prerequisite
   topic; it opens the quiz while the set is written ("Writing" skeleton as for any new set). Failures
   show an InlineAlert under the buttons. Both buttons name the topic in their accessible name
@@ -1042,21 +1068,27 @@ The Review page (h1 "Review", "Go over what is due, then practise out loud."):
 - The same two buttons sit in a "Due for review" panel at the top of a due topic's quiz lobby.
 - Attempts on these sets update mastery and the schedule exactly like a quiz.
 
-Voice review:
+Voice practice:
+
+The Review page does not run a session. "Start voice practice" opens
+`/courses/[courseId]/review/voice`, a focus screen (no sidebar; a top bar with Exit back to Review) with
+an h1, the topics it covers, then the lobby, live session and summary in place. The page keeps its full
+height so starting a session does not move it; on a phone the live session is full screen. The topic's
+Voice practice tab is unchanged.
 
 Built on the new Claude voice backend (see `/tmp/sb-design/VOICE_API.md`): browser
 SpeechRecognition for listening, speechSynthesis for speaking, server turns streamed as NDJSON.
 
 Lobby:
 ```
- Voice review                                        18 min left today
+ Voice practice                                        18 min left today
  Answer questions out loud and get feedback, like a study partner.
 
  Style      ( Quiz me | Walk me through it | Just talk )
  Language   [ English v ]
  Focus      [ optional: e.g. "edge cases in Dijkstra" ]
 
- [ Start voice review ]      Works best in Chrome, Edge or Safari with a microphone.
+ [ Start voice practice ]      Works best in Chrome, Edge or Safari with a microphone.
 ```
 Sprint page adds a line "Covers your 3 weakest topics: ...".
 
@@ -1136,8 +1168,14 @@ Session (in place of the lobby; on mobile it uses the focus layout):
 - When time is short the plan gives mock exams up before topics: the unit mocks first, then the earlier
   of the two final-week mocks. One full mock stays, 2 days before the exam; with an exam tomorrow it is
   today.
-- Long plans keep the first three weeks and the last two open and fold the weeks in between into a
-  `details` ("Weeks in between"). Empty states: no topics (EmptyState with "Go to topics"), exam date
+- A long plan stays short: today and the two days after it show their items; every later day is one
+  line (date, what is on it, minutes, a caret) that opens; the first two weeks and the last two before
+  the exam list those lines, and the weeks in between fold into one line each ("Later weeks"). Every
+  row links to its action (the whole row is the link, with a caret; today's rows also have a button).
+  Reasons are specific: a review says how late it is and the topic's mastery, a first quiz says it sets
+  mastery and the review date, a learn row names its unit. The loading shape follows the page. Before
+  the browser's time zone is known the page shows that shape for one request rather than a plan for the
+  wrong day. Empty states: no topics (EmptyState with "Go to topics"), exam date
   passed (neutral InlineAlert with "Change the date"), all caught up (EmptyState with "New mock exam").
 - The plan is worked out on the server from real progress on every load (topics learned, quizzes and
   reviews, mock exams); nothing on the page is stored, so it never drifts from what happened.
@@ -1262,7 +1300,7 @@ formatting):
 - What we store: "Your account: your email address, your name if you give one, and a hashed
   password (or your Google account ID if you sign in with Google). Your course files and what
   Margins creates from them: notes, examples, practice, quizzes, mock exams, chat answers, your
-  answers and scores, and voice review transcripts. Basic usage records, such as how much AI
+  answers and scores, and voice practice transcripts. Basic usage records, such as how much AI
   processing your account used each day, so we can keep the service within its limits."
 - How it's used: "Only to run Margins for you: to process your files, create study material,
   grade your answers and show your progress. We don't sell your data, show ads, or use your files
@@ -1270,7 +1308,7 @@ formatting):
 - Services we use: "Anthropic processes the text of your files and your questions to create study
   material and answers (Anthropic does not use this data to train its models by default).
   Railway hosts the app, the database and file storage in the United States. Google provides
-  sign-in if you choose it. Voice review uses your browser's built-in speech recognition, which
+  sign-in if you choose it. Voice practice uses your browser's built-in speech recognition, which
   may send audio to your browser vendor (Google for Chrome, Apple for Safari)."
 - Your choices: "Delete a course and its files and everything created from them are deleted. To
   delete your account entirely, email hello@studymargins.com from the address you signed up with

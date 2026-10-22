@@ -51,7 +51,7 @@ test('items are described in plain words with a button and a time', () => {
   assert.equal(describePlanItem(item({ note: 'You have started this one' }), 'c1').verb, 'Continue')
   assert.match(describePlanItem(item({ note: 'On past exams' }), 'c1').reason, /past exams/)
   assert.equal(describePlanItem(item({ kind: 'quiz' }), 'c1').verb, 'Take quiz')
-  assert.equal(describePlanItem(item({ kind: 'review', note: 'Overdue by 2 days' }), 'c1').reason, 'Overdue by 2 days')
+  assert.equal(describePlanItem(item({ kind: 'review', note: 'Overdue by 2 days' }), 'c1').reason, 'Due 2 days ago.')
   assert.equal(describePlanItem(item({ kind: 'review' }), 'c1').reason, 'Due for review.')
   for (const kind of ['learn', 'quiz', 'review', 'mixed', 'unit_mock', 'full_mock'] as const) {
     const described = describePlanItem(item({ kind }), 'c1')
@@ -124,4 +124,31 @@ test('the next-actions API lists today\'s items in order, and the setup step bef
   assert.equal(setupNextAction('c1', { mode: 'setup', step: 2, label: 'x' }, 0)?.type, 'extract_topics')
   assert.equal(setupNextAction('c1', { mode: 'setup', step: 2, label: 'x' }, 4)?.type, 'confirm_topics')
   assert.equal(setupNextAction('c1', { mode: 'setup', step: 3, label: 'x' }, 4), null)
+})
+
+test('rows that used to repeat the same sentence say something specific', () => {
+  const overdue = describePlanItem(item({ kind: 'review', note: 'Overdue by 2 days', mastery: 0.44 }), 'c1').reason
+  const yesterday = describePlanItem(item({ kind: 'review', note: 'Overdue by 1 day', mastery: 0.62 }), 'c1').reason
+  assert.equal(overdue, 'Due 2 days ago, mastery 44%.')
+  assert.equal(yesterday, 'Due yesterday, mastery 62%.')
+  assert.notEqual(overdue, yesterday)
+
+  const projected = describePlanItem(item({ kind: 'review', projected: true, mastery: 0.71 }), 'c1').reason
+  assert.equal(projected, 'A short check before it fades, mastery 71%.')
+  assert.match(describePlanItem(item({ kind: 'review', projected: true }), 'c1').reason, /spaced review/)
+  assert.equal(
+    describePlanItem(item({ kind: 'review', note: 'One of your weakest topics', mastery: 0.3 }), 'c1').reason,
+    'One of your weakest topics, mastery 30%.'
+  )
+
+  const first = describePlanItem(item({ kind: 'quiz' }), 'c1').reason
+  assert.match(first, /first quiz/)
+  assert.match(first, /review/)
+
+  const unit = describePlanItem(item({}), 'c1', { unitTitles: { u1: 'Sorting and graphs' } })
+  assert.equal(unit.reason, 'Read the notes, then work through the examples.')
+  const inUnit = describePlanItem(item({ unitId: 'u1' }), 'c1', { unitTitles: { u1: 'Sorting and graphs' } })
+  assert.equal(inUnit.reason, 'Sorting and graphs: read the notes, then work through the examples.')
+  assert.equal(describePlanItem(item({ part: { number: 2, of: 2 } }), 'c1').reason, 'Pick up where you stopped.')
+  assert.match(describePlanItem(item({ note: 'You have started this one' }), 'c1').reason, /started/)
 })

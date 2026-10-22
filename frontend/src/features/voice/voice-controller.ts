@@ -1,5 +1,5 @@
 /**
- * The imperative side of a voice review: the session lifecycle, the turn stream, the recognizer,
+ * The imperative side of a voice practice: the session lifecycle, the turn stream, the recognizer,
  * speech output, heartbeat and idle handling. It reports what happens to the UI through
  * `dispatch` (see session-state.ts). No React in here, so the hook stays small.
  *
@@ -115,13 +115,13 @@ function lobbyAlertFor(error: unknown): LobbyAlert {
   if (isApiError(error)) {
     const text =
       error.status >= 500
-        ? "We couldn't start the voice review. Try again in a moment."
+        ? "We couldn't start the voice practice. Try again in a moment."
         : error.status === 429
           ? 'Too many requests. Wait a moment and try again.'
           : error.message
     return { kind: 'error', text }
   }
-  return { kind: 'error', text: "We couldn't start the voice review. Try again in a moment." }
+  return { kind: 'error', text: "We couldn't start the voice practice. Try again in a moment." }
 }
 
 type Ctx = {

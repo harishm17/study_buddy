@@ -68,7 +68,7 @@ export function Lobby({
     <div className="flex max-w-[560px] flex-col gap-6" data-testid="voice-lobby">
       <div className="flex flex-col gap-1.5">
         <div className="flex items-start justify-between gap-4">
-          <h2 className="text-heading text-fg">{mode === 'sprint' ? 'Start a sprint' : 'Voice review'}</h2>
+          <h2 className="text-heading text-fg">{mode === 'sprint' ? 'Start a sprint' : 'Voice practice'}</h2>
           <div className="flex h-[26px] shrink-0 items-center" aria-live="polite">
             {usage === null ? (
               <Skeleton className="h-4 w-28 rounded-chip" />
@@ -86,7 +86,7 @@ export function Lobby({
 
       {lobbyAlert ? <LobbyAlertView alert={lobbyAlert} createContentHref={createContentHref} mode={mode} /> : null}
       {!lobbyAlert && usage && usage !== 'unavailable' && usage.hasLiveSession ? (
-        <InlineAlert tone="warning" title="Another voice review looks open">
+        <InlineAlert tone="warning" title="Another voice practice looks open">
           If it is open in another tab or window, end it there first. It also clears by itself after about a minute.
         </InlineAlert>
       ) : null}
@@ -140,7 +140,7 @@ export function Lobby({
             loading={starting}
             disabled={outOfTime || usage === null}
           >
-            {mode === 'sprint' ? 'Start sprint' : 'Start voice review'}
+            {mode === 'sprint' ? 'Start sprint' : 'Start voice practice'}
           </Button>
           <p className="max-w-[34ch] text-small text-fg-2">
             {outOfTime

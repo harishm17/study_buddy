@@ -651,7 +651,7 @@ export function TopicEditor({
         </form>
       ) : null}
 
-      <div className="sticky bottom-0 z-sticky -mx-4 -mb-16 mt-auto border-t border-border bg-surface px-4 py-3 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
+      <div className="sticky bottom-(--tabbar-height,0px) z-sticky -mx-4 -mb-16 mt-auto border-t border-border bg-surface px-4 py-3 md:-mx-6 md:px-6 lg:-mx-8 lg:px-8">
         <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-4">
           <p className="text-small tabular text-fg-2">
             {running ? 'Finding topics' : hasUnits ? `${pluralize(items.length, 'topic')} in ${pluralize(unitItems.length, 'unit')}` : pluralize(items.length, 'topic')}

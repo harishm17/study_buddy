@@ -16,15 +16,20 @@ type ReviewActionsProps = {
   /** For a name that tells the buttons apart when several are on one page. */
   topicName?: string
   size?: 'sm' | 'md'
+  /**
+   * The main button is a primary (filled) one. A list of several topics gives it to one row only, so
+   * five filled buttons do not compete; the rest are secondary. Default true.
+   */
+  emphasis?: boolean
 }
 
 /**
  * The two ways to review a topic that is due. "Retry what you missed" is a quiz of the questions
- * got wrong in the last two attempts (no model call). "Fresh review" writes a new 6-question set,
+ * got wrong in the last two attempts (no model call). "New questions" writes a new 6-question set,
  * focused on what was missed and mixing in a question or two from a prerequisite topic. Both lead
  * to the topic's quiz; the attempt then updates mastery and the schedule like any quiz.
  */
-export function ReviewActions({ courseId, topicId, missedCount, topicName, size = 'md' }: ReviewActionsProps) {
+export function ReviewActions({ courseId, topicId, missedCount, topicName, size = 'md', emphasis = true }: ReviewActionsProps) {
   const router = useRouter()
   const topic = useOptionalTopic()
   const [busy, setBusy] = React.useState<'retry' | 'fresh' | null>(null)
@@ -70,7 +75,7 @@ export function ReviewActions({ courseId, topicId, missedCount, topicName, size 
         {missedCount > 0 ? (
           <Button
             size={size}
-            variant="primary"
+            variant={emphasis ? 'primary' : 'secondary'}
             icon={<ArrowCounterClockwise />}
             loading={busy === 'retry'}
             disabled={busy === 'fresh'}
@@ -82,14 +87,14 @@ export function ReviewActions({ courseId, topicId, missedCount, topicName, size 
         ) : null}
         <Button
           size={size}
-          variant={missedCount > 0 ? 'secondary' : 'primary'}
+          variant={missedCount > 0 || !emphasis ? 'secondary' : 'primary'}
           icon={<Sparkle />}
           loading={busy === 'fresh'}
           disabled={busy === 'retry'}
           onClick={fresh}
-          aria-label={`Fresh review${suffix}`}
+          aria-label={`New questions${suffix}`}
         >
-          Fresh review
+          New questions
         </Button>
       </div>
       {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}

@@ -795,3 +795,35 @@ test('with fewer than 7 days left after learning the first full mock keeps its o
   const learned = plan({ topics: course(3, { learned: true, quizzed: true, mastery: 0.6 }), examDate: '2026-10-27' })
   assert.deepEqual(items(learned, 'full_mock').map((item) => item.date), ['2026-10-22', '2026-10-25'])
 })
+
+test('the time-is-short message never says "room to learn 0": nothing fits is said as nothing fits', () => {
+  // Today's time is already used up (a quiz was done), the exam is in 3 days and every topic is new.
+  const topics = course(5, { estimatedMinutes: 35 })
+  const spent = plan({
+    topics: [...topics, topic('done', { orderIndex: 9, learned: true, started: true, quizzed: true, mastery: 0.5 })],
+    examDate: '2026-10-24',
+    dailyMinutes: 10,
+    doneToday: [{ kind: 'quiz', topicId: 'done' }],
+  })
+  assert.ok(spent.short)
+  const message = spent.shortMessage ?? ''
+  assert.doesNotMatch(message, /room to learn 0/)
+  assert.doesNotMatch(message, /about 0 minutes/)
+  assert.match(message, /^Time is short\./)
+  assert.match(message, /5 topics/)
+  assert.match(message, /Add study time or move the date/)
+})
+
+test('the time-is-short message with some topics fitting names how many and how much', () => {
+  const topics = [
+    topic('intro', { orderIndex: 0 }),
+    topic('mid', { orderIndex: 1 }),
+    topic('hard', { orderIndex: 2 }),
+    topic('tricky', { orderIndex: 3 }),
+    topic('extra', { orderIndex: 4 }),
+  ]
+  const result = plan({ topics, examDate: '2026-10-27', dailyMinutes: 40 })
+  assert.ok(result.short)
+  assert.match(result.shortMessage ?? '', /\b[1-4] of the 5 topics left/)
+  assert.match(result.shortMessage ?? '', /Add study time or move the date/)
+})

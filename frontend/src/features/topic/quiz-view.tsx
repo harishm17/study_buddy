@@ -19,6 +19,8 @@ type SubmitResponse = {
   totalPoints: number
   bestScore: number
   review: QuizReviewItem[]
+  /** What the attempt changed: the next review and how mastery moved. */
+  outcome?: QuizResult['outcome']
 }
 
 type QuizViewProps = {
@@ -103,6 +105,7 @@ export function QuizView({ courseId, topicId, sets, attempts, voiceHref, review,
           totalPoints: response.totalPoints,
           bestScore: response.bestScore,
           review: response.review,
+          outcome: response.outcome,
           answers: session.answers,
         },
       })

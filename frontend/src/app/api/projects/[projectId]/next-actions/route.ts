@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/get-session'
-import { nextActionsFromPlan, setupNextAction } from '@/lib/learning/next-actions'
+import { nextActionsFromStep, setupNextAction } from '@/lib/learning/next-actions'
+import { nextStepForCourse } from '@/lib/learning/next-step'
+import { dueTopicsOf } from '@/server/queries/course'
 import { getPlanData } from '@/server/queries/plan'
 import { resolveTimeZone } from '@/lib/learning/time-zone'
 import {
@@ -22,14 +24,24 @@ export async function GET(
     const { projectId } = await params
 
     const tz = new URL(request.url).searchParams.get('tz')
-    const data = await getPlanData(auth.user.id, projectId, resolveTimeZone(tz))
+    const timeZone = resolveTimeZone(tz)
+    const data = await getPlanData(auth.user.id, projectId, timeZone)
     if (!data) {
       return apiNotFound('Project not found')
     }
 
     // While the course is being set up the next action is the setup step; after that, today's plan.
     const setup = setupNextAction(projectId, data.course.setup, data.course.topics.length)
-    const actions = setup ? [setup] : nextActionsFromPlan(data.plan)
+    const now = new Date()
+    const step = nextStepForCourse({
+      courseId: projectId,
+      setup: data.course.setup,
+      plan: data.plan,
+      due: dueTopicsOf(data.course.topics, now, timeZone),
+      now,
+      timeZone,
+    })
+    const actions = setup ? [setup] : nextActionsFromStep(step, data.plan)
     return NextResponse.json({
       generatedAt: new Date().toISOString(),
       actions,
