@@ -1,0 +1,68 @@
+[
+ {
+  "profile": "desktop",
+  "url": "/home",
+  "total": 0,
+  "shifts": []
+ },
+ {
+  "profile": "desktop",
+  "url": "C",
+  "total": 0,
+  "shifts": []
+ },
+ {
+  "profile": "desktop",
+  "url": "C/plan",
+  "total": 0,
+  "shifts": []
+ },
+ {
+  "profile": "desktop",
+  "url": "C/review",
+  "total": 0,
+  "shifts": []
+ },
+ {
+  "profile": "phone-throttled",
+  "url": "/home",
+  "total": 0.002,
+  "shifts": [
+   {
+    "v": 0.002,
+    "at": 1179,
+    "src": [
+     "#text.",
+     "#text."
+    ]
+   }
+  ]
+ },
+ {
+  "profile": "phone-throttled",
+  "url": "C",
+  "total": 0,
+  "shifts": [
+   {
+    "v": 0,
+    "at": 1240,
+    "src": [
+     "#text.",
+     "A.relative inline-flex shrink-0 items-cent"
+    ]
+   }
+  ]
+ },
+ {
+  "profile": "phone-throttled",
+  "url": "C/plan",
+  "total": 0,
+  "shifts": []
+ },
+ {
+  "profile": "phone-throttled",
+  "url": "C/review",
+  "total": 0,
+  "shifts": []
+ }
+]
