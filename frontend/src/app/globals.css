@@ -40,6 +40,9 @@
   --warning: oklch(0.61 0.14 66);
   --warning-soft: oklch(0.965 0.04 85);
   --warning-soft-fg: oklch(0.45 0.1 60);
+  /* Gaps in the striped "Learning" fill: darker than the amber in light mode, so the swatch keeps
+     4.4:1 against the surface (lighter gaps averaged it down to 2.3:1). */
+  --learning-stripe: color-mix(in oklab, var(--warning-soft-fg) 70%, transparent);
 
   --danger: oklch(0.56 0.19 27);
   --danger-soft: oklch(0.962 0.025 25);
@@ -84,6 +87,7 @@
   --warning: oklch(0.8 0.13 75);
   --warning-soft: oklch(0.29 0.05 75);
   --warning-soft-fg: oklch(0.88 0.1 80);
+  --learning-stripe: color-mix(in oklab, var(--surface) 70%, transparent);
 
   --danger: oklch(0.68 0.17 25);
   --danger-soft: oklch(0.28 0.06 25);
@@ -349,7 +353,7 @@
   background-image: repeating-linear-gradient(
     135deg,
     transparent 0 2.5px,
-    color-mix(in oklab, var(--surface) 70%, transparent) 2.5px 4px
+    var(--learning-stripe) 2.5px 4px
   );
 }
 
