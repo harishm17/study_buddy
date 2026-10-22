@@ -1,7 +1,10 @@
+import { notFound } from 'next/navigation'
+import { areRecordIds } from '@/lib/ids'
 import { prisma } from '@/lib/db/prisma'
 import { examTitle } from '@/lib/exams/display'
 import { upNextFromPlan, type UpNextData } from '@/lib/learning/plan-copy'
 import { ACTIVE_JOB_STATUSES } from '@/lib/jobs/active-jobs'
+import { typicalPipelineSeconds } from '@/lib/jobs/estimate'
 import {
   contentTypeLabel,
   describeJobFailure,
@@ -81,10 +84,35 @@ export type MaterialsData = {
   extractJob: JobRef | null
   /** The latest topic-finding job failed and there are no topics to show for it. */
   extractFailure: string | null
+  /**
+   * How long a file usually takes from upload to read, in seconds: the median of recently finished
+   * jobs (all courses, durations only), or null while there are too few of them to say.
+   */
+  typicalReadSeconds: number | null
+}
+
+const ESTIMATE_WINDOW_DAYS = 45
+
+/** Durations of recently finished file jobs, for the "usually about" line. Only times, nothing about whose they are. */
+async function typicalReadSeconds(): Promise<number | null> {
+  const since = new Date(Date.now() - ESTIMATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+  const finished = await prisma.processingJob.findMany({
+    where: { jobType: { in: ['validate_material', 'chunk_material'] }, status: 'completed', completedAt: { gte: since } },
+    orderBy: { completedAt: 'desc' },
+    take: 80,
+    select: { jobType: true, createdAt: true, completedAt: true },
+  })
+  const durations = (type: string) =>
+    finished
+      .filter((job) => job.jobType === type && job.completedAt)
+      .map((job) => (job.completedAt as Date).getTime() - job.createdAt.getTime())
+  return typicalPipelineSeconds([durations('validate_material'), durations('chunk_material')])
 }
 
 export async function getMaterialsData(userId: string, courseId: string): Promise<MaterialsData> {
-  const [materials, pipelineJobs, extractJobs, topicCount] = await Promise.all([
+  // The materials page checks the course first, but runs this at the same time: an unusable id is a 404 either way.
+  if (!areRecordIds(courseId)) notFound()
+  const [materials, pipelineJobs, extractJobs, topicCount, typicalSeconds] = await Promise.all([
     prisma.material.findMany({
       where: { projectId: courseId, project: { userId } },
       orderBy: { uploadedAt: 'desc' },
@@ -120,6 +148,7 @@ export async function getMaterialsData(userId: string, courseId: string): Promis
       select: { id: true, status: true, stage: true, progressPercent: true, createdAt: true, errorCode: true, errorMessage: true },
     }),
     prisma.topic.count({ where: { projectId: courseId, project: { userId } } }),
+    typicalReadSeconds(),
   ])
 
   const jobsByMaterial = new Map<string, typeof pipelineJobs>()
@@ -165,8 +194,9 @@ export async function getMaterialsData(userId: string, courseId: string): Promis
     extractJob: activeExtract ? toJobRef(activeExtract) : null,
     extractFailure:
       !activeExtract && topicCount === 0 && latestExtract?.status === 'failed'
-        ? describeJobFailure(latestExtract.errorCode, latestExtract.errorMessage)
+        ? describeJobFailure(latestExtract.errorCode, latestExtract.errorMessage, 'extract_topics')
         : null,
+    typicalReadSeconds: typicalSeconds,
   }
 }
 

@@ -22,6 +22,7 @@ export default async function MaterialsPage({ params }: { params: Promise<{ cour
         courseId={courseId}
         maxUploadMb={data.maxUploadMb}
         materials={data.materials}
+        typicalReadSeconds={data.typicalReadSeconds}
         banner={
           <ExtractionBanner
             courseId={courseId}

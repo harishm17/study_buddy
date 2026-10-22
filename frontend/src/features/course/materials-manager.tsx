@@ -40,10 +40,11 @@ import { SegmentedControl } from '@/components/ui/segmented-control'
 import { Spinner } from '@/components/ui/spinner'
 import { toast } from '@/components/ui/toaster'
 import { Tooltip } from '@/components/ui/tooltip'
-import { stageLabel } from '@/components/ui/job-status'
+import { stageLabel, useElapsed } from '@/components/ui/job-status'
 import { useJob } from '@/features/jobs/use-job'
 import { apiFetch, isApiError } from '@/lib/api/client'
-import { formatBytes } from '@/lib/format'
+import { estimateWords } from '@/lib/jobs/estimate'
+import { formatBytes, formatElapsed } from '@/lib/format'
 import { isMaterialRole, MATERIAL_ROLES, ROLE_LABELS, roleForCategory, type MaterialRole } from '@/lib/materials/role'
 import { UploadAbortedError, uploadMaterial } from '@/lib/uploads/upload-file'
 import { cn } from '@/lib/utils'
@@ -71,6 +72,8 @@ type LocalUpload = {
   size: number
   category: Category
   percent: number
+  /** When the upload began, for the time shown once the file is being read. */
+  startedAt: number
   phase: 'uploading' | 'sent' | 'error'
   error?: string
   materialId?: string
@@ -101,6 +104,72 @@ function StatusText({ children, tone = 'neutral', icon }: StatusProps) {
 
 const READY_ICON = <CheckCircle aria-hidden="true" weight="fill" className="size-4 shrink-0 text-accent" />
 const FAILED_ICON = <WarningCircle aria-hidden="true" className="size-4 shrink-0 text-danger" />
+
+// ---------------------------------------------------------------------------------------
+// Stages of reading a file
+
+/**
+ * What the pipeline really reports: three phases, in this order. It does not report a percentage
+ * within a phase, so none is drawn: the student sees which phase the file is in, for how long, and
+ * (when enough files have finished to know) how long files usually take.
+ */
+const PIPELINE = [
+  { stage: 'validating', label: 'Checking the file' },
+  { stage: 'chunking', label: 'Reading pages' },
+  { stage: 'embedding', label: 'Indexing for search' },
+] as const
+
+function pipelineIndex(stage: string | null | undefined, jobType?: string): number {
+  const found = PIPELINE.findIndex((item) => item.stage === stage)
+  if (found >= 0) return found
+  return jobType === 'chunk_material' ? 1 : 0
+}
+
+/**
+ * A file being read: the current phase with its position ("step 2 of 3"), three segments for the
+ * phases, the time so far and the usual time. The block keeps the height of a finished row's
+ * status, so nothing below it moves when the file is ready.
+ */
+function PipelineStatus({
+  index,
+  since,
+  typicalSeconds,
+  pendingLabel,
+}: {
+  index: number
+  since: string | number
+  typicalSeconds: number | null
+  /** Replaces the phase word (waiting for the worker to pick the file up). */
+  pendingLabel?: string
+}) {
+  const elapsed = useElapsed(since, true)
+  const current = PIPELINE[index]
+  return (
+    <div aria-live="polite" className="min-h-[38px]">
+      <StatusText icon={<Spinner className="text-accent" />}>
+        {pendingLabel ?? current.label}
+        <span className="text-fg-3">{`, step ${index + 1} of ${PIPELINE.length}`}</span>
+      </StatusText>
+      <div className="mt-0.5 flex h-4 items-center gap-2 text-caption font-normal text-fg-3">
+        <span aria-hidden="true" className="flex w-16 shrink-0 gap-0.5">
+          {PIPELINE.map((item, position) => (
+            <span
+              key={item.stage}
+              className={cn(
+                'h-1 flex-1 rounded-full',
+                position < index ? 'bg-accent' : position === index ? 'animate-pulse bg-accent/60' : 'bg-surface-3'
+              )}
+            />
+          ))}
+        </span>
+        <span className="min-w-0 truncate">
+          {elapsed !== null ? <span className="tabular">{formatElapsed(elapsed)}</span> : null}
+          {typicalSeconds ? `${elapsed !== null ? ', ' : ''}usually ${estimateWords(typicalSeconds)}` : null}
+        </span>
+      </div>
+    </div>
+  )
+}
 
 // ---------------------------------------------------------------------------------------
 // Rows
@@ -165,7 +234,7 @@ function RowMenu({ filename, children }: { filename: string; children: React.Rea
   )
 }
 
-function ServerRow({ row, onDeleted }: { row: MaterialRow; onDeleted: () => void }) {
+function ServerRow({ row, onDeleted, typicalSeconds }: { row: MaterialRow; onDeleted: () => void; typicalSeconds: number | null }) {
   const router = useRouter()
   const refreshSoon = useRefreshSoon()
   // The role the student just picked shows at once; the server's value takes over once it is saved.
@@ -174,23 +243,25 @@ function ServerRow({ row, onDeleted }: { row: MaterialRow; onDeleted: () => void
   const { job: live } = useJob(row.job?.id ?? null, { timeoutMs: 600_000, onSettled: refreshSoon })
   const [confirmOpen, setConfirmOpen] = React.useState(false)
 
-  const stage = live?.stage ?? row.job?.stage ?? (row.job?.jobType === 'chunk_material' ? 'chunking' : 'validating')
-  const percent = live?.progressPercent ?? row.job?.progressPercent ?? 0
+  const stage = live?.stage ?? row.job?.stage ?? null
+  const queued = live?.status === 'queued'
 
   let status: React.ReactNode
   if (row.status === 'processing') {
-    const showPercent = row.job?.jobType === 'chunk_material' && percent > 10 && percent < 100
     status = (
-      <div aria-live="polite">
-        <StatusText icon={<Spinner className="text-accent" />}>
-          {stageLabel(stage, live?.status)}
-          {showPercent ? <span className="tabular text-fg-3">{`  ${percent}%`}</span> : null}
-        </StatusText>
-        {showPercent ? <Progress aria-label="Reading pages" value={percent} className="mt-1.5 max-w-[200px]" /> : null}
-      </div>
+      <PipelineStatus
+        index={pipelineIndex(stage, row.job?.jobType)}
+        since={row.uploadedAt}
+        typicalSeconds={typicalSeconds}
+        pendingLabel={queued ? stageLabel(stage, 'queued') : undefined}
+      />
     )
   } else if (row.status === 'ready') {
-    status = <StatusText icon={READY_ICON} tone="accent">Ready</StatusText>
+    status = (
+      <div className="min-h-[38px]">
+        <StatusText icon={READY_ICON} tone="accent">Ready</StatusText>
+      </div>
+    )
   } else if (row.status === 'unusable') {
     const reason = row.notes?.trim() || 'No readable text found'
     status = (
@@ -292,11 +363,11 @@ function ServerRow({ row, onDeleted }: { row: MaterialRow; onDeleted: () => void
   )
 }
 
-function LocalRow({ upload, onDismiss }: { upload: LocalUpload; onDismiss: () => void }) {
+function LocalRow({ upload, onDismiss, typicalSeconds }: { upload: LocalUpload; onDismiss: () => void; typicalSeconds: number | null }) {
   let status: React.ReactNode
   if (upload.phase === 'uploading') {
     status = (
-      <div aria-live="polite">
+      <div aria-live="polite" className="min-h-[38px]">
         <StatusText icon={<Spinner className="text-accent" />}>
           Uploading <span className="tabular text-fg-3">{upload.percent}%</span>
         </StatusText>
@@ -304,7 +375,7 @@ function LocalRow({ upload, onDismiss }: { upload: LocalUpload; onDismiss: () =>
       </div>
     )
   } else if (upload.phase === 'sent') {
-    status = <StatusText icon={<Spinner className="text-accent" />}>{stageLabel('validating')}</StatusText>
+    status = <PipelineStatus index={0} since={upload.startedAt} typicalSeconds={typicalSeconds} />
   } else {
     status = (
       <StatusText icon={FAILED_ICON} tone="danger">
@@ -348,13 +419,22 @@ type MaterialsManagerProps = {
   variant?: 'page' | 'inline'
   /** Shown between the title and the uploader (topic finding banners). */
   banner?: React.ReactNode
+  /** How long a file usually takes to be read (seconds), from finished jobs; null when unknown. */
+  typicalReadSeconds?: number | null
 }
 
 /**
  * The uploader and the list of files with their live pipeline status. Used by the Materials
  * page and by step 1 of the setup guide.
  */
-export function MaterialsManager({ courseId, maxUploadMb, materials, variant = 'page', banner }: MaterialsManagerProps) {
+export function MaterialsManager({
+  courseId,
+  maxUploadMb,
+  materials,
+  variant = 'page',
+  banner,
+  typicalReadSeconds = null,
+}: MaterialsManagerProps) {
   const router = useRouter()
   const inputRef = React.useRef<HTMLInputElement>(null)
   const [category, setCategory] = React.useState<Category>('lecture_notes')
@@ -373,14 +453,14 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
     const problem = fileProblem(file, maxUploadMb)
     if (problem) {
       setUploads((current) => [
-        { key, filename: file.name, size: file.size, category, percent: 0, phase: 'error', error: problemMessage(problem, maxUploadMb) },
+        { key, filename: file.name, size: file.size, category, percent: 0, startedAt: Date.now(), phase: 'error', error: problemMessage(problem, maxUploadMb) },
         ...current,
       ])
       return
     }
     const abort = new AbortController()
     setUploads((current) => [
-      { key, filename: file.name, size: file.size, category, percent: 0, phase: 'uploading', abort },
+      { key, filename: file.name, size: file.size, category, percent: 0, startedAt: Date.now(), phase: 'uploading', abort },
       ...current,
     ])
     uploadMaterial({
@@ -408,7 +488,24 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
 
   const serverIds = new Set(materials.map((row) => row.id))
   const visibleUploads = uploads.filter((item) => !(item.materialId && serverIds.has(item.materialId)))
+  // A file keeps its place in the list when the server's row takes over from the one this browser
+  // was showing: rows never swap places while a batch finishes, which would shift everything under them.
+  const orderedRows = React.useMemo(() => {
+    const byId = new Map(materials.map((row) => [row.id, row]))
+    const used = new Set<string>()
+    const rows: ({ kind: 'local'; upload: LocalUpload } | { kind: 'server'; row: MaterialRow })[] = []
+    for (const upload of uploads) {
+      const row = upload.materialId ? byId.get(upload.materialId) : undefined
+      if (row) {
+        used.add(row.id)
+        rows.push({ kind: 'server', row })
+      } else rows.push({ kind: 'local', upload })
+    }
+    for (const row of materials) if (!used.has(row.id)) rows.push({ kind: 'server', row })
+    return rows
+  }, [uploads, materials])
   const empty = materials.length === 0 && visibleUploads.length === 0
+  const working = visibleUploads.some((item) => item.phase !== 'error') || materials.some((row) => row.status === 'processing')
   const inline = variant === 'inline'
 
   return (
@@ -509,14 +606,20 @@ export function MaterialsManager({ courseId, maxUploadMb, materials, variant = '
               </tr>
             </thead>
             <tbody className="max-md:block [&>tr+tr]:border-t [&>tr+tr]:border-border">
-              {visibleUploads.map((upload) => (
-                <LocalRow key={upload.key} upload={upload} onDismiss={() => removeUpload(upload.key)} />
-              ))}
-              {materials.map((row) => (
-                <ServerRow key={row.id} row={row} onDeleted={() => router.refresh()} />
-              ))}
+              {orderedRows.map((item) =>
+                item.kind === 'local' ? (
+                  <LocalRow key={item.upload.key} upload={item.upload} typicalSeconds={typicalReadSeconds} onDismiss={() => removeUpload(item.upload.key)} />
+                ) : (
+                  <ServerRow key={item.row.id} row={item.row} typicalSeconds={typicalReadSeconds} onDeleted={() => router.refresh()} />
+                )
+              )}
             </tbody>
           </table>
+          <p className="mt-3 min-h-5 text-small text-fg-2" aria-live="polite">
+            {working
+              ? "You can leave this page. Files keep being read."
+              : 'Every file here has been read.'}
+          </p>
         </div>
       )}
     </div>

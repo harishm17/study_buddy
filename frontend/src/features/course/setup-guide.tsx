@@ -66,7 +66,9 @@ export function SetupGuide({ courseId, name, setup }: { courseId: string; name: 
       <PageIntro title={name} description="Three steps and you're ready to study." />
       <ol className="max-w-[720px]" aria-label="Setup steps">
         <Step number={1} state={step > 1 ? 'done' : 'current'} title="Add your materials">
-          {step === 1 ? (
+          {step <= 2 ? (
+            // Stays through step 2: when the last file is read, this step keeps its size and only the
+            // next step changes, so nothing jumps under the student's thumb.
             <>
               <p className={description}>
                 Upload lecture notes, past exams or book chapters. Margins reads them to find your topics.
@@ -76,6 +78,7 @@ export function SetupGuide({ courseId, name, setup }: { courseId: string; name: 
                 courseId={courseId}
                 maxUploadMb={materials.maxUploadMb}
                 materials={materials.materials}
+                typicalReadSeconds={materials.typicalReadSeconds}
               />
             </>
           ) : (
@@ -97,6 +100,8 @@ export function SetupGuide({ courseId, name, setup }: { courseId: string; name: 
               extractFailure={materials.extractFailure}
               topicCount={setup.topicCount}
               filesProcessing={filesProcessing}
+              filesRead={materials.readyCount}
+              filesTotal={materials.materials.length}
             />
           ) : step > 2 ? (
             <p className={description}>
@@ -106,11 +111,14 @@ export function SetupGuide({ courseId, name, setup }: { courseId: string; name: 
               </Link>
             </p>
           ) : (
-            <p className={description}>
-              {filesProcessing && materials.materials.length > 0
-                ? 'Waiting for your files to finish processing.'
-                : 'Margins finds the topics in your files. Rename, merge or remove any, then confirm.'}
-            </p>
+            // The same height as the step when it is current, so it opens without moving what is below.
+            <div className="min-h-[108px]">
+              <p className={description}>
+                {filesProcessing && materials.materials.length > 0
+                  ? `Waiting for your files: ${materials.readyCount} of ${materials.materials.length} read.`
+                  : 'Margins finds the topics in your files. Rename, merge or remove any, then confirm.'}
+              </p>
+            </div>
           )}
         </Step>
 
