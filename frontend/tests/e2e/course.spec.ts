@@ -59,9 +59,11 @@ test('setup guide: upload materials and wait for topics', async ({ page }) => {
   await expect(page.getByText('algorithms.pdf')).toBeVisible()
   await expect(page.getByText('hashing.docx')).toBeVisible()
 
-  // Files read: step 1 is done. Topic finding starts by itself; if two files finish at the same
-  // moment it can miss, and the guide offers a button for that.
-  await expect(page.getByText('2 files ready.')).toBeVisible({ timeout: 60_000 })
+  // Files read: each shows its phase while it is read, step 1 keeps its list and says so when every file is
+  // done. Topic finding starts by itself; if two files finish at the same moment it can miss, and the guide
+  // offers a button for that.
+  await expect(page.getByText('Every file here has been read.')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText('Ready', { exact: true })).toHaveCount(2)
   const review = page.getByRole('link', { name: 'Review topics' })
   const find = page.getByRole('button', { name: 'Find topics' })
   await expect(review.or(find)).toBeVisible({ timeout: 30_000 })

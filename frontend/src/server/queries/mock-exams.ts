@@ -1,3 +1,4 @@
+import { areRecordIds } from '@/lib/ids'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/prisma'
 import { gradeExamTarget } from '@/lib/jobs/active-jobs'
@@ -16,6 +17,7 @@ import {
 } from '@/lib/exams/results'
 import { toPublicQuestions, type PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import { examTitle } from '@/lib/exams/display'
+import { getExamTitles } from '@/server/queries/exams'
 
 /** Everything here is filtered by the user id; an id that is not theirs is simply not found. */
 
@@ -45,6 +47,7 @@ export type ExamListItem = {
 }
 
 export async function listExams(userId: string, courseId: string): Promise<ExamListItem[]> {
+  if (!areRecordIds(courseId)) return []
   const exams = await prisma.sampleExam.findMany({
     where: { projectId: courseId, project: { userId } },
     orderBy: { createdAt: 'desc' },
@@ -59,6 +62,7 @@ export async function listExams(userId: string, courseId: string): Promise<ExamL
     }),
   ])
   const now = Date.now()
+  const titles = await getExamTitles(userId, courseId)
 
   return exams.map((exam) => {
     const mine = attempts.filter((attempt) => attempt.sampleExamId === exam.id)
@@ -68,7 +72,7 @@ export async function listExams(userId: string, courseId: string): Promise<ExamL
       .filter((score): score is number => typeof score === 'number')
     return {
       id: exam.id,
-      title: examTitle(exam.name, exam.createdAt),
+      title: titles.get(exam.id) ?? examTitle(exam.name, exam.createdAt),
       createdAt: exam.createdAt.toISOString(),
       questionCount: counts.get(exam.id) ?? 0,
       durationMinutes: exam.durationMinutes,
@@ -105,6 +109,7 @@ export type ExamLobby = {
 }
 
 export async function getExamLobby(userId: string, courseId: string, examId: string): Promise<ExamLobby | null> {
+  if (!areRecordIds(courseId, examId)) return null
   const exam = await prisma.sampleExam.findFirst({
     where: { id: examId, projectId: courseId, project: { userId } },
     select: {
@@ -151,10 +156,11 @@ export async function getExamLobby(userId: string, courseId: string, examId: str
   })
 
   const active = state.kind === 'active' ? state.attempt : null
+  const titles = await getExamTitles(userId, courseId)
   return {
     id: exam.id,
     courseId: exam.projectId,
-    title: examTitle(exam.name, exam.createdAt),
+    title: titles.get(exam.id) ?? examTitle(exam.name, exam.createdAt),
     createdAt: exam.createdAt.toISOString(),
     questionCount: counts.get(exam.id) ?? 0,
     durationMinutes: exam.durationMinutes,
@@ -185,6 +191,7 @@ export type TakeState =
 
 /** What the taking page needs: the questions without their answer key, and the running attempt. */
 export async function getTakeState(userId: string, courseId: string, examId: string): Promise<TakeState> {
+  if (!areRecordIds(courseId, examId)) return { kind: 'missing' }
   const exam = await prisma.sampleExam.findFirst({
     where: { id: examId, projectId: courseId, project: { userId } },
     select: { id: true, name: true, createdAt: true, durationMinutes: true, questions: true, projectId: true },
@@ -194,13 +201,14 @@ export async function getTakeState(userId: string, courseId: string, examId: str
   const state = await loadAttemptState(userId, { id: exam.id, projectId: exam.projectId, durationMinutes: exam.durationMinutes })
   if (state.kind === 'none') return { kind: 'none' }
   if (state.kind === 'finalized') return { kind: 'finalized', submissionId: state.submissionId }
+  const titles = await getExamTitles(userId, courseId)
   return {
     kind: 'active',
     attempt: state.attempt,
     exam: {
       id: exam.id,
       courseId: exam.projectId,
-      title: examTitle(exam.name, exam.createdAt),
+      title: titles.get(exam.id) ?? examTitle(exam.name, exam.createdAt),
       durationMinutes: exam.durationMinutes,
       questions: toPublicQuestions(exam.questions),
     },
@@ -233,6 +241,8 @@ export type ExamResult =
       needsReviewCount: number
       questions: ExamQuestionResult[]
       topics: ResultTopic[]
+      /** A second grading of this attempt is running (the student asked for one): the job to follow. */
+      regradeJobId: string | null
     })
 
 /**
@@ -245,6 +255,7 @@ export async function getExamResult(
   examId: string,
   submissionId: string
 ): Promise<ExamResult | null> {
+  if (!areRecordIds(courseId, examId, submissionId)) return null
   const submission = await prisma.examSubmission.findFirst({
     where: {
       id: submissionId,
@@ -257,11 +268,12 @@ export async function getExamResult(
   })
   if (!submission) return null
 
+  const titles = await getExamTitles(userId, courseId)
   const base: ResultBase = {
     id: submission.id,
     examId,
     courseId: submission.sampleExam.projectId,
-    examTitle: examTitle(submission.sampleExam.name, submission.sampleExam.createdAt),
+    examTitle: titles.get(examId) ?? examTitle(submission.sampleExam.name, submission.sampleExam.createdAt),
     submittedAt: submission.submittedAt.toISOString(),
   }
 
@@ -299,9 +311,21 @@ export async function getExamResult(
     linkable: !!topic.topicId && currentNames.has(topic.topicId),
   }))
 
+  const regrading = await prisma.processingJob.findFirst({
+    where: {
+      userId,
+      jobType: 'grade_exam',
+      targetKey: gradeExamTarget(submission.id),
+      status: { in: ['pending', 'processing'] },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  })
+
   return {
     ...base,
     status: 'graded',
+    regradeJobId: regrading?.id ?? null,
     score: overall.score,
     earnedPoints: overall.earned,
     totalPoints: overall.total,
@@ -316,6 +340,7 @@ export async function findActiveExamJob(
   userId: string,
   courseId: string
 ): Promise<{ id: string; startedAt: string } | null> {
+  if (!areRecordIds(courseId)) return null
   const job = await prisma.processingJob.findFirst({
     where: { userId, projectId: courseId, jobType: 'generate_exam', status: { in: ['pending', 'processing'] } },
     orderBy: { createdAt: 'desc' },
@@ -326,6 +351,7 @@ export async function findActiveExamJob(
 
 /** Whether any past exam of the course has a style profile, so "Match my past exams" has something to match. */
 export async function courseHasExamStyle(userId: string, courseId: string): Promise<boolean> {
+  if (!areRecordIds(courseId)) return false
   const count = await prisma.material.count({
     where: {
       role: 'exam',

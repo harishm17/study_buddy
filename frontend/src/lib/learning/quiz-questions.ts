@@ -32,6 +32,26 @@ export type PublicQuizQuestion = {
   topic_name?: string
 }
 
+// Words a model puts in `unit` that name the kind of quantity, not a unit: "400 probability" is not an answer.
+const NOT_A_UNIT =
+  /^(probabilit(y|ies)|chance|likelihood|number|count|value|values|answer|ratio|fraction|proportion|decimal|rate|none|n\/?a|unitless|dimensionless|no units?)\.?$/i
+
+/**
+ * The unit to print after a numerical answer ("m/s", "%", "dollars"), or "" when there is none. A
+ * quantity with no unit (a probability, a count, a ratio) comes back from the generator with the
+ * name of the quantity in `unit`, and printing it makes "400 probability". The cause is in the
+ * stored data, so this one rule is applied wherever a unit is read (the answer box, the review,
+ * the grader's key): descriptor words, empty text and anything sentence-like give "".
+ */
+export function answerUnit(unit: unknown): string {
+  if (typeof unit !== 'string') return ''
+  const text = unit.trim()
+  if (!text || NOT_A_UNIT.test(text)) return ''
+  // A unit is a symbol or a word or two ("mol/L", "square metres"), not a sentence.
+  if (text.length > 24 || text.split(/\s+/).length > 3) return ''
+  return text
+}
+
 const isRecord = (value: unknown): value is RawQuestion =>
   !!value && typeof value === 'object' && !Array.isArray(value)
 
@@ -40,6 +60,11 @@ export function toPublicQuestion(question: unknown): PublicQuizQuestion {
   const result: RawQuestion = {}
   for (const field of PUBLIC_FIELDS) {
     if (source[field] !== undefined) result[field] = source[field]
+  }
+  if ('unit' in result) {
+    const unit = answerUnit(result.unit)
+    if (unit) result.unit = unit
+    else delete result.unit
   }
   if (Array.isArray(result.options)) {
     // Options are { id, text } only, in case a generator ever adds a flag to them.
@@ -79,8 +104,7 @@ export function reviewAnswer(question: RawQuestion): string {
       return isTrue ? 'True' : 'False'
     }
     case 'numerical': {
-      const unit = display(question.unit).trim()
-      return `${display(question.correct_answer)} ${unit}`.trim()
+      return `${display(question.correct_answer)} ${answerUnit(question.unit)}`.trim()
     }
     default:
       return display(question.correct_answer)

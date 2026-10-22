@@ -2,7 +2,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 export default function TakeLoading() {
   return (
-    <div aria-busy="true" aria-label="Loading the exam" className="mx-auto w-full max-w-[720px] px-4 py-8 md:px-6 lg:py-10">
+    <div role="status" aria-busy="true" aria-label="Loading the exam" className="mx-auto w-full max-w-[720px] px-4 py-8 md:px-6 lg:py-10">
       <Skeleton className="h-4 w-36 rounded-chip" />
       <Skeleton className="mt-3 h-1" />
       <Skeleton className="mt-8 h-6 w-4/5 rounded-chip" />

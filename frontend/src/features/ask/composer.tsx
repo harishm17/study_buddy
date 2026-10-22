@@ -5,9 +5,10 @@ import { ArrowUp, Stop } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { IconButton } from '@/components/ui/icon-button'
 import { Select, type SelectOption } from '@/components/ui/select'
+import { MAX_QUESTION_CHARS } from '@/lib/ask/explain'
 import { cn } from '@/lib/utils'
 
-export const MAX_QUESTION_CHARS = 2000
+export { MAX_QUESTION_CHARS }
 const COUNT_FROM = 1800
 const MAX_ROWS = 8
 const LINE = 24
@@ -26,6 +27,8 @@ type ComposerProps = {
   fixedScope?: string
   disabled?: boolean
   autoFocus?: boolean
+  /** Text the box starts with (not sent). The cursor goes to its end. */
+  initialValue?: string
 }
 
 /** Auto-growing question box with the scope and the send or stop button inside one frame. */
@@ -39,8 +42,9 @@ export function Composer({
   fixedScope,
   disabled,
   autoFocus,
+  initialValue = '',
 }: ComposerProps) {
-  const [value, setValue] = React.useState('')
+  const [value, setValue] = React.useState(initialValue)
   const ref = React.useRef<HTMLTextAreaElement>(null)
 
   const resize = React.useCallback(() => {
@@ -55,7 +59,10 @@ export function Composer({
   React.useLayoutEffect(resize, [resize, value])
 
   React.useEffect(() => {
-    if (autoFocus) ref.current?.focus()
+    const el = ref.current
+    if (!autoFocus || !el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
   }, [autoFocus])
 
   const trimmed = value.trim()
@@ -74,7 +81,7 @@ export function Composer({
         submit()
       }}
       className={cn(
-        'rounded-card border border-border-strong bg-surface p-2 transition-[border-color,box-shadow] duration-120',
+        'rounded-card border border-control bg-surface p-2 transition-[border-color,box-shadow] duration-120',
         'focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25'
       )}
     >

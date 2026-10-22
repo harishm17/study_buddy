@@ -1,26 +1,18 @@
-import { Page } from '@/components/shell/page'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton, SkeletonField, SkeletonIntro, SkeletonPage } from '@/components/ui/page-skeleton'
 
+/** New course: the intro, the name and description fields, then the two buttons. */
 export default function NewCourseLoading() {
   return (
-    <Page width="narrow" className="pt-8">
-      <div aria-busy="true" aria-label="Loading">
-        <Skeleton className="h-8 w-40 rounded-chip" />
-        <div className="mt-8 flex flex-col gap-5">
-          <div className="flex flex-col gap-1.5">
-            <Skeleton className="h-4 w-24 rounded-chip" />
-            <Skeleton className="h-[34px]" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Skeleton className="h-4 w-32 rounded-chip" />
-            <Skeleton className="h-[70px]" />
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-[34px] w-32" />
-            <Skeleton className="h-[34px] w-20" />
-          </div>
+    <SkeletonPage width="narrow" className="pt-8">
+      <SkeletonIntro />
+      <div aria-hidden="true" className="flex flex-col gap-5">
+        <SkeletonField labelWidth="w-24" />
+        <SkeletonField labelWidth="w-32" height={70} />
+        <div className="flex gap-2">
+          <Skeleton className="h-[34px] w-32" />
+          <Skeleton className="h-[34px] w-20" />
         </div>
       </div>
-    </Page>
+    </SkeletonPage>
   )
 }

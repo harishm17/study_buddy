@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { AskPageLazy } from '@/features/ask/ask-page-lazy'
+import { MAX_QUESTION_CHARS } from '@/lib/ask/explain'
 import { countSearchableMaterials, getAskThread, listAskThreads, serverNow } from '@/server/queries/ask'
 import { getCourseShell } from '@/server/queries/courses'
 import { requireUser } from '@/server/session'
@@ -14,7 +15,7 @@ export default async function AskRoute({
   searchParams,
 }: {
   params: Promise<{ courseId: string }>
-  searchParams: Promise<{ thread?: string | string[]; topic?: string | string[] }>
+  searchParams: Promise<{ thread?: string | string[]; topic?: string | string[]; q?: string | string[] }>
 }) {
   const user = await requireUser()
   const { courseId } = await params
@@ -24,6 +25,8 @@ export default async function AskRoute({
 
   const threadId = first(query.thread)
   const topicParam = first(query.topic)
+  // "Explain this mistake" arrives with the question already written; it is only a draft, nothing is sent.
+  const draft = (first(query.q) ?? '').slice(0, MAX_QUESTION_CHARS)
   const topics = course.topics.filter((topic) => topic.confirmed).map((topic) => ({ id: topic.id, name: topic.name }))
 
   const [threads, initialThread, materialCount] = await Promise.all([
@@ -40,6 +43,7 @@ export default async function AskRoute({
       topics={topics}
       initialTopicId={topicParam && topics.some((topic) => topic.id === topicParam) ? topicParam : null}
       hasMaterials={materialCount > 0}
+      initialDraft={threadId ? '' : draft}
       now={serverNow()}
     />
   )

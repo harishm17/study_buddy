@@ -867,9 +867,24 @@ class ExamTopicMap(BaseModel):
         return cls(questions=questions)
 
 
+class KeyPointCheck(BaseModel):
+    """The verdict on one key point of a short answer's rubric."""
+
+    point: str = Field(description="The key point, copied from the list you were given")
+    result: Literal["met", "partly", "not_met"] = Field(
+        description="met: the answer states it. partly: it is touched on or incomplete. not_met: it is missing or wrong."
+    )
+
+
 class ShortAnswerGrade(BaseModel):
     points_earned: float
     feedback: str = Field(description="2-3 sentences on what was good and what was missing")
+    # Shown to the student next to the score ("what the grader looked for"). Older replies and
+    # providers that leave it out give an empty list, and the review simply shows no per-point marks.
+    key_point_checks: List[KeyPointCheck] = Field(
+        default_factory=list,
+        description="One entry for each key point, in the order they were listed",
+    )
 
     @classmethod
     def example(cls) -> "ShortAnswerGrade":

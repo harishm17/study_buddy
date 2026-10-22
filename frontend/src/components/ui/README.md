@@ -31,10 +31,14 @@ elements (`icon={<Plus />}`), which keeps every primitive usable from server com
 | `progress-ring.tsx` | `ProgressRing` | 16 / 28 / 44 / 96, empty state |
 | `mastery-indicator.tsx` | `MasteryIndicator` | ring plus label, or ring with tooltip |
 | `skeleton.tsx` | `Skeleton`, `SkeletonText` | shimmer, off under reduced motion |
-| `empty-state.tsx` | `EmptyState` | |
+| `page-skeleton.tsx` | `SkeletonPage`, `SkeletonIntro`, `SkeletonRow(s)`, `SkeletonField`, `SkeletonSection` | the one way to build a `loading.tsx`: parts at the sizes of the page they stand in for (intro = `PageIntro`, row = list row, field = input), so the page replaces them without moving |
+| `empty-state.tsx` | `EmptyState` | `as="h1"` for a page that is only this (a 404) |
 | `inline-alert.tsx` | `InlineAlert` | neutral, accent, warning, danger |
 | `job-status.tsx` | `JobStatus`, `stageLabel` | the one way to show a background job |
-| `question-renderer.tsx` | `QuestionRenderer` | multiple choice, true/false, numerical, short answer |
+| `question-renderer.tsx` | `QuestionRenderer` | multiple choice, true/false, numerical, short answer; a stem with a table or listing is drawn as blocks |
+| `question-text.tsx` | `QuestionText`, `stemHasBlocks` | a question stem: one line is inline text with math, anything longer goes through the block renderer so tables stay tables |
+| `scrollable.ts` | `useScrollableFocus` | makes content that scrolls sideways (equations, code, tables) reachable from the keyboard, only when it overflows |
+| `theme-switch.tsx` | `ThemeSwitch`, `ThemeMenuRadios`, `useThemeChoice` | Light, Dark or System: an icon button with a menu for public pages (the public header, sign in), and the same three choices as menu items inside the account menu |
 | `markdown.tsx` | `Markdown`, `MarkdownInline` | heavy: import through `lazy-markdown.tsx` |
 | `lazy-markdown.tsx` | `LazyMarkdown`, `LazyMarkdownInline` | next/dynamic wrappers |
 | `math-text.tsx` | `MathText` | every model-written string in running text: inline markdown and KaTeX, plain strings render at once |
@@ -44,3 +48,9 @@ elements (`icon={<Plus />}`), which keeps every primitive usable from server com
 
 Rules: radius is 6 (chips), 8 (buttons, inputs), 12 (cards, overlays), full. Cards have no
 shadow; only floating things do. Focus uses the global 2px accent ring.
+
+Accessibility rules the primitives keep: a link inside a sentence is underlined at rest (a global
+rule on `p a`, and the `link` button variant); form controls use the `control` border token (3:1),
+not `border-strong`; "Learning" mastery is never colour alone (dashed ring arcs, the `bg-learning`
+striped fill); a target is 24px at least, and 44px on a phone for the Button, Input, Select and
+SegmentedControl (the Checkbox and the link variant widen their hit area without moving anything).

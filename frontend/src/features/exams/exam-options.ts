@@ -59,8 +59,4 @@ export function formatMinutes(minutes: number): string {
   return rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`
 }
 
-/** A 0..100 score as "72%", with at most one decimal. */
-export function formatScore(score: number): string {
-  const rounded = Math.round(score * 10) / 10
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}%`
-}
+export { formatScore } from '@/lib/format'

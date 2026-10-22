@@ -1,3 +1,4 @@
+import { areRecordIds } from '@/lib/ids'
 import { prisma } from '@/lib/db/prisma'
 import { parseStoredCitations } from '@/lib/chat/citations'
 import { toChatMessages, type ChatMessage } from '@/features/ask/chat-messages'
@@ -10,6 +11,7 @@ export type AskThread = { id: string; title: string | null; updatedAt: string }
 
 /** The user's conversations in a course, most recently active first. */
 export async function listAskThreads(userId: string, courseId: string): Promise<AskThread[]> {
+  if (!areRecordIds(courseId)) return []
   const threads = await prisma.chatThread.findMany({
     where: { projectId: courseId, userId },
     orderBy: { updatedAt: 'desc' },
@@ -25,6 +27,7 @@ export async function getAskThread(
   courseId: string,
   threadId: string
 ): Promise<{ id: string; messages: ChatMessage[] } | null> {
+  if (!areRecordIds(courseId, threadId)) return null
   const thread = await prisma.chatThread.findFirst({
     where: { id: threadId, projectId: courseId, userId },
     select: {
@@ -51,6 +54,7 @@ export async function getAskThread(
 
 /** How many of the course's files are ready to be searched. */
 export async function countSearchableMaterials(userId: string, courseId: string): Promise<number> {
+  if (!areRecordIds(courseId)) return 0
   return prisma.material.count({
     where: { projectId: courseId, validationStatus: 'valid', project: { userId } },
   })

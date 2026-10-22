@@ -3,7 +3,7 @@ import { Brand } from '@/components/shell/brand'
 import { SkipLink } from '@/components/shell/skip-link'
 import { BRAND_NAME } from '@/config/brand'
 import { Shot } from '@/features/marketing/shot'
-import { ThemeSwitch } from '@/features/marketing/theme-switch'
+import { ThemeSwitch } from '@/components/ui/theme-switch'
 
 /**
  * Two columns on desktop: a form column, and a panel with the whole plan screen (never cropped) and one

@@ -27,7 +27,7 @@ test('sign up, create a course, sign out, sign in, find it from home and the pal
   const courseUrl = page.url()
 
   // Sign out through the account menu.
-  await page.getByRole('button', { name: /Account menu for/ }).click()
+  await page.getByRole('button', { name: /account menu/i }).click()
   await page.getByRole('menuitem', { name: 'Sign out' }).click()
   await expect(page).toHaveURL(/\/login/)
 

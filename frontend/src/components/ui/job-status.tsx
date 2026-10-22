@@ -34,6 +34,7 @@ export type JobStatusJob = {
   errorCode?: string | null
   errorMessage?: string | null
   retryable?: boolean
+  jobType?: string
 }
 
 export const TIMEOUT_NOTE = 'Still working in the background. You can leave this page.'
@@ -59,7 +60,7 @@ const subscribeToClock = (callback: () => void) => {
 }
 
 /** Seconds since `since`, ticking once a second while `running`. Null on the server. */
-function useElapsed(since: JobStatusProps['since'], running: boolean): number | null {
+export function useElapsed(since: JobStatusProps['since'], running: boolean): number | null {
   const second = React.useSyncExternalStore(
     running ? subscribeToClock : () => () => {},
     () => Math.floor(Date.now() / 1000),
@@ -91,7 +92,7 @@ export function JobStatus({
 
   if (job?.status === 'failed') {
     icon = <WarningCircle aria-hidden="true" className="size-4 shrink-0 text-danger" />
-    text = describeJobFailure(job.errorCode, job.errorMessage)
+    text = describeJobFailure(job.errorCode, job.errorMessage, job.jobType)
     if (job.retryable !== false && onRetry) {
       action = (
         <Button size="sm" variant="secondary" onClick={onRetry} loading={retrying}>

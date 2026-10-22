@@ -109,17 +109,19 @@ export function ThreadPicker({
 }: Omit<ThreadListProps, 'hrefFor'>) {
   const groups = groupThreads(threads, now)
   const active = threads.find((thread) => thread.id === activeId) ?? null
+  const shown = active ? threadTitle(active) : UNTITLED_THREAD
   return (
     <div className="flex items-center gap-2 border-b border-border px-4 py-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label="Conversations"
-            className="flex h-[34px] min-w-0 flex-1 items-center gap-2 rounded-control border border-border-strong bg-surface px-3 text-body-strong text-fg transition-colors duration-120 hover:bg-surface-2 max-sm:h-11"
+            // The name starts with the visible title (WCAG 2.5.3) and then says what the button opens.
+            aria-label={`${shown}, conversations`}
+            className="flex h-[34px] min-w-0 flex-1 items-center gap-2 rounded-control border border-control bg-surface px-3 text-body-strong text-fg transition-colors duration-120 hover:bg-surface-2 max-sm:h-11"
           >
             <ChatCircleText aria-hidden="true" className="size-4 shrink-0 text-fg-3" />
-            <span className="min-w-0 flex-1 truncate text-left">{active ? threadTitle(active) : UNTITLED_THREAD}</span>
+            <span className="min-w-0 flex-1 truncate text-left">{shown}</span>
             <CaretUpDown aria-hidden="true" className="size-4 shrink-0 text-fg-3" />
           </button>
         </DropdownMenuTrigger>

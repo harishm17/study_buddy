@@ -17,15 +17,39 @@ export function CheckTopicsStep({
   extractFailure,
   topicCount,
   filesProcessing,
+  filesRead,
+  filesTotal,
 }: {
   courseId: string
   extractJob: JobRef | null
   extractFailure: string | null
   topicCount: number
   filesProcessing: boolean
+  /** Files that have been read, and all files, for "1 of 2 read" while the others are in progress. */
+  filesRead: number
+  filesTotal: number
 }) {
   const router = useRouter()
   const extraction = useExtraction(courseId, extractJob)
+  const foundRef = React.useRef<HTMLDivElement>(null)
+  const wasWaiting = React.useRef(topicCount === 0)
+
+  // The step above keeps its size, so when the topics arrive the next action can be below the fold on a
+  // phone. Bring it into view once, only if it is not already, and only when it arrived while the student waited.
+  React.useEffect(() => {
+    if (topicCount === 0) {
+      wasWaiting.current = true
+      return
+    }
+    if (!wasWaiting.current) return
+    wasWaiting.current = false
+    const element = foundRef.current
+    if (!element) return
+    const box = element.getBoundingClientRect()
+    if (box.top >= 0 && box.bottom <= window.innerHeight) return
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    element.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' })
+  }, [topicCount])
 
   // The AI service starts topic finding a moment after the last file is read; look for it for a minute.
   const waitingForJob = !extraction.running && !extraction.failed && topicCount === 0 && !filesProcessing
@@ -39,9 +63,13 @@ export function CheckTopicsStep({
     }
   }, [waitingForJob, router])
 
+  // Every state below sits in the same frame, tall enough for the tallest (a line and a button), so
+  // the step under it does not move when the state changes from waiting to topics found.
+  const frame = 'mt-3 min-h-24'
+
   if (extraction.running || extraction.failed) {
     return (
-      <div className="mt-3 rounded-control bg-surface-2 px-3.5 py-3">
+      <div className={`${frame} rounded-control bg-surface-2 px-3.5 py-3`}>
         <JobStatus
           job={extraction.job}
           label="Finding topics"
@@ -56,7 +84,7 @@ export function CheckTopicsStep({
 
   if (topicCount > 0) {
     return (
-      <div className="mt-3">
+      <div ref={foundRef} role="status" className={frame}>
         <p className="text-small text-fg-2">
           We found {pluralize(topicCount, 'topic')} in your files. Rename, merge or remove any, then confirm.
         </p>
@@ -68,11 +96,18 @@ export function CheckTopicsStep({
   }
 
   if (filesProcessing) {
-    return <p className="mt-3 text-small text-fg-2">Waiting for your files to finish processing.</p>
+    return (
+      <div className={frame}>
+        <p className="text-small text-fg-2">
+          Waiting for your files: <span className="tabular">{filesRead}</span> of <span className="tabular">{filesTotal}</span> read.
+          Topics are found as soon as the last one is.
+        </p>
+      </div>
+    )
   }
 
   return (
-    <div className="mt-3">
+    <div className={frame}>
       {extractFailure ? <p className="mb-3 text-small text-danger-soft-fg">{extractFailure}</p> : null}
       <p className="text-small text-fg-2">Margins reads your files and suggests a topic list.</p>
       <Button variant="primary" className="mt-3" onClick={extraction.start} loading={extraction.starting}>

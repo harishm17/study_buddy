@@ -87,7 +87,7 @@ function toNotice(error: unknown): GenerationNotice {
 }
 
 const failureNotice = (job: NormalizedJob): GenerationNotice => ({
-  message: fillResetTime(describeJobFailure(job.errorCode, job.errorMessage)),
+  message: fillResetTime(describeJobFailure(job.errorCode, job.errorMessage, job.jobType ?? 'generate_content')),
   tone: job.errorCode === 'LLM_DAILY_BUDGET' ? 'warning' : 'danger',
 })
 
@@ -190,7 +190,7 @@ export function TopicProvider({
         })
         const notice = result.job
           ? failureNotice(result.job)
-          : { message: describeJobFailure(null), tone: 'danger' as const }
+          : { message: describeJobFailure(null, null, 'generate_content'), tone: 'danger' as const }
         setLocalFailure((current) => ({ ...current, [kind]: notice }))
         toast.error(`${KIND_COPY[kind].failed}. Open it to try again.`)
       })

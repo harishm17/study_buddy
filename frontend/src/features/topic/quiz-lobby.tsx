@@ -5,7 +5,7 @@ import { CaretDown, Plus } from '@phosphor-icons/react/dist/ssr'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select } from '@/components/ui/select'
-import { formatDate, formatDateTime, pluralize } from '@/lib/format'
+import { formatDate, formatDateTime, formatScore, pluralize } from '@/lib/format'
 import type { QuizAttemptData, QuizSetData, TopicReview } from '@/server/queries/topic'
 import { cn } from '@/lib/utils'
 import { GenerateOptions } from './generation-ui'
@@ -30,7 +30,19 @@ export function questionMix(set: QuizSetData): string {
 
 const scoreTone = (score: number) => (score >= 70 ? 'accent' : 'neutral')
 
-function Attempt({ attempt, set, showSet }: { attempt: QuizAttemptData; set: QuizSetData | undefined; showSet: boolean }) {
+function Attempt({
+  attempt,
+  set,
+  showSet,
+  courseId,
+  topicId,
+}: {
+  attempt: QuizAttemptData
+  set: QuizSetData | undefined
+  showSet: boolean
+  courseId: string
+  topicId: string
+}) {
   const [open, setOpen] = React.useState(false)
   const panelId = React.useId()
   const entries = React.useMemo(
@@ -46,7 +58,7 @@ function Attempt({ attempt, set, showSet }: { attempt: QuizAttemptData; set: Qui
           {showSet ? <span className="ml-2 text-fg-3">{set?.label ?? 'Earlier set'}</span> : null}
         </time>
         <Badge tone={scoreTone(attempt.score)} className="tabular">
-          {Math.round(attempt.score)}%
+          {formatScore(attempt.score)}
         </Badge>
         <Button
           size="sm"
@@ -64,7 +76,7 @@ function Attempt({ attempt, set, showSet }: { attempt: QuizAttemptData; set: Qui
       {open ? (
         <div id={panelId} className="mt-2 rounded-card border border-border px-4">
           {entries.length > 0 ? (
-            <ReviewList entries={entries} />
+            <ReviewList entries={entries} courseId={courseId} topicId={topicId} />
           ) : (
             <p className="py-4 text-small text-fg-2">The review isn&apos;t available for this attempt any more.</p>
           )}
@@ -178,6 +190,8 @@ export function QuizLobby({ courseId, topicId, review, sets, attempts, setId, on
                 attempt={attempt}
                 set={sets.find((item) => item.id === attempt.setId)}
                 showSet={multipleSets}
+                courseId={courseId}
+                topicId={topicId}
               />
             ))}
           </ul>

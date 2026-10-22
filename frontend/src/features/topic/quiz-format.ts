@@ -1,4 +1,4 @@
-import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
+import { answerUnit, type PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 
 /** An answer as the student reads it: "B. O(V + E)", "True", "9.8 m/s", or their own words. */
 export function formatAnswer(question: PublicQuizQuestion, answer: string | null | undefined): string {
@@ -11,7 +11,7 @@ export function formatAnswer(question: PublicQuizQuestion, answer: string | null
   if (question.question_type === 'true_false') {
     return value.toLowerCase() === 'true' ? 'True' : value.toLowerCase() === 'false' ? 'False' : value
   }
-  if (question.question_type === 'numerical' && question.unit) return `${value} ${question.unit}`
+  if (question.question_type === 'numerical' && answerUnit(question.unit)) return `${value} ${answerUnit(question.unit)}`
   return value
 }
 

@@ -1,3 +1,4 @@
+import { areRecordIds } from '@/lib/ids'
 import { prisma } from '@/lib/db/prisma'
 import { rankWeakestTopics, SPRINT_TOPIC_COUNT } from './voice-rank'
 
@@ -12,6 +13,7 @@ export type SprintTopic = { id: string; name: string }
  * topics without one, and ties keep that order.
  */
 export async function getSprintTopics(userId: string, courseId: string): Promise<SprintTopic[]> {
+  if (!areRecordIds(courseId)) return []
   const topics = await prisma.topic.findMany({
     where: { projectId: courseId, project: { userId } },
     select: {

@@ -2,10 +2,12 @@
 
 import * as React from 'react'
 import * as RadioGroup from '@radix-ui/react-radio-group'
-import type { PublicQuizQuestion } from '@/lib/learning/quiz-questions'
+import { answerUnit, type PublicQuizQuestion } from '@/lib/learning/quiz-questions'
 import { cn } from '@/lib/utils'
 import { Input } from './input'
 import { MathText } from './math-text'
+import { QuestionText, stemHasBlocks } from './question-text'
+import { useScrollableFocus } from './scrollable'
 import { Textarea } from './textarea'
 
 type QuestionRendererProps = {
@@ -27,7 +29,16 @@ const isTypingTarget = (target: EventTarget | null) => {
   return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable
 }
 
-type Choice = { value: string; tile: string; content: React.ReactNode }
+type Choice = { value: string; tile: string; content: React.ReactNode; label?: string }
+
+/**
+ * An option that is only a formula ("$12/36$") has no text a screen reader or axe can take a name
+ * from once KaTeX has drawn it, so the button gets one: its letter and the formula's source.
+ */
+function mathOnlyLabel(tile: string, text: string): string | undefined {
+  const match = /^\s*\$+([^$]+)\$+\s*$/.exec(text)
+  return match ? `${tile}: ${match[1].trim()}` : undefined
+}
 
 function ChoiceList({
   choices,
@@ -54,8 +65,9 @@ function ChoiceList({
         <RadioGroup.Item
           key={choice.value}
           value={choice.value}
+          aria-label={choice.label}
           className={cn(
-            'group flex w-full items-start gap-3 rounded-control border border-border-strong bg-surface px-3 py-2.5 text-left text-body text-fg',
+            'group flex w-full items-start gap-3 rounded-control border border-control bg-surface px-3 py-2.5 text-left text-body text-fg',
             'transition-[background-color,border-color] duration-120 hover:bg-surface-2',
             'data-[state=checked]:border-accent data-[state=checked]:bg-accent-soft',
             'disabled:cursor-default disabled:opacity-70 disabled:hover:bg-surface'
@@ -137,6 +149,7 @@ export function QuestionRenderer({
         choices={options.map((option) => ({
           value: option.id,
           tile: option.tile,
+          label: mathOnlyLabel(option.tile, option.text),
           content: <MathText>{option.text}</MathText>,
         }))}
       />
@@ -165,7 +178,7 @@ export function QuestionRenderer({
         value={current}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        trailing={question.unit || undefined}
+        trailing={answerUnit(question.unit) || undefined}
         containerClassName="max-w-xs"
       />
     )
@@ -184,16 +197,28 @@ export function QuestionRenderer({
     )
   }
 
+  const blocks = stemHasBlocks(question.question_text)
+  const headingRef = React.useRef<HTMLHeadingElement>(null)
+  useScrollableFocus(headingRef, question.question_text)
+  const pointsText =
+    showPoints && question.points ? `(${question.points} ${question.points === 1 ? 'point' : 'points'})` : null
+
   return (
     <div className={cn('flex flex-col gap-4', className)}>
-      <h2 className="overflow-x-auto text-heading text-fg">
-        <MathText>{question.question_text}</MathText>
-        {showPoints && question.points ? (
-          <span className="ml-2 whitespace-nowrap text-small font-normal text-fg-3 tabular">
-            ({question.points} {question.points === 1 ? 'point' : 'points'})
-          </span>
-        ) : null}
-      </h2>
+      {blocks ? (
+        // A stem with a table, a listing or several paragraphs: the question is the block text; the
+        // heading is only there so assistive technology lands on it.
+        <div>
+          <h2 className="sr-only">Question</h2>
+          <QuestionText>{question.question_text}</QuestionText>
+          {pointsText ? <p className="mt-1 text-small text-fg-3 tabular">{pointsText}</p> : null}
+        </div>
+      ) : (
+        <h2 ref={headingRef} className="overflow-x-auto text-heading text-fg">
+          <MathText>{question.question_text}</MathText>
+          {pointsText ? <span className="ml-2 whitespace-nowrap text-small font-normal text-fg-3 tabular">{pointsText}</span> : null}
+        </h2>
+      )}
       {control}
     </div>
   )

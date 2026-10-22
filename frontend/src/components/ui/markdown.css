@@ -45,8 +45,26 @@
   line-height: 22px;
 }
 
+/* A question stem: the paragraphs read as the question (heading size and weight), the table or
+   code listing between them stays at body size so it is easy to scan. */
+.md-stem > p {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.md-stem-compact > p {
+  font-weight: 500;
+}
+
 .md-inline {
   display: inline;
+}
+
+/* A formula and the punctuation or word stuck to it never split across lines (see markdown.tsx). */
+.md .math-bind {
+  white-space: nowrap;
 }
 
 /* Paragraph spacing 0.9em between blocks, 0.35em between list items. */

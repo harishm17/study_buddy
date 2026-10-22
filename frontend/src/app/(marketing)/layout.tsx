@@ -5,7 +5,7 @@ import { BRAND_NAME } from '@/config/brand'
 import { CONTACT_EMAIL } from '@/config/site'
 import { NavActions } from '@/features/marketing/auth-actions'
 import { LINKS } from '@/features/marketing/content'
-import { ThemeSwitch } from '@/features/marketing/theme-switch'
+import { ThemeSwitch } from '@/components/ui/theme-switch'
 
 const navLink =
   'rounded-chip px-2 py-1.5 text-body text-fg-2 transition-colors duration-120 hover:text-fg'
