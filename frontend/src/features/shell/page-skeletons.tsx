@@ -5,7 +5,9 @@ import { Skeleton } from '@/components/ui/skeleton'
  * The loading shapes of the pages that read "today": Home, the course overview, the Plan and Review.
  * Each follows the real page's blocks and heights, so the page that replaces it does not move what is
  * already on screen. They are also what the page shows for the first request of a browser whose time
- * zone is not known yet (see server/timezone.ts), so a plan is never drawn for the wrong day first.
+ * zone is not known yet (see server/timezone.ts), so a plan is never drawn for the wrong day first. The
+ * root carries a key so React rebuilds the page instead of reusing the skeleton's elements: reused
+ * elements that change size count as layout shift.
  */
 
 function Intro({ titleWidth = 'w-24', description = 'w-96' }: { titleWidth?: string; description?: string }) {
@@ -19,7 +21,7 @@ function Intro({ titleWidth = 'w-24', description = 'w-96' }: { titleWidth?: str
 
 export function HomeSkeleton() {
   return (
-    <Page>
+    <Page key="loading-shape">
       <div aria-busy="true" aria-label="Loading">
         <div className="mb-8 flex items-start justify-between gap-6">
           <div>
@@ -53,7 +55,7 @@ export function HomeSkeleton() {
 
 export function OverviewSkeleton() {
   return (
-    <Page>
+    <Page key="loading-shape">
       <div aria-busy="true" aria-label="Loading">
         <div className="mb-8 flex items-start justify-between gap-6">
           <div>
@@ -88,7 +90,7 @@ export function OverviewSkeleton() {
 /** A plan: the heading, "This week" with today and the days after it open, then lines for the days that follow. */
 export function PlanSkeleton() {
   return (
-    <Page>
+    <Page key="loading-shape">
       <div aria-busy="true" aria-label="Loading">
         <div className="mb-8 flex items-start justify-between gap-6">
           <div>
@@ -125,7 +127,7 @@ export function PlanSkeleton() {
 
 export function ReviewSkeleton() {
   return (
-    <Page>
+    <Page key="loading-shape">
       <div aria-busy="true" aria-label="Loading">
         <Intro titleWidth="w-28" description="w-80" />
         <div className="flex flex-col gap-10">
