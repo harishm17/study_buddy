@@ -18,6 +18,8 @@ type ConversationProps = {
   courseId: string
   variant: 'page' | 'sheet'
   hasMaterials: boolean
+  /** Fills the question box without sending it. */
+  initialDraft?: string
   examples: string[]
   scopeOptions?: SelectOption[]
   scope?: string
@@ -35,6 +37,7 @@ export function Conversation({
   courseId,
   variant,
   hasMaterials,
+  initialDraft,
   examples,
   scopeOptions,
   scope,
@@ -161,6 +164,7 @@ export function Conversation({
               fixedScope={fixedScope}
               disabled={loadingThread}
               autoFocus={!isSheet}
+              initialValue={initialDraft}
             />
           </div>
         </div>

@@ -1,3 +1,4 @@
+import { buildRubric, readCriteria, type RubricLine, type StoredCriterion } from '@/lib/learning/rubric'
 import { parseSources, type SourceRef } from '@/lib/topics/sources'
 import { reviewAnswer } from './quiz-questions'
 import type { GradedQuestion } from '@/lib/ai-service/grading'
@@ -9,6 +10,8 @@ export type StoredQuestionResult = {
   pointsPossible: number
   // The grader's note, kept for short answers only; rule-graded questions have none.
   feedback?: string
+  // What the grader said about each key point of a short answer, in rubric order.
+  criteria?: StoredCriterion[]
 }
 
 /** One question as shown after a quiz is graded. This is where the answer key is released. */
@@ -22,6 +25,8 @@ export type QuizReviewItem = {
   feedback: string | null
   /** Where in the files the question is based on, for "From <file>, p. N". Empty for older quizzes. */
   sources: SourceRef[]
+  /** For short answers: what the grader looked for, with a verdict per line when it gave one. */
+  rubric: RubricLine[] | null
 }
 
 type RawQuestion = Record<string, unknown>
@@ -36,6 +41,7 @@ export function toStoredResults(graded: GradedQuestion[]): Record<string, Stored
       ...(question.question_type === 'short_answer' && question.feedback
         ? { feedback: question.feedback }
         : {}),
+      ...(question.question_type === 'short_answer' && question.criteria?.length ? { criteria: question.criteria } : {}),
     }
   }
   return stored
@@ -51,6 +57,7 @@ function readStoredResult(value: unknown): Partial<StoredQuestionResult> {
       pointsEarned: typeof record.pointsEarned === 'number' ? record.pointsEarned : undefined,
       pointsPossible: typeof record.pointsPossible === 'number' ? record.pointsPossible : undefined,
       feedback: typeof record.feedback === 'string' ? record.feedback : undefined,
+      criteria: readCriteria(record.criteria),
     }
   }
   return {}
@@ -71,6 +78,7 @@ export function buildReview(questions: RawQuestion[], results: unknown): QuizRev
       explanation: typeof question.explanation === 'string' ? question.explanation : '',
       feedback: result.feedback ?? null,
       sources: parseSources(question.sources),
+      rubric: buildRubric(question, result.criteria),
     }
   })
 }

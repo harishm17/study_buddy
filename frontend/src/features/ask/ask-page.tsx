@@ -22,6 +22,8 @@ export type AskPageProps = {
   /** The topic from ?topic=, or null for all materials. */
   initialTopicId: string | null
   hasMaterials: boolean
+  /** Text for the question box, from a link such as "Explain this mistake". Empty for none. */
+  initialDraft?: string
   /** Server time, so the thread groups match between server and browser renders. */
   now: number
 }
@@ -34,6 +36,7 @@ export default function AskPage({
   topics,
   initialTopicId,
   hasMaterials,
+  initialDraft = '',
   now,
 }: AskPageProps) {
   const base = `/courses/${courseId}/ask`
@@ -136,6 +139,7 @@ export default function AskPage({
           courseId={courseId}
           variant="page"
           hasMaterials={hasMaterials}
+          initialDraft={initialDraft}
           examples={examples}
           scopeOptions={scopeOptions}
           scope={scope}

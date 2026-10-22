@@ -10,11 +10,13 @@ import { InlineAlert } from '@/components/ui/inline-alert'
 import { Progress } from '@/components/ui/progress'
 import { ProgressRing } from '@/components/ui/progress-ring'
 import { SegmentedControl } from '@/components/ui/segmented-control'
+import { Spinner } from '@/components/ui/spinner'
 import { useJob } from '@/features/jobs/use-job'
+import { explainMistakeHref } from '@/lib/ask/explain'
 import { describeJobFailure } from '@/lib/jobs/failure-message'
 import { cn } from '@/lib/utils'
 import type { ExamResult } from '@/server/queries/mock-exams'
-import { GradeAgainButton, StartExamButton } from './exam-actions'
+import { DisagreeButton, GradeAgainButton, StartExamButton } from './exam-actions'
 import { formatScore } from './exam-options'
 
 type Graded = Extract<ExamResult, { status: 'graded' }>
@@ -67,7 +69,7 @@ export function GradingFailed({ result }: { result: NotGraded }) {
         title="Grading didn't finish"
         action={<GradeAgainButton courseId={result.courseId} examId={result.examId} submissionId={result.id} size="md" navigate={false} />}
       >
-        Your answers are saved. {result.errorCode ? describeJobFailure(result.errorCode, result.errorMessage) : 'Grade the exam again to see your score.'}
+        Your answers are saved. {describeJobFailure(result.errorCode, result.errorMessage, 'grade_exam')}
       </InlineAlert>
       <div className="mt-5">
         <Button asChild variant="link">
@@ -85,7 +87,7 @@ function FocusRow({ topic, courseId }: { topic: Graded['topics'][number]; course
       <span className="min-w-0 flex-1 truncate text-body text-fg">{topic.topicName}</span>
       <span aria-hidden="true" className="hidden h-1 w-32 shrink-0 sm:block">
         <span
-          className={cn('block h-full rounded-full', low ? 'bg-warning' : 'bg-accent')}
+          className={cn('block h-full rounded-full', low ? 'bg-learning' : 'bg-accent')}
           style={{ width: `${Math.max(2, Math.min(100, topic.percent))}%` }}
         />
       </span>
@@ -100,6 +102,18 @@ function FocusRow({ topic, courseId }: { topic: Graded['topics'][number]; course
         ) : null}
       </span>
     </li>
+  )
+}
+
+/** A second grading is running: the page keeps the earlier results and refreshes when the new ones land. */
+function RegradeBanner({ jobId }: { jobId: string }) {
+  const router = useRouter()
+  useJob(jobId, { timeoutMs: 300_000, onSettled: () => router.refresh() })
+  return (
+    <div role="status" className="flex items-center gap-2.5 rounded-control bg-surface-2 px-3.5 py-3 text-small text-fg">
+      <Spinner className="text-accent" />
+      <span>Grading again. These results stay until the new ones are ready, and this page updates by itself.</span>
+    </div>
   )
 }
 
@@ -118,12 +132,13 @@ export function GradedResults({ result, submittedLabel }: { result: Graded; subm
 
   return (
     <div className="flex flex-col gap-12">
+      {result.regradeJobId ? <RegradeBanner jobId={result.regradeJobId} /> : null}
       <section aria-label="Your score" className="flex flex-wrap items-center gap-x-6 gap-y-4">
         <ProgressRing
           size={96}
           value={result.totalPoints > 0 ? result.score / 100 : null}
           aria-label={`Score ${formatScore(result.score)}`}
-          label={<span className="text-[26px] font-semibold tracking-tight">{Math.round(result.score)}%</span>}
+          label={<span className="text-[26px] font-semibold tracking-tight">{formatScore(result.score)}</span>}
         />
         <div className="min-w-0">
           <p className="text-display tabular text-fg">
@@ -184,6 +199,18 @@ export function GradedResults({ result, submittedLabel }: { result: Graded; subm
                 feedback={question.feedback}
                 topicName={question.topicName}
                 sources={question.sources}
+                correctLabel={question.questionType === 'short_answer' ? 'Model answer' : 'Correct answer'}
+                rubric={question.rubric}
+                explainHref={explainMistakeHref(result.courseId, question.topicId, {
+                  questionText: question.questionText,
+                  studentAnswer: question.studentAnswer,
+                  sources: question.sources,
+                })}
+                gradeAction={
+                  question.questionType === 'short_answer' && question.studentAnswer ? (
+                    <DisagreeButton examId={result.examId} submissionId={result.id} disabled={!!result.regradeJobId} />
+                  ) : null
+                }
               />
             ))}
           </ol>

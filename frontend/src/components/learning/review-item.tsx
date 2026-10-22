@@ -1,10 +1,14 @@
 'use client'
 
 import * as React from 'react'
-import { CheckCircle, CircleHalf, Question, XCircle } from '@phosphor-icons/react/dist/ssr'
+import Link from 'next/link'
+import { ChatCircleText, CheckCircle, CircleHalf, Question, XCircle } from '@phosphor-icons/react/dist/ssr'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { LazyMarkdown } from '@/components/ui/lazy-markdown'
 import { MathText } from '@/components/ui/math-text'
+import { QuestionText, stemHasBlocks } from '@/components/ui/question-text'
+import type { RubricLine, RubricResult } from '@/lib/learning/rubric'
 import type { SourceRef } from '@/lib/topics/sources'
 import { cn } from '@/lib/utils'
 import { SourceLine } from './source-link'
@@ -52,6 +56,8 @@ export type ReviewItemProps = {
   studentAnswerIsOption?: boolean
   /** Shown for wrong, partial and ungraded answers. */
   correctAnswer?: string | null
+  /** "Correct answer" (the default) or "Model answer" for a written one. */
+  correctLabel?: string
   /** The grader's note (short answers). */
   feedback?: string | null
   /** Why the answer is what it is (markdown). */
@@ -60,6 +66,12 @@ export type ReviewItemProps = {
   topicName?: string | null
   /** Where in the student's files the question comes from: "From notes.pdf, p. 4". */
   sources?: SourceRef[]
+  /** What a written answer was graded against, with a verdict per line when the grader gave one. */
+  rubric?: RubricLine[] | null
+  /** Opens Ask with this question, the student's answer and the sources already written. Shown for a miss. */
+  explainHref?: string | null
+  /** Next to the rubric: the "Disagree" action, when the page can ask for a regrade. */
+  gradeAction?: React.ReactNode
   className?: string
 }
 
@@ -74,10 +86,60 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   )
 }
 
+const RUBRIC_WORDS: Record<RubricResult, string> = { met: 'Met', partly: 'Partly', not_met: 'Missing' }
+
+function RubricMark({ result }: { result: RubricResult | null }) {
+  const common = 'mt-0.5 size-4 shrink-0'
+  if (result === 'met') return <CheckCircle aria-hidden="true" weight="fill" className={cn(common, 'text-accent')} />
+  if (result === 'partly') return <CircleHalf aria-hidden="true" weight="fill" className={cn(common, 'text-warning')} />
+  if (result === 'not_met') return <XCircle aria-hidden="true" weight="fill" className={cn(common, 'text-danger')} />
+  // No verdict recorded: a plain bullet, the line is still what the grader looked for.
+  return <span aria-hidden="true" className="mt-2 ml-1.5 mr-1 size-1 shrink-0 rounded-full bg-fg-3" />
+}
+
+/** The key points a written answer is graded against, with the score for the answer as a whole. */
+function Rubric({
+  rubric,
+  points,
+  pointsEarned,
+  action,
+  number,
+}: {
+  number: number
+  rubric: RubricLine[]
+  points: number
+  pointsEarned: number
+  action?: React.ReactNode
+}) {
+  const marked = rubric.some((line) => line.result !== null)
+  return (
+    <div role="group" aria-label={`How question ${number} was graded`} className="rounded-control bg-surface-2 px-3.5 py-3">
+      <h3 className="text-caption text-fg-3">{marked ? 'What the grader checked' : 'What the grader looked for'}</h3>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {rubric.map((line, index) => (
+          <li key={index} className="flex items-start gap-2 text-small text-fg">
+            <RubricMark result={line.result} />
+            <span className="min-w-0 flex-1">
+              <MathText>{line.text}</MathText>
+            </span>
+            {line.result ? <span className="shrink-0 text-caption text-fg-2">{RUBRIC_WORDS[line.result]}</span> : null}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2.5 text-caption font-normal text-fg-2">
+        Scored <span className="tabular">{formatPoints(pointsEarned)}</span> of <span className="tabular">{formatPoints(points)}</span>{' '}
+        for the whole answer. The grader gives one score, not one per line.
+      </p>
+      {action ? <div className="mt-2">{action}</div> : null}
+    </div>
+  )
+}
+
 /**
  * One graded question: status, the question, the points, the student's answer and, when it was
- * not fully right, the correct answer, the grader's feedback and the explanation. Shared by the
- * mock exam results and the quiz review.
+ * not fully right, the correct (or model) answer, the grader's feedback, what a written answer was
+ * graded against, the explanation, and a way to ask about it. Shared by the mock exam results and
+ * the quiz review.
  */
 export function ReviewItem({
   number,
@@ -88,23 +150,28 @@ export function ReviewItem({
   studentAnswer,
   studentAnswerIsOption,
   correctAnswer,
+  correctLabel = 'Correct answer',
   feedback,
   explanation,
   topicName,
   sources,
+  rubric,
+  explainHref,
+  gradeAction,
   className,
 }: ReviewItemProps) {
   const showKey = status !== 'correct'
+  const blocks = stemHasBlocks(questionText)
   return (
     <li className={cn('flex gap-3 border-b border-border py-5 first:pt-0 last:border-b-0', className)}>
       <StatusIcon status={status} />
       <div className="min-w-0 flex-1">
         <span className="sr-only">{STATUS_LABEL[status]}. </span>
         <div className="flex items-start gap-3">
-          <p className="min-w-0 flex-1 text-body-strong text-fg">
-            <span className="mr-2 tabular text-fg-3">{number}</span>
-            <MathText>{questionText}</MathText>
-          </p>
+          <div className="flex min-w-0 flex-1 items-start gap-2 text-body-strong text-fg">
+            <span className="tabular text-fg-3">{number}</span>
+            <div className="min-w-0 flex-1">{blocks ? <QuestionText>{questionText}</QuestionText> : <MathText>{questionText}</MathText>}</div>
+          </div>
           <span className="shrink-0 tabular text-small text-fg-2">
             {formatPoints(pointsEarned)}/{formatPoints(points)}
           </span>
@@ -123,11 +190,14 @@ export function ReviewItem({
                 {studentAnswerIsOption ? <MathText>{studentAnswer}</MathText> : studentAnswer}
               </span>
             ) : (
-              <span className="text-fg-3">No answer</span>
+              // A blank is not an answer: it reads differently from one.
+              <span className="inline-flex items-center rounded-chip border border-dashed border-control px-1.5 text-caption text-fg-2">
+                Left blank
+              </span>
             )}
           </Detail>
           {showKey && correctAnswer ? (
-            <Detail label="Correct answer">
+            <Detail label={correctLabel}>
               <span className="whitespace-pre-wrap break-words">
                 <MathText>{correctAnswer}</MathText>
               </span>
@@ -146,7 +216,24 @@ export function ReviewItem({
             </Detail>
           ) : null}
         </dl>
+
+        {rubric && rubric.length > 0 ? (
+          <div className="mt-3">
+            <Rubric number={number} rubric={rubric} points={points} pointsEarned={pointsEarned} action={gradeAction} />
+          </div>
+        ) : gradeAction ? (
+          <div className="mt-3">{gradeAction}</div>
+        ) : null}
+
         {sources && sources.length > 0 ? <SourceLine sources={sources} className="mt-3" /> : null}
+
+        {explainHref && (status === 'partial' || status === 'incorrect') ? (
+          <div className="mt-3">
+            <Button asChild size="sm" variant="secondary" icon={<ChatCircleText />}>
+              <Link href={explainHref}>Explain this mistake</Link>
+            </Button>
+          </div>
+        ) : null}
       </div>
     </li>
   )

@@ -8,6 +8,8 @@ export type GradedQuestion = {
   is_correct: boolean
   feedback: string
   needs_review: boolean
+  /** Short answers: the verdict on each key point, in rubric order. */
+  criteria?: { point: string; result: 'met' | 'partly' | 'not_met' }[]
 }
 
 export type GradeResult = {

@@ -96,3 +96,47 @@ export function GradeAgainButton({
     </Button>
   )
 }
+
+/**
+ * "Disagree": asks for a second grading of the whole attempt (there is one grading route, and it
+ * reads every written answer again). The earlier results stay on screen until the new grading is
+ * done, so nothing is lost by asking. Shown next to what a written answer was graded against.
+ */
+export function DisagreeButton({
+  examId,
+  submissionId,
+  disabled,
+}: {
+  examId: string
+  submissionId: string
+  /** A second grading is already running. */
+  disabled?: boolean
+}) {
+  const router = useRouter()
+  const [busy, setBusy] = React.useState(false)
+  const [asked, setAsked] = React.useState(false)
+
+  async function ask() {
+    setBusy(true)
+    try {
+      await apiFetch(`/api/exams/${examId}/submissions/${submissionId}/regrade`, { method: 'POST' })
+      setAsked(true)
+      toast.success('Grading again. Your earlier results stay until the new ones are ready.')
+      router.refresh()
+    } catch (error) {
+      toast.error(isApiError(error) ? error.message : "Couldn't start grading. Try again.")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const pending = asked || disabled
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <Button size="sm" variant="ghost" icon={<ArrowClockwise />} loading={busy} disabled={pending} onClick={ask}>
+        {pending ? 'Grading again' : 'Disagree? Grade again'}
+      </Button>
+      <span className="text-caption font-normal text-fg-3">Re-reads every written answer.</span>
+    </div>
+  )
+}
