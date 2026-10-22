@@ -13,15 +13,28 @@ async function signIn(page: Page) {
   await expect(page).toHaveURL(/\/home$/, { timeout: 60_000 })
 }
 
-/** The graded attempt of the demo exam: [exam id, submission id]. */
-async function gradedAttempt(page: Page, course: string): Promise<[string, string]> {
+/** Every graded attempt of the demo course's exams: [exam id, submission id]. Other specs add exams too. */
+async function gradedAttempts(page: Page, course: string): Promise<[string, string][]> {
+  const found: [string, string][] = []
   const { exams } = await (await page.request.get(`/api/projects/${course}/exams`)).json()
   for (const exam of exams as { id: string }[]) {
     const { submissions } = await (await page.request.get(`/api/exams/${exam.id}/submissions`)).json()
-    const graded = (submissions as { id: string; score: number | null }[]).find((item) => item.score !== null)
-    if (graded) return [exam.id, graded.id]
+    for (const item of submissions as { id: string; score: number | null }[]) {
+      if (item.score !== null) found.push([exam.id, item.id])
+    }
   }
-  throw new Error('the demo account has no graded exam')
+  if (found.length === 0) throw new Error('the demo account has no graded exam')
+  return found
+}
+
+/** Opens the results of an attempt that has a written answer in it (the seeded exam does; one that was submitted blank may not). */
+async function openAttemptWithWrittenAnswer(page: Page, course: string): Promise<[string, string]> {
+  for (const [examId, submissionId] of await gradedAttempts(page, course)) {
+    await page.goto(`/courses/${course}/exams/${examId}/results/${submissionId}`)
+    await expect(page.getByRole('heading', { name: 'Questions' })).toBeVisible()
+    if ((await page.getByRole('button', { name: 'Disagree? Grade again' }).count()) > 0) return [examId, submissionId]
+  }
+  throw new Error('no graded attempt has a written answer')
 }
 
 test('an address that names nothing answers 404, in the app and in the exam shell', async ({ page }) => {
@@ -62,9 +75,7 @@ test('the theme is a visible choice in the account menu', async ({ page }) => {
 test('a graded exam shows what was checked, and asks Ask to explain a miss', async ({ page }) => {
   const { course } = demoIds()
   await signIn(page)
-  const [examId, submissionId] = await gradedAttempt(page, course)
-  await page.goto(`/courses/${course}/exams/${examId}/results/${submissionId}`)
-  await expect(page.getByRole('heading', { name: 'Questions' })).toBeVisible()
+  await openAttemptWithWrittenAnswer(page, course)
 
   // A written answer: the rubric, the model answer and a way to ask for another grading.
   const rubric = page.getByRole('group', { name: /was graded/ }).first()
@@ -87,9 +98,9 @@ test('a graded exam shows what was checked, and asks Ask to explain a miss', asy
 test('the lobby and the results give the same score for an attempt', async ({ page }) => {
   const { course } = demoIds()
   await signIn(page)
-  const [examId, submissionId] = await gradedAttempt(page, course)
+  const [examId, submissionId] = (await gradedAttempts(page, course))[0]
   await page.goto(`/courses/${course}/exams/${examId}/results/${submissionId}`)
   const resultScore = (await page.getByRole('img', { name: /^Score / }).getAttribute('aria-label'))!.replace('Score ', '')
   await page.goto(`/courses/${course}/exams/${examId}`)
-  await expect(page.getByRole('list').getByText(resultScore, { exact: true })).toBeVisible()
+  await expect(page.getByRole('list').getByText(resultScore, { exact: true }).first()).toBeVisible()
 })
