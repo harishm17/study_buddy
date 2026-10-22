@@ -549,3 +549,71 @@ class TestGradingFixes:
             result = await ExamGrader().grade_submission('s', [dict(SHORT_QUESTION)], {'0': '   '})
         llm.generate_structured.assert_not_awaited()
         assert result['graded_questions'][0]['feedback'] == 'Question not answered'
+
+
+class TestRubricChecks:
+    """Each short answer is shown with what the grader looked for and whether each point was met."""
+
+    @pytest.mark.asyncio
+    async def test_checks_follow_the_rubric_order_and_wording(self):
+        from app.services.llm.schemas import KeyPointCheck
+
+        question = dict(SHORT_QUESTION, key_points=['Names the idea', 'Gives a reason'])
+        reply = {
+            'points_earned': 5,
+            'feedback': 'Half there.',
+            'key_point_checks': [
+                KeyPointCheck(point='names the idea (reworded)', result='met'),
+                KeyPointCheck(point='gives a reason', result='not_met'),
+            ],
+        }
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as factory:
+            llm = MagicMock()
+            llm.generate_structured = AsyncMock(return_value=SimpleNamespace(**reply))
+            factory.return_value = llm
+            result = await ExamGrader()._grade_short_answer(question, 'An answer')
+
+        assert result['criteria'] == [
+            {'point': 'Names the idea', 'result': 'met'},
+            {'point': 'Gives a reason', 'result': 'not_met'},
+        ]
+
+    @pytest.mark.asyncio
+    async def test_a_reply_with_the_wrong_number_of_checks_gives_none(self):
+        from app.services.llm.schemas import KeyPointCheck
+
+        question = dict(SHORT_QUESTION, key_points=['One', 'Two'])
+        reply = {
+            'points_earned': 5,
+            'feedback': 'Half there.',
+            'key_point_checks': [KeyPointCheck(point='One', result='met')],
+        }
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as factory:
+            llm = MagicMock()
+            llm.generate_structured = AsyncMock(return_value=SimpleNamespace(**reply))
+            factory.return_value = llm
+            result = await ExamGrader()._grade_short_answer(question, 'An answer')
+        assert result['criteria'] == []
+
+    @pytest.mark.asyncio
+    async def test_replies_without_checks_still_grade(self):
+        question = dict(SHORT_QUESTION)
+        with patch('app.services.exam_grader.LLMFactory.get_provider') as factory:
+            llm = MagicMock()
+            llm.generate_structured = AsyncMock(return_value=SimpleNamespace(points_earned=10, feedback='Good.'))
+            factory.return_value = llm
+            result = await ExamGrader()._grade_short_answer(question, 'An answer')
+        assert result['criteria'] == []
+        assert result['points_earned'] == 10
+
+    @pytest.mark.asyncio
+    async def test_the_checks_are_kept_with_the_graded_question(self):
+        grader = ExamGrader()
+        question = dict(SHORT_QUESTION, key_points=['Point 1'])
+
+        async def fake_short(_question, _answer):
+            return {'points_earned': 10, 'is_correct': True, 'feedback': 'Good.', 'criteria': [{'point': 'Point 1', 'result': 'met'}]}
+
+        grader._grade_short_answer = fake_short
+        graded = await grader.grade_submission('s1', [question], {'0': 'An answer'})
+        assert graded['graded_questions'][0]['criteria'] == [{'point': 'Point 1', 'result': 'met'}]

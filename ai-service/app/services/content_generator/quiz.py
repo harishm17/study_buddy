@@ -46,7 +46,7 @@ DIFFICULTY_GUIDANCE = {
 QUESTION_FORMAT_RULES = """Question rules:
 - multiple_choice: exactly 4 options with ids A, B, C, D, one correct answer, plausible distractors. Vary which letter is correct. Keep options short and put any code in the question text, not the options.
 - short_answer: answerable in 1-3 sentences; give a sample_answer and 2-4 key_points a grader can check.
-- numerical: correct_answer is a plain number; give the unit and an absolute tolerance.
+- numerical: correct_answer is a plain number; give an absolute tolerance. Give `unit` only when the quantity has one (m/s, mol/L, dollars). For a probability, a count or a ratio leave `unit` empty: never put the name of the quantity there.
 - true_false: correct_answer is a boolean; the explanation says why.
 - Every question has an explanation of the correct answer and points from 1 to 5 by complexity.
 - In explanations, refer to options by their content, never by letter. The options are shuffled after you write them.

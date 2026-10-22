@@ -46,6 +46,24 @@ def _clamp_points(value: Any, max_points: float) -> float:
     return min(max(points, 0), max_points)
 
 
+def _criteria_from_checks(key_points: List[str], checks: Any) -> List[Dict[str, str]]:
+    """The verdict on each rubric line, in the rubric's own order and wording.
+
+    The model is asked for one check per key point in order; the text comes from the rubric, not
+    from the reply, so a reworded or reordered reply cannot change what the student is shown. Fewer
+    or more checks than key points means the reply did not follow the list: then there are none.
+    """
+    if not key_points or not isinstance(checks, (list, tuple)) or len(checks) != len(key_points):
+        return []
+    criteria = []
+    for point, check in zip(key_points, checks):
+        result = getattr(check, 'result', None)
+        if result not in ('met', 'partly', 'not_met'):
+            return []
+        criteria.append({'point': str(point), 'result': result})
+    return criteria
+
+
 def parse_numeric_answer(value: Any) -> Optional[float]:
     """A number from a student's answer: accepts '6.02e23', '1,250', '9.8 m/s^2'."""
     if isinstance(value, bool):
@@ -128,6 +146,8 @@ class ExamGrader:
                 'student_answer': answer,
                 'feedback': result['feedback'],
                 'needs_review': result.get('needs_review', False),
+                # Per key point of a short answer's rubric: met, partly or not_met. Empty when not graded by rubric.
+                'criteria': result.get('criteria', []),
                 'correct_answer': (
                     question.get('correct_answer')
                     if question['question_type'] != 'short_answer'
@@ -225,7 +245,8 @@ class ExamGrader:
 
 Award from 0 to {max_points} points for accuracy, coverage of the key points, and clarity.
 Give partial credit for partly correct answers. Accept correct answers worded differently from the sample.
-Feedback: 2-3 sentences on what was good and what was missing."""
+Feedback: 2-3 sentences on what was good and what was missing.
+Key point checks: one entry for each key point above, in the same order, saying whether the answer meets it, partly meets it, or misses it. The points you award should agree with these checks."""
 
         messages = [
             LLMMessage(role="system", content=GRADER_SYSTEM_PROMPT),
@@ -256,4 +277,5 @@ Feedback: 2-3 sentences on what was good and what was missing."""
             # Derived from the clamped score, not the model's own verdict.
             'is_correct': points >= max_points * 0.7,
             'feedback': grade.feedback or 'Graded by AI',
+            'criteria': _criteria_from_checks(key_points, getattr(grade, 'key_point_checks', None)),
         }
