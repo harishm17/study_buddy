@@ -1,3 +1,4 @@
+import { areRecordIds } from '@/lib/ids'
 import { cache } from 'react'
 import { prisma } from '@/lib/db/prisma'
 import { deriveSetup, type CourseSetup } from '@/lib/course-setup'
@@ -116,6 +117,7 @@ export type CourseShell = {
 
 /** A course with its topics, mastery, progress and content presence. Null when it is not theirs. Applies graded mock exams to mastery first. */
 export const getCourseShell = cache(async (userId: string, courseId: string): Promise<CourseShell | null> => {
+  if (!areRecordIds(courseId)) return null
   // A graded mock exam moves mastery and review dates the first time it is seen (once per grading),
   // so it is applied before mastery is read anywhere on a course page.
   await applyPendingExamResults(userId, courseId)

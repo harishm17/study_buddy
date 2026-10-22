@@ -1,24 +1,17 @@
-import Link from 'next/link'
-import { MagnifyingGlass } from '@phosphor-icons/react/dist/ssr'
 import { Page } from '@/components/shell/page'
-import { Button } from '@/components/ui/button'
-import { EmptyState } from '@/components/ui/empty-state'
+import { NotFoundPanel } from '@/components/shell/not-found-panel'
 
+export const metadata = { title: 'Page not found' }
+
+/** A signed-in page that does not exist, or a course that is not the student's. */
 export default function AppNotFound() {
   return (
     <Page>
-      <EmptyState
+      <NotFoundPanel
         className="py-24"
-        icon={<MagnifyingGlass />}
-        title="We couldn't find that"
-        action={
-          <Button asChild variant="primary">
-            <Link href="/home">Go to home</Link>
-          </Button>
-        }
-      >
-        The page may have moved, or the course may have been deleted.
-      </EmptyState>
+        body="The page may have moved, or the course may have been deleted."
+        action={{ href: '/home', label: 'Go to home' }}
+      />
     </Page>
   )
 }

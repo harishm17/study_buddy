@@ -3,7 +3,7 @@ import { Skeleton, SkeletonText } from '@/components/ui/skeleton'
 /** The Ask layout while its code loads: thread list, a question, an answer and the composer. */
 export function AskPageSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading" className="flex h-[calc(100dvh-var(--topbar-height))] min-h-0">
+    <div role="status" aria-busy="true" aria-label="Loading" className="flex h-[calc(100dvh-var(--topbar-height))] min-h-0">
       <aside className="hidden w-[248px] shrink-0 border-r border-border bg-surface p-3 lg:block">
         <Skeleton className="h-[34px]" />
         <div className="mt-5 flex flex-col gap-2 px-1">

@@ -1,24 +1,15 @@
-import { Page } from '@/components/shell/page'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton, SkeletonIntro, SkeletonPage, SkeletonRows } from '@/components/ui/page-skeleton'
 
+/** Materials: the intro with Upload, the drop zone, then the file rows. */
 export default function MaterialsLoading() {
   return (
-    <Page>
-      <div aria-busy="true" aria-label="Loading" className="flex flex-col gap-6">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <Skeleton className="h-8 w-40 rounded-chip" />
-            <Skeleton className="mt-2.5 h-4 w-80 max-w-full rounded-chip" />
-          </div>
-          <Skeleton className="h-[34px] w-24" />
-        </div>
-        <Skeleton className="h-[120px] rounded-card" />
-        <div className="flex flex-col gap-1">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-12" />
-          ))}
-        </div>
+    <SkeletonPage>
+      <SkeletonIntro actions="w-24" className="mb-6" />
+      <Skeleton aria-hidden="true" className="h-[138px] rounded-card" />
+      <div className="mt-6">
+        <Skeleton aria-hidden="true" className="mb-2 h-4 w-full rounded-chip" />
+        <SkeletonRows count={3} lead="icon" lines={1} className="min-h-14" />
       </div>
-    </Page>
+    </SkeletonPage>
   )
 }

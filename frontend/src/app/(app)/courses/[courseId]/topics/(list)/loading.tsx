@@ -1,23 +1,26 @@
-import { Page } from '@/components/shell/page'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton, SkeletonIntro, SkeletonPage, SkeletonRow } from '@/components/ui/page-skeleton'
 
+/** Topics: the intro with Edit topics, the sort control, then units with their topic rows. */
 export default function TopicsLoading() {
   return (
-    <Page>
-      <div aria-busy="true" aria-label="Loading" className="flex flex-col gap-6">
-        <div className="flex items-start justify-between gap-6">
-          <div>
-            <Skeleton className="h-8 w-32 rounded-chip" />
-            <Skeleton className="mt-2.5 h-4 w-64 max-w-full rounded-chip" />
-          </div>
-          <Skeleton className="h-[34px] w-28 max-sm:hidden" />
-        </div>
-        <div className="flex flex-col gap-1">
-          {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-14" />
-          ))}
-        </div>
+    <SkeletonPage>
+      <SkeletonIntro actions="w-28" className="mb-4" />
+      <div aria-hidden="true" className="mb-1 flex justify-end">
+        <Skeleton className="h-[34px] w-60" />
       </div>
-    </Page>
+      {[2, 2, 1].map((rows, group) => (
+        <section key={group} aria-hidden="true" className="mt-4">
+          <div className="flex items-center gap-3 px-2 pb-2">
+            <Skeleton className="h-[26px] w-52 rounded-chip" />
+            <Skeleton className="h-5 w-14 rounded-chip" />
+          </div>
+          <div className="border-t border-border">
+            {Array.from({ length: rows }, (_, index) => (
+              <SkeletonRow key={index} lead="ring" trailing="w-40" />
+            ))}
+          </div>
+        </section>
+      ))}
+    </SkeletonPage>
   )
 }
